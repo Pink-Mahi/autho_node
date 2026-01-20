@@ -316,7 +316,7 @@ export class OperatorNode extends EventEmitter {
 
   private setupRoutes(): void {
     const publicDir = this.getPublicDir();
-    this.app.use(express.static(publicDir));
+    this.app.use(express.static(publicDir, { index: false }));
 
     const downloadsDir = this.getDownloadsDir();
     if (downloadsDir) {
