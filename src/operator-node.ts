@@ -108,8 +108,22 @@ export class OperatorNode extends EventEmitter {
       const outCt = String(seedResp.headers.get('content-type') || '');
       res.status(seedResp.status);
       if (outCt) res.setHeader('Content-Type', outCt);
-      const text = await seedResp.text();
-      res.send(text);
+
+      const isText =
+        outCt.includes('application/json') ||
+        outCt.startsWith('text/') ||
+        outCt.includes('application/javascript') ||
+        outCt.includes('application/x-javascript') ||
+        outCt.includes('application/xml') ||
+        outCt.includes('image/svg+xml');
+
+      if (isText) {
+        const text = await seedResp.text();
+        res.send(text);
+      } else {
+        const ab = await seedResp.arrayBuffer();
+        res.send(Buffer.from(ab));
+      }
     } catch (e: any) {
       res.status(502).json({ success: false, error: e?.message || String(e) });
     }
@@ -251,6 +265,40 @@ export class OperatorNode extends EventEmitter {
       });
       next();
     });
+
+    this.app.use('/api', async (req: Request, res: Response, next) => {
+      try {
+        const sid = this.getSessionIdFromRequest(req);
+        if (!sid) return next();
+        if (this.sessions.has(sid)) return next();
+
+        const base = this.getSeedHttpBase();
+        if (!base) return next();
+
+        const r = await fetch(`${base}/api/auth/me`, {
+          method: 'GET',
+          headers: {
+            Authorization: String((req.headers as any)?.authorization || ''),
+          },
+        });
+
+        if (!r.ok) return next();
+        const data: any = await r.json().catch(() => null);
+        const accountId = String(data?.account?.accountId || data?.accountId || '').trim();
+        if (!accountId) return next();
+
+        const now = Date.now();
+        this.sessions.set(sid, {
+          sessionId: sid,
+          accountId,
+          createdAt: now,
+          expiresAt: now + 24 * 60 * 60 * 1000,
+        });
+      } catch {
+        // ignore
+      }
+      next();
+    });
   }
 
   private getBitcoinNetwork(): 'mainnet' | 'testnet' {
@@ -346,6 +394,12 @@ export class OperatorNode extends EventEmitter {
       res.status(404).send('Not Found');
     });
 
+    this.app.get('/how-it-works', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('how-it-works.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
     this.app.get('/buy', (req: Request, res: Response) => {
       const fp = this.resolvePublicFile('buy.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
@@ -390,6 +444,18 @@ export class OperatorNode extends EventEmitter {
 
     this.app.get('/operator/apply', (req: Request, res: Response) => {
       const fp = this.resolvePublicFile('operator-apply.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get(['/customer/login', '/customer/login/'], (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('customer/login.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get(['/customer/signup', '/customer/signup/'], (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('customer/signup.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('Not Found');
     });
@@ -528,93 +594,11 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.app.post('/api/auth/login', async (req: Request, res: Response) => {
-      try {
-        const { email, password, totpCode } = req.body;
-        if (!email || !password) {
-          res.status(400).json({ success: false, error: 'Missing email or password' });
-          return;
-        }
-
-        const emailHash = this.computeEmailHash(email);
-        let account: any = null;
-        for (const acc of this.state.accounts.values()) {
-          if (String(acc.emailHash || '') === emailHash) {
-            account = acc;
-            break;
-          }
-        }
-
-        if (!account) {
-          res.status(404).json({ success: false, error: 'Account not found' });
-          return;
-        }
-
-        if (!account.passwordHash) {
-          res.status(400).json({ success: false, error: 'Password not set for this account' });
-          return;
-        }
-
-        const passwordValid = await this.verifyPassword(password, account.passwordHash, account.passwordKdf);
-        if (!passwordValid) {
-          res.status(401).json({ success: false, error: 'Invalid password' });
-          return;
-        }
-
-        if (account.totp?.enabled) {
-          if (!totpCode) {
-            res.status(400).json({ success: false, error: '2FA code required', requires2FA: true });
-            return;
-          }
-          res.status(501).json({ success: false, error: '2FA verification requires main node' });
-          return;
-        }
-
-        const sessionId = `session_${Date.now()}_${this.randomHex(16)}`;
-        const createdAt = Date.now();
-        const expiresAt = createdAt + 24 * 60 * 60 * 1000;
-
-        this.sessions.set(sessionId, { sessionId, accountId: String(account.accountId), createdAt, expiresAt });
-
-        res.json({
-          success: true,
-          sessionId,
-          accountId: account.accountId,
-          expiresAt,
-          emailHash: account.emailHash,
-          walletAddress: account.walletAddress,
-          walletVault: (account as any).walletVault,
-          account: {
-            accountId: String(account.accountId),
-            role: String((account as any).role || ''),
-            username: (account as any).username ? String((account as any).username) : undefined,
-            displayName: (account as any).displayName ? String((account as any).displayName) : undefined,
-            walletAddress: (account as any).walletAddress ? String((account as any).walletAddress) : undefined,
-          },
-        });
-      } catch (error: any) {
-        console.error('[Auth] Login error:', error);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-      }
+      await this.proxyToSeed(req, res);
     });
 
     this.app.get('/api/auth/me', async (req: Request, res: Response) => {
-      const sess = this.requireSession(req, res);
-      if (!sess) return;
-      const account = this.state.accounts.get(String(sess.accountId));
-      if (!account) {
-        res.status(404).json({ success: false, error: 'Account not found' });
-        return;
-      }
-      res.json({
-        success: true,
-        account: {
-          accountId: String((account as any).accountId || sess.accountId),
-          role: String((account as any).role || ''),
-          username: (account as any).username ? String((account as any).username) : undefined,
-          displayName: (account as any).displayName ? String((account as any).displayName) : undefined,
-          walletAddress: (account as any).walletAddress ? String((account as any).walletAddress) : undefined,
-        },
-      });
+      await this.proxyToSeed(req, res);
     });
 
     this.app.get('/api/registry/item/:itemId', (req: Request, res: Response) => {
@@ -1075,6 +1059,10 @@ export class OperatorNode extends EventEmitter {
         success: false, 
         error: 'Admin endpoints are not available on operator nodes. Please use the main node dashboard.' 
       });
+    });
+
+    this.app.all('/api/*', async (req: Request, res: Response) => {
+      await this.proxyToSeed(req, res);
     });
 
     this.app.use((req: Request, res: Response) => {
