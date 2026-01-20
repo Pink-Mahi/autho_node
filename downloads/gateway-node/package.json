@@ -1,0 +1,38 @@
+{
+  "name": "autho-gateway-node",
+  "version": "1.0.0",
+  "description": "Autho Gateway Node - Pre-packaged decentralized registry node",
+  "main": "gateway-package.js",
+  "bin": {
+    "autho-gateway": "gateway-package.js"
+  },
+  "scripts": {
+    "start": "node gateway-package.js"
+  },
+  "keywords": [
+    "autho",
+    "bitcoin",
+    "blockchain",
+    "registry",
+    "gateway",
+    "decentralized",
+    "node"
+  ],
+  "author": "Autho Protocol",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pink-Mahi/autho.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pink-Mahi/autho/issues"
+  },
+  "homepage": "https://autho.pinkmahi.com"
+}

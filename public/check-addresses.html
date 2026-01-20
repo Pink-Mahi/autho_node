@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Address Checker</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #0a0a0a;
+            color: #d4af37;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .address-box {
+            background: #1a1a1a;
+            border: 2px solid #d4af37;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+        .address-box h2 {
+            margin-top: 0;
+            color: #f4d03f;
+        }
+        .address {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .balance {
+            font-size: 1.5rem;
+            color: #4cd964;
+            margin: 10px 0;
+        }
+        .tx-list {
+            margin-top: 15px;
+        }
+        .tx-item {
+            background: rgba(212, 175, 55, 0.1);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 3px solid #4cd964;
+        }
+        button {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #0a0a0a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 10px 5px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(212, 175, 55, 0.4);
+        }
+        .loading {
+            color: #ff9500;
+        }
+        .error {
+            color: #ff3b30;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Bitcoin Address Diagnostic</h1>
+    
+    <div class="address-box">
+        <h2>Current Node Wallet Address</h2>
+        <div id="currentAddress" class="loading">Loading...</div>
+        <button onclick="checkAddress('current')">Check Balance</button>
+    </div>
+
+    <div class="address-box">
+        <h2>First Transaction Address (bc1pra...)</h2>
+        <div class="address">bc1pra0grqeyjphau7lh0u8n5k48emv7zmu3qm4h3t8m0wg7yc3u57ls6kwlra</div>
+        <div id="address1Balance" class="loading">Click to check</div>
+        <div id="address1Txs" class="tx-list"></div>
+        <button onclick="checkAddress('address1')">Check Balance</button>
+    </div>
+
+    <div class="address-box">
+        <h2>Second Transaction Address (1FMcx...)</h2>
+        <div class="address">1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U</div>
+        <div id="address2Balance" class="loading">Click to check</div>
+        <div id="address2Txs" class="tx-list"></div>
+        <button onclick="checkAddress('address2')">Check Balance</button>
+    </div>
+
+    <script>
+        const addresses = {
+            address1: 'bc1pra0grqeyjphau7lh0u8n5k48emv7zmu3qm4h3t8m0wg7yc3u57ls6kwlra',
+            address2: '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U'
+        };
+
+        // Load current node address
+        async function loadCurrentAddress() {
+            try {
+                const response = await fetch('/api/node/wallet/address');
+                const data = await response.json();
+                document.getElementById('currentAddress').innerHTML = `
+                    <div class="address">${data.address}</div>
+                    <div>Network: ${data.network}</div>
+                `;
+            } catch (error) {
+                document.getElementById('currentAddress').innerHTML = 
+                    '<div class="error">Error loading address: ' + error.message + '</div>';
+            }
+        }
+
+        async function checkAddress(type) {
+            let address, balanceEl, txsEl;
+            
+            if (type === 'current') {
+                const response = await fetch('/api/node/wallet/address');
+                const data = await response.json();
+                address = data.address;
+                balanceEl = document.getElementById('currentAddress');
+                txsEl = null;
+            } else {
+                address = addresses[type];
+                balanceEl = document.getElementById(type + 'Balance');
+                txsEl = document.getElementById(type + 'Txs');
+            }
+
+            balanceEl.innerHTML = '<div class="loading">Checking blockchain...</div>';
+            if (txsEl) txsEl.innerHTML = '';
+
+            try {
+                // Check mainnet first
+                let apiBase = 'https://blockstream.info/api';
+                let response = await fetch(`${apiBase}/address/${address}`);
+                
+                if (!response.ok) {
+                    // Try testnet
+                    apiBase = 'https://blockstream.info/testnet/api';
+                    response = await fetch(`${apiBase}/address/${address}`);
+                }
+
+                if (!response.ok) {
+                    throw new Error('Address not found on mainnet or testnet');
+                }
+
+                const data = await response.json();
+                const confirmedSats = data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum;
+                const unconfirmedSats = data.mempool_stats.funded_txo_sum - data.mempool_stats.spent_txo_sum;
+                const totalSats = confirmedSats + unconfirmedSats;
+
+                balanceEl.innerHTML = `
+                    <div class="balance">
+                        ${(totalSats / 100000000).toFixed(8)} BTC (${totalSats.toLocaleString()} sats)
+                    </div>
+                    <div>Confirmed: ${confirmedSats.toLocaleString()} sats</div>
+                    <div>Unconfirmed: ${unconfirmedSats.toLocaleString()} sats</div>
+                    <div>Network: ${apiBase.includes('testnet') ? 'Testnet' : 'Mainnet'}</div>
+                `;
+
+                // Get transactions
+                if (txsEl) {
+                    const txResponse = await fetch(`${apiBase}/address/${address}/txs`);
+                    const txs = await txResponse.json();
+                    
+                    if (txs.length > 0) {
+                        txsEl.innerHTML = '<h3>Transactions:</h3>' + txs.map(tx => {
+                            let amount = 0;
+                            tx.vout.forEach(output => {
+                                if (output.scriptpubkey_address === address) {
+                                    amount += output.value;
+                                }
+                            });
+                            
+                            const confirmations = tx.status.confirmed ? '✅ Confirmed' : '⏳ Pending';
+                            return `
+                                <div class="tx-item">
+                                    <div><strong>Amount:</strong> ${(amount / 100000000).toFixed(8)} BTC (${amount.toLocaleString()} sats)</div>
+                                    <div><strong>Status:</strong> ${confirmations}</div>
+                                    <div><strong>TX ID:</strong> ${tx.txid.substring(0, 20)}...</div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        txsEl.innerHTML = '<div>No transactions found</div>';
+                    }
+                }
+            } catch (error) {
+                balanceEl.innerHTML = '<div class="error">Error: ' + error.message + '</div>';
+            }
+        }
+
+        // Load current address on page load
+        loadCurrentAddress();
+    </script>
+</body>
+</html>

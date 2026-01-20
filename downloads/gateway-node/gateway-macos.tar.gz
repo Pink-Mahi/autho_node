@@ -1,0 +1,6 @@
+This is a placeholder for the macOS gateway node package.
+In production, this would be a real TAR.GZ file containing:
+- gateway-macos (compiled binary)
+- config.json (hardcoded seed configuration)
+- README.md
+- start.sh

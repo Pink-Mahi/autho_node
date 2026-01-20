@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>My Offers - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.3s;
+    }
+
+    .tab.active {
+      color: #d4af37;
+      border-bottom-color: #d4af37;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 6px;
+      background: rgba(212, 175, 55, 0.2);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+    }
+
+    .count-badge.urgent {
+      background: rgba(76, 217, 100, 0.15);
+      color: #4cd964;
+      border: 1px solid rgba(76, 217, 100, 0.35);
+    }
+
+    .action-banner {
+      background: rgba(76, 217, 100, 0.10);
+      border: 1px solid rgba(76, 217, 100, 0.35);
+      border-radius: 14px;
+      padding: 14px 14px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .action-banner .title {
+      font-weight: 700;
+      color: #4cd964;
+      font-size: 14px;
+      margin-bottom: 3px;
+    }
+
+    .action-banner .text {
+      color: #cfcfcf;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .action-banner .btn {
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+
+    .offer-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 15px;
+    }
+
+    .offer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 15px;
+    }
+
+    .offer-item {
+      font-size: 16px;
+      font-weight: 600;
+      color: #d4af37;
+      margin-bottom: 5px;
+    }
+
+    .offer-id {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #999;
+    }
+
+    .offer-status {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-pending {
+      background: rgba(255, 204, 0, 0.2);
+      color: #ffcc00;
+    }
+
+    .status-open {
+      background: rgba(255, 204, 0, 0.12);
+      color: #ffcc00;
+      border: 1px solid rgba(255, 204, 0, 0.25);
+    }
+
+    .status-accepted {
+      background: rgba(76, 217, 100, 0.2);
+      color: #4cd964;
+    }
+
+    .status-rejected {
+      background: rgba(255, 59, 48, 0.2);
+      color: #ff3b30;
+    }
+
+    .status-expired {
+      background: rgba(142, 142, 147, 0.2);
+      color: #8e8e93;
+    }
+
+    .offer-amount {
+      font-size: 24px;
+      font-weight: 700;
+      color: #d4af37;
+      margin-bottom: 5px;
+    }
+
+    .offer-sats {
+      font-size: 14px;
+      color: #999;
+      font-family: 'Courier New', monospace;
+    }
+
+    .offer-details {
+      display: grid;
+      gap: 10px;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .offer-detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .offer-detail-label {
+      color: #999;
+    }
+
+    .offer-detail-value {
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .offer-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .btn {
+      flex: 1;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .btn:active {
+      transform: scale(0.95);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+
+    .btn-danger {
+      background: rgba(255, 59, 48, 0.2);
+      color: #ff3b30;
+      border: 1px solid rgba(255, 59, 48, 0.3);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .empty-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+
+    .empty-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      color: #d4af37;
+      margin-bottom: 10px;
+    }
+
+    .empty-text {
+      color: #999;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .spinner {
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Bitcoin Library -->
+  <script src="/js/btc.bundle.js"></script>
+
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <h1>My Offers</h1>
+    <button class="btn btn-secondary" style="width:auto; margin:0; padding:8px 12px; font-size:12px;" onclick="toggleMode()"><span id="modeToggleText">Buying</span></button>
+  </div>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" data-tab="pending" onclick="showTab('pending', this)">Pending <span id="pendingCount" class="count-badge" style="display:none"></span></button>
+      <button class="tab" data-tab="action" onclick="showTab('action', this)">Action <span id="actionCount" class="count-badge urgent" style="display:none"></span></button>
+      <button class="tab" data-tab="paid" onclick="showTab('paid', this)">Paid <span id="paidCount" class="count-badge" style="display:none"></span></button>
+      <button class="tab" data-tab="all" onclick="showTab('all', this)">All</button>
+    </div>
+
+    <div id="actionBanner" class="action-banner" style="display:none">
+      <div>
+        <div class="title">Action Required</div>
+        <div class="text"><span id="actionBannerCount">0</span> offer(s) accepted. Complete payment to secure your item.</div>
+      </div>
+      <button class="btn" onclick="focusAcceptedOffers()">Pay Now</button>
+    </div>
+
+    <div id="offersList">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div>Loading your offers...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let userWallet = null;
+    let allOffers = [];
+    let currentTab = 'pending';
+
+    let btcUsdCache = { rate: 0, ts: 0 };
+
+    async function fetchJson(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }
+
+    function formatUsd(n) {
+      try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+      } catch {
+        return `$${Number(n).toFixed(2)}`;
+      }
+    }
+
+    async function loadSellerOffers() {
+      try {
+        try {
+          await getBtcUsdRate();
+        } catch {}
+
+        const response = await fetch(`/api/offers/owner/${encodeURIComponent(userWallet.address)}`);
+        if (!response.ok) {
+          throw new Error('Failed to load seller offers');
+        }
+
+        const data = await response.json();
+        allOffers = data.offers || [];
+        updateOfferUIState();
+      } catch (error) {
+        console.error('Error loading seller offers:', error);
+        document.getElementById('offersList').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🏷️</div>
+            <div class="empty-title">No Sales Yet</div>
+            <div class="empty-text">Create an offer for an item you own to see it here.</div>
+          </div>
+        `;
+      }
+    }
+
+    async function getBtcUsdRate() {
+      const now = Date.now();
+      if (btcUsdCache.rate > 0 && (now - btcUsdCache.ts) < 60_000) {
+        return btcUsdCache.rate;
+      }
+
+      const sources = [
+        async () => {
+          const j = await fetchJson('https://api.coinbase.com/v2/exchange-rates?currency=BTC');
+          const r = Number(j?.data?.rates?.USD);
+          return Number.isFinite(r) && r > 0 ? r : 0;
+        },
+        async () => {
+          const j = await fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+          const r = Number(j?.bitcoin?.usd);
+          return Number.isFinite(r) && r > 0 ? r : 0;
+        },
+        async () => {
+          const j = await fetchJson('https://blockchain.info/ticker');
+          const r = Number(j?.USD?.last);
+          return Number.isFinite(r) && r > 0 ? r : 0;
+        },
+      ];
+
+      for (const fn of sources) {
+        try {
+          const r = await fn();
+          if (r > 0) {
+            btcUsdCache = { rate: r, ts: now };
+            return r;
+          }
+        } catch {}
+      }
+
+      return 0;
+    }
+
+    function formatOfferUsd(offer) {
+      const sats = Number(offer?.sats || 0);
+      const amountUsdRaw = Number(offer?.amount || 0);
+      if (Number.isFinite(amountUsdRaw) && amountUsdRaw > 0) {
+        return `≈ ${formatUsd(amountUsdRaw)}`;
+      }
+      if (btcUsdCache.rate > 0 && sats > 0) {
+        const usd = (sats / 1e8) * btcUsdCache.rate;
+        return `≈ ${formatUsd(usd)}`;
+      }
+      return '$—';
+    }
+
+    window.addEventListener('load', () => {
+      // Check authentication
+      if (!WalletAuth.requireAuth('/m/offers')) {
+        return;
+      }
+
+      userWallet = WalletAuth.getWallet();
+      if (userWallet) {
+        loadOffers();
+      }
+    });
+
+    let currentMode = 'buying';
+
+    window.toggleMode = () => {
+      currentMode = currentMode === 'buying' ? 'selling' : 'buying';
+      const t = document.getElementById('modeToggleText');
+      if (t) t.textContent = currentMode === 'buying' ? 'Buying' : 'Selling';
+      loadOffers();
+    };
+
+    async function loadOffers() {
+      if (currentMode === 'selling') {
+        await loadSellerOffers();
+      } else {
+        await loadUserOffers();
+      }
+    }
+
+    async function loadUserOffers() {
+      try {
+        try {
+          await getBtcUsdRate();
+        } catch {}
+
+        // Fetch offers from API
+        const response = await fetch(`/api/offers/user/${encodeURIComponent(userWallet.address)}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to load offers');
+        }
+
+        const data = await response.json();
+        allOffers = data.offers || [];
+
+        updateOfferUIState();
+      } catch (error) {
+        console.error('Error loading offers:', error);
+        
+        // Show empty state for now (API not implemented yet)
+        document.getElementById('offersList').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">💰</div>
+            <div class="empty-title">No Offers Yet</div>
+            <div class="empty-text">
+              You haven't made any offers yet. Verify an item and make an offer to get started!
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function showTab(tab, el) {
+      currentTab = tab;
+
+      // Update tab styling
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      if (el) {
+        el.classList.add('active');
+      } else {
+        const btn = document.querySelector(`.tab[data-tab="${tab}"]`);
+        if (btn) btn.classList.add('active');
+      }
+      
+      displayOffers(tab);
+    }
+
+    function updateOfferUIState() {
+      const acceptedCount = allOffers.filter(o => String(o.status || '').toUpperCase() === 'ACCEPTED').length;
+      const pendingCount = allOffers.filter(o => {
+        const s = String(o.status || '').toUpperCase();
+        return s === 'PENDING' || s === 'OPEN';
+      }).length;
+      const paidCount = allOffers.filter(o => String(o.status || '').toUpperCase() === 'PAID').length;
+
+      const actionBadge = document.getElementById('actionCount');
+      const pendingBadge = document.getElementById('pendingCount');
+      const paidBadge = document.getElementById('paidCount');
+
+      if (pendingBadge) {
+        pendingBadge.textContent = String(pendingCount);
+        pendingBadge.style.display = pendingCount > 0 ? 'inline-flex' : 'none';
+      }
+      if (actionBadge) {
+        actionBadge.textContent = String(acceptedCount);
+        actionBadge.style.display = acceptedCount > 0 ? 'inline-flex' : 'none';
+      }
+      if (paidBadge) {
+        paidBadge.textContent = String(paidCount);
+        paidBadge.style.display = paidCount > 0 ? 'inline-flex' : 'none';
+      }
+
+      const banner = document.getElementById('actionBanner');
+      const bannerCount = document.getElementById('actionBannerCount');
+      if (banner && bannerCount) {
+        bannerCount.textContent = String(acceptedCount);
+        banner.style.display = acceptedCount > 0 ? 'flex' : 'none';
+      }
+
+      if (acceptedCount > 0) {
+        currentTab = 'action';
+      }
+
+      showTab(currentTab, document.querySelector(`.tab[data-tab="${currentTab}"]`));
+    }
+
+    function focusAcceptedOffers() {
+      showTab('action', document.querySelector('.tab[data-tab="action"]'));
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch {}
+    }
+
+    function displayOffers(filter) {
+      const container = document.getElementById('offersList');
+      
+      let filteredOffers = allOffers;
+      if (filter === 'pending') {
+        filteredOffers = allOffers.filter(o => {
+          const s = String(o.status || '').toUpperCase();
+          return s === 'PENDING' || s === 'OPEN';
+        });
+      } else if (filter === 'action') {
+        filteredOffers = allOffers.filter(o => o.status === 'ACCEPTED');
+      } else if (filter === 'paid') {
+        filteredOffers = allOffers.filter(o => o.status === 'PAID');
+      }
+
+      filteredOffers = filteredOffers
+        .slice()
+        .sort((a, b) => {
+          const pa = String(a?.status || '').toUpperCase();
+          const pb = String(b?.status || '').toUpperCase();
+          const weight = (s) => (s === 'ACCEPTED' ? 3 : s === 'PENDING' ? 2 : s === 'PAID' ? 1 : 0);
+          const w = weight(pb) - weight(pa);
+          if (w !== 0) return w;
+          return Number(b?.createdAt || 0) - Number(a?.createdAt || 0);
+        });
+
+      if (filteredOffers.length === 0) {
+        const messages = {
+          pending: 'No pending offers',
+          action: 'No offers to pay',
+          paid: 'No paid offers yet',
+          all: 'No offers yet'
+        };
+        
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">💰</div>
+            <div class="empty-title">${messages[filter]}</div>
+            <div class="empty-text">
+              ${filter === 'pending' ? 'Make an offer on an item to see it here.' : 'Your offer history will appear here.'}
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filteredOffers.map(offer => `
+        <div class="offer-card">
+          <div class="offer-header">
+            <div>
+              <div class="offer-item">${offer.itemName || 'Unknown Item'}</div>
+              <div class="offer-id">Offer ID: ${offer.offerId.substring(0, 20)}...</div>
+            </div>
+            <div class="offer-status status-${offer.status.toLowerCase()}">${offer.status}</div>
+          </div>
+
+          <div class="offer-amount">${formatOfferUsd(offer)}</div>
+          <div class="offer-sats">${Number(offer.sats || 0).toLocaleString()} sats</div>
+
+          <div class="offer-details">
+            <div class="offer-detail-row">
+              <span class="offer-detail-label">Item ID</span>
+              <span class="offer-detail-value" style="font-family: monospace; font-size: 11px;">${offer.itemId.substring(0, 20)}...</span>
+            </div>
+            <div class="offer-detail-row">
+              <span class="offer-detail-label">Created</span>
+              <span class="offer-detail-value">${new Date(offer.createdAt).toLocaleString()}</span>
+            </div>
+            <div class="offer-detail-row">
+              <span class="offer-detail-label">Expires</span>
+              <span class="offer-detail-value">${new Date(offer.expiresAt).toLocaleString()}</span>
+            </div>
+            ${offer.paymentAddress ? `
+              <div class="offer-detail-row">
+                <span class="offer-detail-label">Payment Address</span>
+                <span class="offer-detail-value" style="font-family: monospace; font-size: 11px;">${offer.paymentAddress.substring(0, 20)}...</span>
+              </div>
+            ` : ''}
+          </div>
+
+          ${offer.status === 'PENDING' ? `
+            <div class="offer-actions">
+              ${currentMode === 'selling' ? `
+                <button class="btn" onclick="acceptOfferAsSeller('${offer.offerId}', this)">✅ Accept</button>
+                <button class="btn btn-secondary" onclick="viewOffer('${offer.offerId}')">📋 View Details</button>
+              ` : `
+                <button class="btn btn-secondary" onclick="viewOffer('${offer.offerId}')">📋 View Details</button>
+                <button class="btn btn-danger" onclick="cancelOffer('${offer.offerId}')">❌ Cancel</button>
+              `}
+            </div>
+          ` : offer.status === 'OPEN' ? `
+            <div class="offer-actions">
+              ${currentMode === 'selling' ? `
+                <button class="btn btn-secondary" onclick="viewOffer('${offer.offerId}')">📋 View Details</button>
+                <button class="btn btn-danger" onclick="cancelOffer('${offer.offerId}')">❌ Cancel</button>
+              ` : `
+                <button class="btn btn-secondary" onclick="viewOffer('${offer.offerId}')">📋 View Details</button>
+              `}
+            </div>
+          ` : (offer.status === 'ACCEPTED' || offer.status === 'PAID') ? `
+            <div class="offer-actions">
+              ${currentMode === 'selling' ? `
+                <button class="btn btn-secondary" onclick="viewOffer('${offer.offerId}')">📋 View Details</button>
+              ` : `
+                <button class="btn" onclick="completePayment('${offer.offerId}', this)" ${(offer.status === 'PAID' || offer.paymentTxid) ? 'disabled' : ''}>
+                  ${offer.status === 'PAID' ? '✅ Paid' : (offer.paymentTxid ? '⏳ Awaiting Confirmation' : '💳 Complete Payment')}
+                </button>
+              `}
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function acceptOfferAsSeller(offerId, btnEl) {
+      const btn = btnEl && typeof btnEl === 'object' ? btnEl : null;
+      const originalText = btn && btn.textContent ? String(btn.textContent) : '✅ Accept';
+      try {
+        const sessionId = localStorage.getItem('autho_session_id');
+        if (!sessionId) {
+          alert('Please log in as seller to accept offers.');
+          return;
+        }
+
+        if (btn) {
+          btn.textContent = '⏳ Accepting...';
+          btn.disabled = true;
+        }
+
+        const response = await fetch(`/api/offers/${encodeURIComponent(offerId)}/accept`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionId}`
+          }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error || 'Failed to accept offer');
+        }
+        alert('✅ Offer accepted. Buyer can now pay.');
+        await loadOffers();
+      } catch (e) {
+        alert('❌ Error accepting offer: ' + (e?.message || String(e)));
+      } finally {
+        try {
+          if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }
+        } catch {}
+      }
+    }
+
+    function viewOffer(offerId) {
+      const offer = allOffers.find(o => o.offerId === offerId);
+      if (!offer) return;
+
+      window.location.href = `/m/verify?itemId=${encodeURIComponent(String(offer.itemId || ''))}&offerId=${encodeURIComponent(String(offer.offerId || ''))}`;
+    }
+
+    async function cancelOffer(offerId) {
+      const confirmed = confirm('Are you sure you want to cancel this offer?');
+      if (!confirmed) return;
+
+      try {
+        const sessionId = localStorage.getItem('autho_session_id');
+        const response = await fetch(`/api/offers/${offerId}/cancel`, {
+          method: 'POST',
+          headers: sessionId
+            ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` }
+            : { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+          alert('✅ Offer cancelled successfully!');
+          loadUserOffers();
+        } else {
+          throw new Error('Failed to cancel offer');
+        }
+      } catch (error) {
+        alert('❌ Error cancelling offer: ' + error.message);
+      }
+    }
+
+    async function completePayment(offerId, btnEl) {
+      const offer = allOffers.find(o => o.offerId === offerId);
+      if (!offer) {
+        alert('Offer not found');
+        return;
+      }
+
+      if (offer.paymentTxid) {
+        alert(`Payment already submitted.\n\nTransaction ID:\n${offer.paymentTxid}`);
+        return;
+      }
+
+      const outputs = Array.isArray(offer.paymentOutputs) ? offer.paymentOutputs : [];
+      if (!outputs.length) {
+        alert('Payment outputs not available. Please refresh and try again.');
+        return;
+      }
+
+      const DUST_LIMIT_SATS = 546;
+      const normalizedOutputs = (() => {
+        const list = outputs
+          .map(o => ({ address: String(o?.address || '').trim(), amountSats: Number(o?.amountSats || 0) }))
+          .filter(o => o.address && Number.isFinite(o.amountSats) && o.amountSats > 0);
+
+        const dust = list.filter(o => o.amountSats > 0 && o.amountSats < DUST_LIMIT_SATS);
+        const kept = list.filter(o => !(o.amountSats > 0 && o.amountSats < DUST_LIMIT_SATS));
+
+        const dustSum = dust.reduce((s, o) => s + o.amountSats, 0);
+        if (dustSum > 0) {
+          if (kept.length > 0) {
+            let maxIdx = 0;
+            for (let i = 1; i < kept.length; i++) {
+              if (kept[i].amountSats > kept[maxIdx].amountSats) maxIdx = i;
+            }
+            kept[maxIdx].amountSats += dustSum;
+          } else {
+            return list;
+          }
+        }
+        return kept;
+      })();
+
+      // Check if wallet exists
+      const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+      const fromAddress = wallet.paymentAddress || wallet.address;
+      
+      if (!fromAddress) {
+        alert('No wallet found. Please create a wallet first.');
+        window.location.href = '/mobile-wallet.html';
+        return;
+      }
+
+      // Check if vault exists
+      const vaultStr = localStorage.getItem('autho_wallet_vault');
+      if (!vaultStr) {
+        alert('Wallet vault not found. Please sign in again to restore your wallet.');
+        return;
+      }
+
+      let vault;
+      try {
+        vault = JSON.parse(vaultStr);
+      } catch {
+        alert('Wallet vault is corrupted. Please sign in again.');
+        return;
+      }
+
+      const lines = normalizedOutputs.map(o => `- ${Number(o.amountSats).toLocaleString()} sats → ${String(o.address)}`).join('\n');
+      const confirmed = confirm(`Complete Payment?\n\nTotal: ${offer.sats.toLocaleString()} sats\n\nOutputs:\n${lines}\n\nThis will send Bitcoin from your wallet.`);
+      if (!confirmed) return;
+
+      const password = prompt('Enter your wallet passcode to complete payment:');
+      if (!password) return;
+
+      const btn = btnEl && typeof btnEl === 'object' ? btnEl : null;
+      const originalText = btn && btn.textContent ? String(btn.textContent) : '💳 Complete Payment';
+
+      try {
+        // Show loading
+        if (btn) {
+          btn.textContent = '⏳ Processing...';
+          btn.disabled = true;
+        }
+
+        const isTestnet = /^tb1/i.test(fromAddress) || /^[mn2]/i.test(fromAddress);
+        const blockstreamBase = isTestnet ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+        const mempoolBase = isTestnet ? 'https://mempool.space/testnet/api' : 'https://mempool.space/api';
+        const networkName = isTestnet ? 'testnet' : 'mainnet';
+
+        // Fetch UTXOs
+        const utxosRaw = await fetch(`${blockstreamBase}/address/${fromAddress}/utxo`).then(r => r.json());
+        const spendable = utxosRaw
+          .filter(u => u && u.txid && u.status?.confirmed)
+          .map(u => ({ txid: u.txid, vout: u.vout, value: u.value }));
+
+        if (spendable.length === 0) {
+          alert('No confirmed funds available in your wallet.');
+          btn.textContent = originalText;
+          btn.disabled = false;
+          return;
+        }
+
+        // Calculate total balance
+        const totalBalance = spendable.reduce((sum, u) => sum + u.value, 0);
+
+        // Get fee rate (pick the cheapest relay-safe rate)
+        let feeRate = 1;
+        try {
+          const rec = await fetch(`${mempoolBase}/v1/fees/recommended`).then(r => r.json());
+          const minFee = Number(rec && (rec.minimumFee ?? rec.economyFee ?? rec.hourFee ?? rec.halfHourFee ?? rec.fastestFee));
+          if (Number.isFinite(minFee) && minFee > 0) {
+            feeRate = Math.max(0.6, Math.min(50, minFee));
+          }
+        } catch {
+          feeRate = 1;
+        }
+
+        // Fallback to Blockstream estimates if mempool.space is unavailable
+        if (!Number.isFinite(feeRate) || feeRate <= 0) {
+          feeRate = 1;
+        }
+        if (feeRate === 1) {
+          try {
+            const feeEst = await fetch(`${blockstreamBase}/fee-estimates`).then(r => r.json());
+            const est = Number(feeEst && (feeEst['6'] ?? feeEst['3'] ?? feeEst['1']));
+            const bumped = (Number.isFinite(est) && est > 0 ? est : 1) * 1.05;
+            feeRate = Math.max(0.6, Math.min(50, bumped));
+          } catch {
+            feeRate = 1;
+          }
+        }
+
+        // Decrypt wallet vault
+        let payload;
+        try {
+          payload = await decryptWalletVault(vault, password);
+        } catch {
+          alert('Failed to decrypt wallet. Incorrect passcode.');
+          btn.textContent = originalText;
+          btn.disabled = false;
+          return;
+        }
+
+        const mnemonic = String(payload?.mnemonic || '');
+        if (!mnemonic) {
+          alert('Mnemonic missing in vault');
+          btn.textContent = originalText;
+          btn.disabled = false;
+          return;
+        }
+
+        // Build and sign transaction
+        if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+          alert('Bitcoin signing library not loaded. Please refresh the page.');
+          btn.textContent = originalText;
+          btn.disabled = false;
+          return;
+        }
+
+        let signed;
+        try {
+          signed = window.AuthoBTC.buildAndSignP2WPKH({
+            mnemonic,
+            outputs: normalizedOutputs,
+            utxos: spendable,
+            feeRateSatPerVb: feeRate,
+            network: networkName,
+          });
+        } catch (e) {
+          const msg = String(e?.message || e || '').toLowerCase();
+          // If fractional fee rate cannot be applied (e.g., missing change output), retry at integer sat/vB.
+          if (msg.includes('fractional') || msg.includes('missing change')) {
+            const retryRate = Math.max(1, Math.ceil(Number(feeRate || 1)));
+            signed = window.AuthoBTC.buildAndSignP2WPKH({
+              mnemonic,
+              outputs: normalizedOutputs,
+              utxos: spendable,
+              feeRateSatPerVb: retryRate,
+              network: networkName,
+            });
+          } else {
+            const outputsTotal = normalizedOutputs.reduce((sum, o) => sum + Number(o?.amountSats || 0), 0);
+            if (msg.includes('insufficient funds')) {
+              alert(`Insufficient funds.\n\nOutputs: ${Number(outputsTotal).toLocaleString()} sats\nBalance (confirmed): ${Number(totalBalance).toLocaleString()} sats\nFee rate: ~${Number(feeRate).toFixed(2)} sat/vB\n\nTry adding funds or waiting for your incoming transaction to confirm.`);
+            } else {
+              alert('Payment failed: ' + (e?.message || String(e)));
+            }
+            btn.textContent = originalText;
+            btn.disabled = false;
+            return;
+          }
+        }
+
+        // Broadcast transaction
+        const broadcastRes = await fetch(`${blockstreamBase}/tx`, {
+          method: 'POST',
+          body: signed.txHex
+        });
+
+        if (!broadcastRes.ok) {
+          const errorText = await broadcastRes.text();
+          throw new Error(`Broadcast failed: ${errorText}`);
+        }
+
+        const txid = await broadcastRes.text();
+
+        try {
+          await fetch(`/api/offers/${encodeURIComponent(offerId)}/payment-submitted`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ txid })
+          });
+        } catch {}
+        
+        try {
+          const feeSats = Number(signed?.feeSats || 0);
+          alert(`✅ Payment Sent!\n\nTransaction ID:\n${txid}\n\nNetwork fee: ~${feeSats.toLocaleString()} sats\n\nThe seller will be notified when payment is confirmed.`);
+        } catch {
+          alert(`✅ Payment Sent!\n\nTransaction ID:\n${txid}\n\nThe seller will be notified when payment is confirmed.`);
+        }
+        
+        // Refresh offers
+        await loadUserOffers();
+        
+      } catch (error) {
+        console.error('Payment error:', error);
+        alert('Payment failed: ' + (error?.message || String(error)));
+      } finally {
+        // Always re-enable button
+        try {
+          if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }
+        } catch {}
+      }
+    }
+
+    // Wallet vault decryption functions
+    function bytesFromB64(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    async function deriveVaultKey(password, salt, iterations) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+
+    async function decryptWalletVault(walletVault, password) {
+      if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+        throw new Error('Unsupported wallet vault format');
+      }
+      const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+      const iterations = Number(walletVault.kdf?.iterations || 0);
+      const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+      const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+      const key = await deriveVaultKey(password, salt, iterations);
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+      const json = new TextDecoder().decode(pt);
+      return JSON.parse(json);
+    }
+
+    function goBack() {
+      window.location.href = '/m';
+    }
+  </script>
+</body>
+</html>

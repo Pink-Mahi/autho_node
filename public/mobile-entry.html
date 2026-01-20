@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Verify & Buy - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 20px;
+      text-align: center;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: #d4af37;
+      margin-bottom: 5px;
+    }
+
+    .header p {
+      font-size: 12px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .menu-item {
+      background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+      border: 2px solid #d4af37;
+      border-radius: 15px;
+      padding: 25px 15px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 140px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .menu-item:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    .menu-item.primary {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border-color: #f4d03f;
+      min-height: 120px;
+    }
+
+    .menu-item-icon {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .menu-item-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .menu-item-desc {
+      font-size: 11px;
+      color: #999;
+      line-height: 1.4;
+    }
+
+    .menu-item.primary .menu-item-desc {
+      color: rgba(26, 26, 26, 0.7);
+    }
+
+    .wallet-status {
+      background: rgba(212, 175, 55, 0.1);
+      border: 1px solid #d4af37;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .wallet-status.no-wallet {
+      background: rgba(255, 87, 87, 0.1);
+      border-color: #ff5757;
+    }
+
+    .wallet-status-title {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .wallet-status-value {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      color: #d4af37;
+      word-break: break-all;
+    }
+
+    .wallet-status.no-wallet .wallet-status-value {
+      color: #ff5757;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 30px 20px;
+      color: #666;
+      font-size: 11px;
+    }
+
+    .footer a {
+      color: #d4af37;
+      text-decoration: none;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .badge {
+      display: inline-block;
+      background: #d4af37;
+      color: #1a1a1a;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 5px;
+      text-transform: uppercase;
+    }
+
+    .badge.red {
+      background: #ff5757;
+      color: #fff;
+    }
+
+    .logout-btn {
+      background: rgba(255, 59, 48, 0.1);
+      border: 1px solid rgba(255, 59, 48, 0.3);
+      color: #ff3b30;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+      display: inline-block;
+    }
+
+    .logout-btn:hover {
+      background: rgba(255, 59, 48, 0.2);
+      border-color: #ff3b30;
+    }
+
+    .wallet-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      justify-content: center;
+    }
+
+    .wallet-btn {
+      background: rgba(212, 175, 55, 0.1);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      color: #d4af37;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .wallet-btn:hover {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 id="storeName">💎 Bitcoin Ownership Protocol</h1>
+    <p>Scan & Verify Physical Items</p>
+  </div>
+
+  <div class="container">
+    <div id="walletStatus" class="wallet-status no-wallet">
+      <div class="wallet-status-title">Wallet Status</div>
+      <div class="wallet-status-value">No wallet connected</div>
+    </div>
+
+    <div class="menu-grid">
+      <a href="/m/verify" class="menu-item primary">
+        <div class="menu-item-icon">🔍</div>
+        <div class="menu-item-title">Verify Item</div>
+        <div class="menu-item-desc">Scan or enter item ID to verify authenticity</div>
+      </a>
+
+      <a href="/m/wallet" class="menu-item">
+        <div class="menu-item-icon">💼</div>
+        <div class="menu-item-title">My Wallet</div>
+        <div class="menu-item-desc">Create or import Bitcoin wallet</div>
+      </a>
+
+      <a href="/m/items" class="menu-item">
+        <div class="menu-item-icon">📦</div>
+        <div class="menu-item-title">My Items</div>
+        <div class="menu-item-desc">View items you own</div>
+      </a>
+
+      <a href="/m/offers" class="menu-item">
+        <div class="menu-item-icon">💰</div>
+        <div class="menu-item-title">Offers</div>
+        <div class="menu-item-desc">View and manage offers</div>
+      </a>
+
+      <a href="/m/history" class="menu-item">
+        <div class="menu-item-icon">📜</div>
+        <div class="menu-item-title">History</div>
+        <div class="menu-item-desc">Transaction receipts</div>
+      </a>
+
+      <a href="/retailer" class="menu-item">
+        <div class="menu-item-icon">🏪</div>
+        <div class="menu-item-title">Retailer Portal</div>
+        <div class="menu-item-desc">Consignments, bond, and verification</div>
+      </a>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>Powered by Bitcoin Ownership Protocol</p>
+    <p><a href="/join">Join the Network</a> • <a href="/dashboard">Operator Dashboard</a></p>
+  </div>
+
+  <script>
+    // Check wallet status on load
+    async function checkWalletStatus() {
+      try {
+        const walletData = localStorage.getItem('autho_wallet');
+        const walletStatus = document.getElementById('walletStatus');
+        
+        if (walletData) {
+          const wallet = JSON.parse(walletData);
+          const isUnlocked = sessionStorage.getItem('autho_wallet_unlocked') === 'true';
+          
+          walletStatus.className = 'wallet-status';
+          walletStatus.innerHTML = `
+            <div class="wallet-status-title">Connected Wallet ${isUnlocked ? '🔓' : '🔒'}</div>
+            <div class="wallet-status-value">${wallet.address ? wallet.address.substring(0, 20) + '...' : wallet.publicKey.substring(0, 20) + '...'}</div>
+            <div class="wallet-actions">
+              ${!isUnlocked ? '<a href="/m/login" class="wallet-btn">🔑 Unlock</a>' : ''}
+              <button class="logout-btn" onclick="logoutWallet()">🚪 Logout</button>
+            </div>
+          `;
+        } else {
+          walletStatus.className = 'wallet-status no-wallet';
+          walletStatus.innerHTML = `
+            <div class="wallet-status-title">Wallet Status</div>
+            <div class="wallet-status-value">No wallet connected <span class="badge red">Setup Required</span></div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error checking wallet status:', error);
+      }
+    }
+
+    // Load store branding
+    async function loadStoreBranding() {
+      try {
+        const response = await fetch('/api/store/branding');
+        if (response.ok) {
+          const branding = await response.json();
+          if (branding.storeName) {
+            document.getElementById('storeName').textContent = branding.storeName;
+          }
+        }
+      } catch (error) {
+        console.log('Using default branding');
+      }
+    }
+
+    // Logout function
+    window.logoutWallet = () => {
+      if (confirm('Are you sure you want to logout? You will need your PIN to login again.')) {
+        // Clear session but keep wallet data
+        sessionStorage.removeItem('autho_wallet_unlocked');
+        sessionStorage.removeItem('autho_wallet_unlock_time');
+        
+        // Show success message
+        alert('✅ Logged out successfully. Your wallet is still saved on this device.');
+        
+        // Refresh status
+        checkWalletStatus();
+      }
+    };
+
+    // Initialize
+    checkWalletStatus();
+    loadStoreBranding();
+
+    // Refresh wallet status when page becomes visible
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        checkWalletStatus();
+      }
+    });
+  </script>
+</body>
+</html>

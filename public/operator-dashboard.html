@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Dashboard - Bitcoin Ownership Protocol</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@300;400;500;600&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            padding: 20px;
+            color: #d4af37;
+            min-height: 100vh;
+        }
+
+        .dashboard { max-width: 1200px; margin: 0 auto; }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            color: #d4af37;
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.2), inset 0 1px 0 rgba(212, 175, 55, 0.1);
+        }
+
+        .header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .header p { color: #999; }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-top: 18px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 12px 22px;
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #d4af37;
+            transition: all 0.2s;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #0a0a0a;
+            border-color: #f4d03f;
+        }
+
+        .section {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .section.active { display: block; }
+
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            margin-bottom: 18px;
+            border-bottom: 2px solid #d4af37;
+            padding-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+            color: #0a0a0a;
+            border: 1px solid #f4d03f;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .btn-secondary {
+            background: rgba(212, 175, 55, 0.12);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%);
+            border-color: #ff3b30;
+            color: #fff;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #2a7a3f 0%, #1e5a2f 100%);
+            border-color: #2a7a3f;
+            color: #d4af37;
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .success-message {
+            background: rgba(52, 199, 89, 0.12);
+            border: 1px solid rgba(52, 199, 89, 0.35);
+            color: #4cd964;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .form-group { margin-bottom: 14px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            color: #fff;
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid rgba(212, 175, 55, 0.15); font-size: 0.9rem; }
+        th { color: #d4af37; font-weight: 700; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            font-weight: 800;
+            font-size: 0.78rem;
+        }
+
+        .empty-state {
+            color: #999;
+            padding: 14px;
+            border: 1px dashed rgba(212, 175, 55, 0.25);
+            border-radius: 12px;
+            margin-top: 12px;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 26px;
+            max-width: 640px;
+            width: 100%;
+        }
+
+        .modal h2 { margin-bottom: 10px; }
+        .muted { color: #999; font-size: 0.9rem; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="modal" id="authModal" style="display:flex;">
+        <div class="modal-content">
+            <h2>🧩 Operator Sign In</h2>
+            <p class="muted">Sign in as an operator account to vote on manufacturer/authenticator applications.</p>
+
+            <div class="error-message" id="authError"></div>
+            <div class="success-message" id="authSuccess"></div>
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(212,175,55,0.25);">
+                <h3 style="margin-bottom: 10px;">🔑 Email & Password</h3>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input id="loginEmail" type="email" placeholder="operator@email.com" />
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input id="loginPassword" type="password" placeholder="••••••••" />
+                </div>
+                <div class="form-group" id="login2faGroup" style="display:none;">
+                    <label>2FA Code (if enabled)</label>
+                    <input id="loginTotp" type="text" placeholder="123456" />
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="loginWithPassword()">Sign In</button>
+                    <a class="btn btn-secondary" href="/" style="text-decoration:none;">Back</a>
+                </div>
+            </div>
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(212,175,55,0.25);">
+                <h3 style="margin-bottom: 10px;">✍️ Wallet Signature (Advanced)</h3>
+                <p class="muted">If you prefer, you can authenticate with a wallet signature of a nonce.</p>
+
+                <div class="form-group">
+                    <label>Account ID (Wallet Public Key Hex)</label>
+                    <input id="authAccountId" type="text" placeholder="02ab..." />
+                </div>
+
+                <div class="form-group" id="challengeGroup" style="display:none;">
+                    <label>Challenge Nonce</label>
+                    <input id="authNonce" type="text" readonly />
+                    <input id="authChallengeId" type="hidden" />
+                </div>
+
+                <div class="form-group" id="signatureGroup" style="display:none;">
+                    <label>Signature (hex) of the nonce</label>
+                    <input id="authSignature" type="text" placeholder="3044..." />
+                </div>
+
+                <div class="form-group" id="totpGroup" style="display:none;">
+                    <label>2FA Code (if enabled)</label>
+                    <input id="authTotp" type="text" placeholder="123456" />
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary" type="button" onclick="startOperatorLogin()">Get Challenge</button>
+                    <button class="btn btn-secondary" type="button" onclick="verifyOperatorLogin()">Verify & Enter</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <div class="header">
+            <h1>🧩 Operator Dashboard</h1>
+            <p>Vote on manufacturer/authenticator applications</p>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('applications')">🏭 Applications</button>
+                <button class="nav-tab" onclick="switchTab('verifiers')">🏢 Verifiers</button>
+                <button class="nav-tab" onclick="switchTab('actions')">🧾 Verifier Actions</button>
+                <button class="nav-tab" onclick="switchTab('reputation')">⭐ Reputation</button>
+                <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
+                <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <div class="section active" id="applications-section">
+            <h2 class="section-title">🏭 Pending Role Applications</h2>
+            <div class="error-message" id="appsError"></div>
+            <div class="success-message" id="appsSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadApplications()">Refresh</button>
+            </div>
+            <div id="appsList" class="empty-state">Loading...</div>
+        </div>
+
+        <div class="section" id="verifiers-section">
+            <h2 class="section-title">🏢 Verifiers</h2>
+            <div class="error-message" id="verifiersError"></div>
+            <div class="success-message" id="verifiersSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadVerifiers()">Refresh</button>
+            </div>
+            <div id="verifiersList" class="empty-state">Loading...</div>
+        </div>
+
+        <div class="section" id="actions-section">
+            <h2 class="section-title">🧾 Verifier Actions</h2>
+            <div class="error-message" id="actionsError"></div>
+            <div class="success-message" id="actionsSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="btn" type="button" onclick="loadVerifierActions()">Refresh</button>
+                <select id="actionsStatusFilter" onchange="loadVerifierActions()" style="padding: 12px 16px; border-radius: 12px; background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.35); color: #d4af37;">
+                    <option value="open" selected>Open</option>
+                    <option value="finalized">Finalized</option>
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div id="actionsList" class="empty-state">Open this tab to load actions.</div>
+        </div>
+
+        <div class="section" id="reputation-section">
+            <h2 class="section-title">⭐ Reputation Moderation</h2>
+            <div class="error-message" id="repModError"></div>
+            <div class="success-message" id="repModSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="btn" type="button" onclick="loadReputationModeration(true)">Refresh</button>
+                <button class="btn btn-secondary" type="button" onclick="loadMoreRepRatings()">Load More Ratings</button>
+                <button class="btn btn-secondary" type="button" onclick="loadMoreRepReports()">Load More Reports</button>
+            </div>
+            <div style="margin-top: 14px; display:grid; grid-template-columns: 1fr; gap: 14px;">
+                <div>
+                    <div style="font-weight:700; margin-bottom:6px;">Recent Ratings</div>
+                    <div id="repRatingsList" class="empty-state">Open this tab to load ratings.</div>
+                </div>
+                <div>
+                    <div style="font-weight:700; margin-bottom:6px;">Recent Reports</div>
+                    <div id="repReportsList" class="empty-state">Open this tab to load reports.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="status-section">
+            <h2 class="section-title">🛰️ Node Status</h2>
+            <div class="error-message" id="statusError"></div>
+            <div class="success-message" id="statusSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadNodeStatus()">Refresh</button>
+            </div>
+            <div id="statusPanel" class="empty-state">Open this tab to load status.</div>
+        </div>
+    </div>
+
+    <script>
+        function showEl(id, show, msg) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (msg !== undefined) el.textContent = msg;
+            el.style.display = show ? 'block' : 'none';
+        }
+
+        function getSessionId() {
+            return localStorage.getItem('autho_session_id');
+        }
+
+        function getAuthHeaders() {
+            const sessionId = getSessionId();
+            return sessionId ? { 'Authorization': `Bearer ${sessionId}` } : {};
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(`${tab}-section`).classList.add('active');
+
+            if (tab === 'applications') {
+                loadApplications();
+            } else if (tab === 'verifiers') {
+                loadVerifiers();
+            } else if (tab === 'actions') {
+                loadVerifierActions();
+            } else if (tab === 'reputation') {
+                loadReputationModeration(true);
+            } else if (tab === 'status') {
+                loadNodeStatus();
+            }
+        }
+
+        let __operatorStatusCache = null;
+
+        function fmtTs(ts) {
+            const n = Number(ts || 0);
+            if (!n) return '';
+            try { return new Date(n).toLocaleString(); } catch { return String(ts); }
+        }
+
+        let __repRatingsCursor = '';
+        let __repReportsCursor = '';
+        let __repRatingsHasMore = false;
+        let __repReportsHasMore = false;
+
+        function repName(t) {
+            const name = (t && (t.displayName || t.companyName)) ? String(t.displayName || t.companyName) : '';
+            const role = t && t.role ? String(t.role) : '';
+            return name ? `${name}${role ? ` (${role})` : ''}` : (role ? role : '(unknown)');
+        }
+
+        async function proposeVerifierActionFromRep(accountId, action, reasonPreset) {
+            showEl('repModError', false);
+            showEl('repModSuccess', false);
+
+            const reason = reasonPreset !== undefined
+                ? reasonPreset
+                : (prompt(`Reason for ${action} (optional):`) || undefined);
+
+            const r = await fetch('/api/verifiers/actions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ targetAccountId: String(accountId), action: String(action), reason })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('repModError', true, data?.error || 'Failed to create verifier action');
+                return;
+            }
+
+            showEl('repModSuccess', true, `Created action ${String(data.actionId || '')}.`);
+        }
+
+        async function loadReputationModeration(reset) {
+            showEl('repModError', false);
+            showEl('repModSuccess', false);
+            if (reset) {
+                __repRatingsCursor = '';
+                __repReportsCursor = '';
+            }
+            await Promise.all([loadMoreRepRatings(), loadMoreRepReports()]);
+        }
+
+        async function loadMoreRepRatings() {
+            showEl('repModError', false);
+            const el = document.getElementById('repRatingsList');
+            if (!el) return;
+            if (__repRatingsCursor && !__repRatingsHasMore) return;
+            if (!__repRatingsCursor) el.innerHTML = '<div class="empty-state">Loading ratings...</div>';
+
+            const url = `/api/operator/reputation/ratings?limit=50${__repRatingsCursor ? `&cursor=${encodeURIComponent(__repRatingsCursor)}` : ''}`;
+            const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('repModError', true, data?.error || 'Failed to load ratings');
+                if (!__repRatingsCursor) el.innerHTML = '<div class="empty-state">Failed to load ratings.</div>';
+                return;
+            }
+
+            const entries = Array.isArray(data.entries) ? data.entries : [];
+            __repRatingsHasMore = !!data.hasMore;
+            if (data.nextCursor) __repRatingsCursor = String(data.nextCursor);
+
+            const rows = entries.map(e => {
+                const targetId = String(e.targetAccountId || '');
+                const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(targetId)}`;
+                const t = e.target || {};
+                const website = t.website ? String(t.website) : '';
+                const websiteHref = website ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`) : '';
+                const rating = Number(e.rating || 0);
+                const fee = e.feeTxid ? String(e.feeTxid).substring(0, 12) + '...' : '';
+                return `
+                    <tr>
+                        <td>${fmtTs(e.createdAt)}</td>
+                        <td style="font-family: monospace;">${targetId.substring(0, 18)}...</td>
+                        <td>
+                            <div style="font-weight:700;">${repName(t)}</div>
+                            <div style="color:#999; font-size:0.82rem; margin-top:4px;">
+                                ${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}
+                            </div>
+                            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                            </div>
+                        </td>
+                        <td>${rating}</td>
+                        <td style="font-family: monospace;">${String(e.raterAccountId || '').substring(0, 18)}...</td>
+                        <td style="font-family: monospace;">${String(e.contextType || '')}:${String(e.contextId || '').substring(0, 10)}...</td>
+                        <td style="font-family: monospace;">${fee}</td>
+                        <td>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'revoke')">Propose Revoke</button>
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'reactivate')">Propose Reactivate</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Target</th>
+                            <th>Verifier</th>
+                            <th>Rating</th>
+                            <th>Rater</th>
+                            <th>Context</th>
+                            <th>Fee Tx</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || ''}
+                    </tbody>
+                </table>
+            `;
+
+            if (!__repRatingsCursor || el.innerHTML.includes('Loading ratings') || el.classList.contains('empty-state')) {
+                el.innerHTML = tableHtml;
+                el.classList.remove('empty-state');
+            } else {
+                const tbody = el.querySelector('tbody');
+                if (tbody) tbody.insertAdjacentHTML('beforeend', rows);
+            }
+
+            showEl('repModSuccess', true, 'Reputation feed loaded.');
+        }
+
+        async function loadMoreRepReports() {
+            showEl('repModError', false);
+            const el = document.getElementById('repReportsList');
+            if (!el) return;
+            if (__repReportsCursor && !__repReportsHasMore) return;
+            if (!__repReportsCursor) el.innerHTML = '<div class="empty-state">Loading reports...</div>';
+
+            const url = `/api/operator/reputation/reports?limit=50${__repReportsCursor ? `&cursor=${encodeURIComponent(__repReportsCursor)}` : ''}`;
+            const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('repModError', true, data?.error || 'Failed to load reports');
+                if (!__repReportsCursor) el.innerHTML = '<div class="empty-state">Failed to load reports.</div>';
+                return;
+            }
+
+            const entries = Array.isArray(data.entries) ? data.entries : [];
+            __repReportsHasMore = !!data.hasMore;
+            if (data.nextCursor) __repReportsCursor = String(data.nextCursor);
+
+            const rows = entries.map(e => {
+                const targetId = String(e.targetAccountId || '');
+                const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(targetId)}`;
+                const t = e.target || {};
+                const website = t.website ? String(t.website) : '';
+                const websiteHref = website ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`) : '';
+                const reason = e.reasonCode ? String(e.reasonCode) : '';
+                const details = e.details ? String(e.details) : '';
+                return `
+                    <tr>
+                        <td>${fmtTs(e.createdAt)}</td>
+                        <td style="font-family: monospace;">${targetId.substring(0, 18)}...</td>
+                        <td>
+                            <div style="font-weight:700;">${repName(t)}</div>
+                            <div style="color:#999; font-size:0.82rem; margin-top:4px;">
+                                ${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}
+                            </div>
+                            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                            </div>
+                        </td>
+                        <td>${reason}</td>
+                        <td>${details}</td>
+                        <td style="font-family: monospace;">${String(e.reporterAccountId || '').substring(0, 18)}...</td>
+                        <td style="font-family: monospace;">${String(e.contextType || '')}:${String(e.contextId || '').substring(0, 10)}...</td>
+                        <td>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'revoke')">Propose Revoke</button>
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'reactivate')">Propose Reactivate</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Target</th>
+                            <th>Verifier</th>
+                            <th>Reason</th>
+                            <th>Details</th>
+                            <th>Reporter</th>
+                            <th>Context</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || ''}
+                    </tbody>
+                </table>
+            `;
+
+            if (!__repReportsCursor || el.innerHTML.includes('Loading reports') || el.classList.contains('empty-state')) {
+                el.innerHTML = tableHtml;
+                el.classList.remove('empty-state');
+            } else {
+                const tbody = el.querySelector('tbody');
+                if (tbody) tbody.insertAdjacentHTML('beforeend', rows);
+            }
+
+            showEl('repModSuccess', true, 'Reputation feed loaded.');
+        }
+
+        async function requireOperatorAuth() {
+            const sessionId = getSessionId();
+            if (!sessionId) {
+                document.getElementById('authModal').style.display = 'flex';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${sessionId}` } });
+                const data = await r.json();
+                if (!r.ok || !data || !data.account) {
+                    localStorage.removeItem('autho_session_id');
+                    document.getElementById('authModal').style.display = 'flex';
+                    return;
+                }
+                if (String(data.account.role || '') !== 'operator') {
+                    localStorage.removeItem('autho_session_id');
+                    showEl('authError', true, 'Operator role required for this dashboard.');
+                    document.getElementById('authModal').style.display = 'flex';
+                    return;
+                }
+
+                document.getElementById('authModal').style.display = 'none';
+                await loadApplications();
+                try { await loadNodeStatus(true); } catch {}
+            } catch (e) {
+                localStorage.removeItem('autho_session_id');
+                showEl('authError', true, 'Auth check failed: ' + (e?.message || String(e)));
+                document.getElementById('authModal').style.display = 'flex';
+            }
+        }
+
+        async function loadNodeStatus(silent) {
+            if (!silent) {
+                showEl('statusError', false);
+                showEl('statusSuccess', false);
+            }
+            const el = document.getElementById('statusPanel');
+            if (el && !silent) el.innerHTML = '<div class="empty-state">Loading status...</div>';
+
+            const r = await fetch('/api/operator/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                if (!silent) {
+                    showEl('statusError', true, data?.error || 'Failed to load status');
+                    if (el) el.innerHTML = '<div class="empty-state">Failed to load status.</div>';
+                }
+                return;
+            }
+
+            __operatorStatusCache = data;
+            if (silent) return;
+
+            const op = data.operator || {};
+            const ch = data.chain || {};
+            const reg = data.registry || {};
+            const status = String(op.canonicalStatus || '').toUpperCase();
+            const statusStyle = status === 'ACTIVE'
+                ? 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;'
+                : 'background: rgba(255,159,10,0.12); border-color: rgba(255,159,10,0.35); color:#ff9f0a;';
+
+            if (el) {
+                el.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Operator ID</td><td style="font-family: monospace;">${String(op.operatorId || '')}</td></tr>
+                            <tr><td>Session Account</td><td style="font-family: monospace;">${String(op.sessionAccountId || '').substring(0, 24)}...</td></tr>
+                            <tr><td>Node Public Key</td><td style="font-family: monospace;">${String(op.nodePublicKey || '').substring(0, 24)}...</td></tr>
+                            <tr><td>Main Node</td><td>${op.isMainNode ? 'YES' : 'NO'}</td></tr>
+                            <tr><td>Canonical Status</td><td><span class="status-badge" style="${statusStyle}">${status || 'UNKNOWN'}</span></td></tr>
+                            <tr><td>Admitted At</td><td>${fmtTs(op.admittedAt)}</td></tr>
+                            <tr><td>Active Operators</td><td>${Number(op.activeOperatorCount || 0)}</td></tr>
+                            <tr><td>Chain</td><td>${String(ch.network || '')} (tip ${Number(ch.tipHeight || 0)})</td></tr>
+                            <tr><td>Registry Head</td><td style="font-family: monospace;">#${Number(reg.lastEventSequence || 0)} ${String(reg.lastEventHash || '').substring(0, 18)}...</td></tr>
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            showEl('statusSuccess', true, 'Status loaded.');
+        }
+
+        async function loadVerifierActions() {
+            showEl('actionsError', false);
+            showEl('actionsSuccess', false);
+            const el = document.getElementById('actionsList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading actions...</div>';
+
+            const filterEl = document.getElementById('actionsStatusFilter');
+            const status = filterEl ? String(filterEl.value || 'open') : 'open';
+
+            if (!__operatorStatusCache) {
+                try { await loadNodeStatus(true); } catch {}
+            }
+            const myOperatorId = String(__operatorStatusCache?.operator?.operatorId || '');
+
+            const r = await fetch(`/api/verifiers/actions?status=${encodeURIComponent(status)}`, { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('actionsError', true, data?.error || 'Failed to load actions');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load actions.</div>';
+                return;
+            }
+
+            const actions = Array.isArray(data.actions) ? data.actions : [];
+            if (!actions.length) {
+                if (el) el.innerHTML = '<div class="empty-state">No actions found.</div>';
+                showEl('actionsSuccess', true, 'Loaded 0 actions.');
+                return;
+            }
+
+            if (el) {
+                el.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Type</th>
+                                <th>Votes</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${actions.map(a => {
+                                const finalized = !!a.finalized;
+                                const approveVotes = Number(a.voteCount?.approve || 0);
+                                const rejectVotes = Number(a.voteCount?.reject || 0);
+                                const quorum = finalized ? Number(a.finalized?.quorumThreshold || 0) : Number(a.quorumThreshold || 0);
+                                const activeOps = finalized ? Number(a.finalized?.activeOperatorCount || 0) : Number(a.activeOperatorCount || 0);
+                                const decision = a.finalized?.decision ? String(a.finalized.decision).toUpperCase() : '';
+                                const myVoteObj = Array.isArray(a.votes) && myOperatorId
+                                    ? a.votes.find(v => String(v.voterOperatorId) === myOperatorId)
+                                    : null;
+                                const hasVoted = !!myVoteObj;
+                                const myVote = myVoteObj ? String(myVoteObj.vote || '').toUpperCase() : '';
+                                const canFinalize = !finalized && quorum > 0 && (approveVotes >= quorum || rejectVotes >= quorum);
+                                const stLabel = finalized ? `FINALIZED (${decision || 'N/A'})` : 'OPEN';
+                                const stStyle = finalized
+                                    ? 'background: rgba(212,175,55,0.10); border-color: rgba(212,175,55,0.25); color:#d4af37;'
+                                    : 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;';
+
+                                const target = a.target || {};
+                                const targetName = String(target.name || '') || '(unknown)';
+                                const targetRole = String(target.role || '');
+                                const targetStatus = String(target.verifierStatus || '');
+                                const targetWebsite = target.website ? String(target.website) : '';
+                                const websiteHref = targetWebsite
+                                    ? (targetWebsite.startsWith('http://') || targetWebsite.startsWith('https://') ? targetWebsite : `https://${targetWebsite}`)
+                                    : '';
+                                const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(String(a.targetAccountId || ''))}`;
+
+                                return `
+                                    <tr>
+                                        <td style="font-family: monospace;">${String(a.actionId || '').substring(0, 18)}...</td>
+                                        <td>
+                                            <div style="font-weight:700;">${targetName}</div>
+                                            <div style="color:#999; font-size:0.82rem; margin-top:4px;">
+                                                ${targetRole ? `${targetRole}` : ''}${targetStatus ? ` · ${targetStatus}` : ''}
+                                                ${targetWebsite ? ` · <a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${targetWebsite}</a>` : ''}
+                                            </div>
+                                            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                                                <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                                            </div>
+                                        </td>
+                                        <td>${String(a.action || '')}</td>
+                                        <td>
+                                            ${approveVotes} approve / ${rejectVotes} reject
+                                            ${quorum ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Quorum: ${approveVotes}/${quorum} approve (active ops: ${activeOps || '?'})</div>` : ''}
+                                            ${myVote ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Your vote: <span style="color:#d4af37; font-weight:700;">${myVote}</span></div>` : ''}
+                                        </td>
+                                        <td>${fmtTs(a.createdAt)}</td>
+                                        <td><span class="status-badge" style="${stStyle}">${stLabel}</span></td>
+                                        <td>
+                                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                                ${finalized ? '' : `
+                                                    <button class="btn btn-success" type="button" ${hasVoted ? 'disabled' : ''} onclick="voteVerifierAction('${String(a.actionId)}','approve')">Vote Approve</button>
+                                                    <button class="btn btn-danger" type="button" ${hasVoted ? 'disabled' : ''} onclick="voteVerifierAction('${String(a.actionId)}','reject')">Vote Reject</button>
+                                                    <button class="btn btn-secondary" type="button" ${canFinalize ? '' : 'disabled'} onclick="finalizeVerifierAction('${String(a.actionId)}')">Finalize</button>
+                                                `}
+                                            </div>
+                                            ${finalized ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Finalized at ${fmtTs(a.finalized?.finalizedAt)} by ${String(a.finalized?.finalizedByOperatorId || '')}</div>` : ''}
+                                            ${(!finalized && !canFinalize && quorum) ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Finalize is enabled once approve OR reject votes reach quorum.</div>` : ''}
+                                            ${a.reason ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Reason: ${String(a.reason)}</div>` : ''}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            showEl('actionsSuccess', true, `Loaded ${actions.length} action(s).`);
+        }
+
+        async function voteVerifierAction(actionId, vote) {
+            showEl('actionsError', false);
+            showEl('actionsSuccess', false);
+            const reason = prompt(`Reason for ${vote} (optional):`) || undefined;
+
+            const r = await fetch(`/api/verifiers/actions/${encodeURIComponent(String(actionId))}/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ vote: String(vote), reason })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('actionsError', true, data?.error || 'Vote failed');
+                return;
+            }
+            showEl('actionsSuccess', true, 'Vote submitted.');
+            await loadVerifierActions();
+        }
+
+        async function finalizeVerifierAction(actionId) {
+            showEl('actionsError', false);
+            showEl('actionsSuccess', false);
+
+            const r = await fetch(`/api/verifiers/actions/${encodeURIComponent(String(actionId))}/finalize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({})
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('actionsError', true, data?.error || 'Finalize failed');
+                return;
+            }
+            showEl('actionsSuccess', true, `Finalized: ${String(data.decision || '')}`);
+            await loadVerifierActions();
+        }
+
+        async function loginWithPassword() {
+            showEl('authError', false);
+            showEl('authSuccess', false);
+
+            const email = String(document.getElementById('loginEmail').value || '').trim();
+            const password = String(document.getElementById('loginPassword').value || '').trim();
+            const totpCode = String(document.getElementById('loginTotp').value || '').trim();
+            if (!email || !password) {
+                showEl('authError', true, 'Missing email or password');
+                return;
+            }
+
+            const r = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, totpCode: totpCode || undefined })
+            });
+            const data = await r.json();
+
+            if (!r.ok || !data || !data.sessionId) {
+                if (data && data.requires2FA) {
+                    document.getElementById('login2faGroup').style.display = 'block';
+                }
+                showEl('authError', true, data?.error || 'Login failed.');
+                return;
+            }
+
+            localStorage.setItem('autho_session_id', data.sessionId);
+            showEl('authSuccess', true, 'Signed in. Loading...');
+            await requireOperatorAuth();
+        }
+
+        async function startOperatorLogin() {
+            showEl('authError', false);
+            showEl('authSuccess', false);
+
+            const accountId = String(document.getElementById('authAccountId').value || '').trim();
+            if (!accountId) {
+                showEl('authError', true, 'Missing accountId');
+                return;
+            }
+
+            const r = await fetch('/api/auth/challenge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accountId })
+            });
+            const data = await r.json();
+            if (!r.ok || !data || !data.challengeId || !data.nonce) {
+                showEl('authError', true, data?.error || 'Failed to create challenge');
+                return;
+            }
+
+            document.getElementById('challengeGroup').style.display = 'block';
+            document.getElementById('signatureGroup').style.display = 'block';
+            document.getElementById('totpGroup').style.display = 'block';
+            document.getElementById('authNonce').value = String(data.nonce);
+            document.getElementById('authChallengeId').value = String(data.challengeId);
+            showEl('authSuccess', true, 'Challenge created. Sign the nonce and paste signature.');
+        }
+
+        async function verifyOperatorLogin() {
+            showEl('authError', false);
+            showEl('authSuccess', false);
+
+            const challengeId = String(document.getElementById('authChallengeId').value || '').trim();
+            const accountId = String(document.getElementById('authAccountId').value || '').trim();
+            const signature = String(document.getElementById('authSignature').value || '').trim();
+            const totpCode = String(document.getElementById('authTotp').value || '').trim();
+
+            if (!challengeId || !accountId || !signature) {
+                showEl('authError', true, 'Missing challengeId, accountId, or signature');
+                return;
+            }
+
+            const r = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challengeId, accountId, signature, totpCode: totpCode || undefined })
+            });
+            const data = await r.json();
+            if (!r.ok || !data || !data.sessionId) {
+                if (data && data.requires2FA) {
+                    document.getElementById('totpGroup').style.display = 'block';
+                }
+                showEl('authError', true, data?.error || 'Login failed.');
+                return;
+            }
+
+            localStorage.setItem('autho_session_id', data.sessionId);
+            showEl('authSuccess', true, 'Signed in. Loading...');
+            await requireOperatorAuth();
+        }
+
+        async function loadApplications() {
+            showEl('appsError', false);
+            showEl('appsSuccess', false);
+            const el = document.getElementById('appsList');
+            el.innerHTML = '<div class="empty-state">Loading applications...</div>';
+
+            const r = await fetch('/api/roles/applications/pending', { headers: getAuthHeaders() });
+            const data = await r.json();
+            if (!r.ok || !data || data.success !== true) {
+                showEl('appsError', true, data?.error || 'Failed to load applications');
+                el.innerHTML = '<div class="empty-state">Failed to load applications.</div>';
+                return;
+            }
+
+            const applications = Array.isArray(data.applications) ? data.applications : [];
+            if (!applications.length) {
+                el.innerHTML = '<div class="empty-state">No pending applications.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Application</th>
+                            <th>Account</th>
+                            <th>Role</th>
+                            <th>Company</th>
+                            <th>Contact</th>
+                            <th>Submitted</th>
+                            <th>Voting</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${applications.map(a => {
+                            const submitted = a.submittedAt ? new Date(a.submittedAt).toLocaleString() : '';
+                            const eligible = a.eligibleForVotingAt ? new Date(a.eligibleForVotingAt).toLocaleString() : '';
+                            const canVote = !!a.canVote;
+                            const alreadyVoted = !!a.alreadyVoted;
+                            const hint = !canVote
+                                ? `Voting opens at ${eligible}`
+                                : (alreadyVoted ? 'Already voted' : 'Ready');
+
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;">${String(a.applicationId)}</td>
+                                    <td style="font-family: monospace;">${String(a.accountId).substring(0, 18)}...</td>
+                                    <td>${String(a.requestedRole || '')}</td>
+                                    <td>${a.companyName || ''}</td>
+                                    <td>${a.contactEmail || ''}</td>
+                                    <td>${submitted}</td>
+                                    <td>
+                                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                            <button class="btn btn-success" type="button" ${(!canVote || alreadyVoted) ? 'disabled' : ''} onclick="voteRoleApplication('${String(a.applicationId)}','approve')">Approve</button>
+                                            <button class="btn btn-danger" type="button" ${(!canVote || alreadyVoted) ? 'disabled' : ''} onclick="voteRoleApplication('${String(a.applicationId)}','reject')">Reject</button>
+                                            <span style="color:#999; font-size: 0.82rem;">${hint}</span>
+                                        </div>
+                                        <div style="color:#999; font-size: 0.82rem; margin-top: 6px;">Votes: ${Number(a.voteCount?.approve || 0)} approve / ${Number(a.voteCount?.reject || 0)} reject</div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            showEl('appsSuccess', true, `Loaded ${applications.length} application(s).`);
+        }
+
+        async function voteRoleApplication(applicationId, vote) {
+            showEl('appsError', false);
+            showEl('appsSuccess', false);
+
+            const r = await fetch(`/api/roles/applications/${encodeURIComponent(String(applicationId))}/vote`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify({ vote })
+            });
+
+            const data = await r.json();
+            if (!r.ok || !data || data.success !== true) {
+                showEl('appsError', true, data?.error || 'Vote failed');
+                return;
+            }
+
+            showEl('appsSuccess', true, 'Vote submitted.');
+            await loadApplications();
+        }
+
+        async function loadVerifiers() {
+            showEl('verifiersError', false);
+            showEl('verifiersSuccess', false);
+            const el = document.getElementById('verifiersList');
+            el.innerHTML = '<div class="empty-state">Loading verifiers...</div>';
+
+            const r = await fetch('/api/operator/verifiers', { headers: getAuthHeaders() });
+            const data = await r.json();
+            if (!r.ok || !data || data.success !== true) {
+                showEl('verifiersError', true, data?.error || 'Failed to load verifiers');
+                el.innerHTML = '<div class="empty-state">Failed to load verifiers.</div>';
+                return;
+            }
+
+            const verifiers = Array.isArray(data.verifiers) ? data.verifiers : [];
+            if (!verifiers.length) {
+                el.innerHTML = '<div class="empty-state">No verifiers found.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Role</th>
+                            <th>Name</th>
+                            <th>Website</th>
+                            <th>Rating</th>
+                            <th>Reports</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${verifiers.map(v => {
+                            const status = String(v.verifierStatus || 'active').toUpperCase();
+                            const style = status === 'REVOKED'
+                                ? 'background: rgba(255,59,48,0.15); border-color: rgba(255,59,48,0.35); color:#ff6b6b;'
+                                : 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;';
+                            const name = (v.displayName || v.companyName || v.username || '');
+                            const website = v.website ? String(v.website) : '';
+                            const websiteHref = website
+                                ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`)
+                                : '';
+                            const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(String(v.accountId || ''))}`;
+                            const isRevoked = status === 'REVOKED';
+                            const ratingAvg = (typeof v.ratingAvg === 'number') ? Number(v.ratingAvg) : null;
+                            const ratingCount = (typeof v.ratingCount === 'number') ? Number(v.ratingCount) : null;
+                            const reportCount = (typeof v.reportCount === 'number') ? Number(v.reportCount) : null;
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;">${String(v.accountId || '').substring(0, 18)}...</td>
+                                    <td>${String(v.role || '')}</td>
+                                    <td>${String(name)}</td>
+                                    <td>${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}</td>
+                                    <td>${(ratingAvg !== null && ratingCount !== null) ? `${ratingAvg.toFixed(2)} (${ratingCount})` : ''}</td>
+                                    <td>${(reportCount !== null) ? String(reportCount) : ''}</td>
+                                    <td><span class="status-badge" style="${style}">${status}</span></td>
+                                    <td>
+                                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                                            <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierAction('${String(v.accountId)}', '${isRevoked ? 'reactivate' : 'revoke'}')">${isRevoked ? 'Propose Reactivate' : 'Propose Revoke'}</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            showEl('verifiersSuccess', true, `Loaded ${verifiers.length} verifier(s).`);
+        }
+
+        async function proposeVerifierAction(accountId, action) {
+            showEl('verifiersError', false);
+            showEl('verifiersSuccess', false);
+
+            const reason = prompt(`Reason for ${action} (optional):`) || undefined;
+            const r = await fetch('/api/verifiers/actions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ targetAccountId: String(accountId), action: String(action), reason })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('verifiersError', true, data?.error || 'Failed to create verifier action');
+                return;
+            }
+
+            showEl('verifiersSuccess', true, `Created action ${String(data.actionId || '')}. Next: vote/finalize in Verifier Actions (coming next).`);
+            await loadVerifiers();
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('autho_session_id');
+                window.location.href = '/operator/dashboard';
+            }
+        }
+
+        window.addEventListener('load', async () => {
+            await requireOperatorAuth();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,2988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manufacturer Dashboard - Bitcoin Ownership Protocol</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@300;400;500;600&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #d4af37;
+        }
+
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            padding: 40px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.3), inset 0 1px 0 rgba(212, 175, 55, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #d4af37, transparent);
+        }
+
+        .header h1 {
+            font-family: 'Playfair Display', serif;
+            color: #d4af37;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 10px rgba(212, 175, 55, 0.5);
+        }
+
+        .header p {
+            color: #d4af37;
+            opacity: 0.8;
+            font-size: 1.1rem;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.2);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(212, 175, 55, 0.4);
+            border-color: #f4d03f;
+        }
+
+        .stat-icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #d4af37;
+            margin-bottom: 5px;
+            text-shadow: 0 2px 10px rgba(212, 175, 55, 0.3);
+        }
+
+        .stat-label {
+            color: #d4af37;
+            opacity: 0.7;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+        }
+
+        .action-section {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .action-section h2 {
+            font-family: 'Playfair Display', serif;
+            color: #d4af37;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.8rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #0a0a0a;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.5);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            color: #d4af37;
+            border: 1px solid #d4af37;
+        }
+
+        .btn-secondary:hover {
+            background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(26, 26, 26, 0.5);
+            border: 2px solid rgba(212, 175, 55, 0.3);
+            border-radius: 8px;
+            font-size: 1rem;
+            color: #d4af37;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #d4af37;
+            background: rgba(26, 26, 26, 0.8);
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .items-list {
+            margin-top: 20px;
+        }
+
+        .item-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+
+        .item-card:hover {
+            border-color: #d4af37;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.2);
+            transform: translateX(5px);
+        }
+
+        .item-info h3 {
+            color: #d4af37;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .item-info p {
+            color: #d4af37;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+
+        .item-id {
+            font-family: 'Courier New', monospace;
+            background: rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            padding: 40px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.4);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            font-family: 'Playfair Display', serif;
+            color: #d4af37;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 2rem;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        .wallet-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .wallet-info p {
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success-message.active {
+            display: block;
+        }
+
+        .qr-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .qr-code canvas {
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .top-nav {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 15px 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.2);
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info {
+            color: #d4af37;
+            font-size: 0.9rem;
+        }
+
+        .btn-logout {
+            background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-logout:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 59, 48, 0.4);
+        }
+
+        .btn-sell {
+            background: linear-gradient(135deg, #4cd964 0%, #5ee879 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .btn-sell:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 217, 100, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="modal" id="authModal" style="display: block;">
+        <div class="modal-content" style="max-width: 620px;">
+            <div class="modal-header">
+                <h2>🏭 Manufacturer Sign In</h2>
+            </div>
+            <div style="padding-top: 10px;">
+                <div class="form-group" style="display:none;">
+                    <label>Account ID (Wallet Public Key Hex)</label>
+                    <input id="authAccountId" type="text" placeholder="02ab..." style="display:none;" />
+                </div>
+                <div class="form-group" style="display: none;" id="challengeGroup">
+                    <label>Challenge Nonce</label>
+                    <input id="authNonce" type="text" readonly />
+                    <input id="authChallengeId" type="hidden" />
+                </div>
+                <div class="form-group" style="display: none;" id="signatureGroup">
+                    <label>Signature (hex) of the nonce</label>
+                    <input id="authSignature" type="text" placeholder="3044..." />
+                </div>
+                <div class="form-group" style="display: none;" id="totpGroup">
+                    <label>2FA Code (if enabled)</label>
+                    <input id="authTotp" type="text" placeholder="123456" />
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="startManufacturerLogin()" style="display:none;">Get Challenge</button>
+                    <button class="btn btn-secondary" type="button" onclick="verifyManufacturerLogin()" id="verifyBtn" style="display:none;">Verify & Enter</button>
+                    <a class="btn btn-secondary" href="/" style="text-decoration:none;">Back</a>
+                </div>
+                <p id="authError" style="margin-top: 15px; color: #ff6b6b; display:none;"></p>
+
+                <div id="emailPasswordLogin" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
+                    <h3 style="color:#d4af37; margin-bottom: 10px; font-size: 1.1rem;">🔑 Sign In with Email & Password</h3>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input id="loginEmail" type="email" placeholder="your@email.com" />
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input id="loginPassword" type="password" placeholder="••••••••" />
+                    </div>
+                    <div class="form-group" style="display:none;" id="login2faGroup">
+                        <label>2FA Code (if enabled)</label>
+                        <input id="loginTotp" type="text" placeholder="123456" />
+                    </div>
+                    <button class="btn" type="button" onclick="loginWithPassword()">Sign In</button>
+                    <p id="loginError" style="margin-top: 10px; color: #ff6b6b; display:none;"></p>
+                </div>
+
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
+                    <h3 style="color:#d4af37; margin-bottom: 10px; font-size: 1.1rem;">📝 New User? Register First</h3>
+                    <p style="color:#999; margin-bottom: 15px; font-size: 0.9rem; line-height: 1.5;">
+                        Don't have an account yet? Create a buyer account first, then you can apply for manufacturer approval.
+                    </p>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input id="regUsername" type="text" placeholder="Your name or company" />
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input id="regEmail" type="email" placeholder="contact@company.com" />
+                    </div>
+                    <div class="form-group">
+                        <label>Password (min 8 characters)</label>
+                        <input id="regPassword" type="password" placeholder="••••••••" />
+                    </div>
+                    <button class="btn" type="button" onclick="registerNewUser()">Create Account</button>
+                    <p id="regError" style="margin-top: 10px; color: #ff6b6b; display:none;"></p>
+                    <p id="regSuccess" style="margin-top: 10px; color: #4cd964; display:none;"></p>
+                </div>
+
+                <div id="manufacturerOnboarding" style="margin-top: 18px; display:none; padding-top: 15px; border-top: 1px solid rgba(212, 175, 55, 0.25);">
+                    <h3 style="color:#d4af37; margin-bottom: 10px;">Manufacturer Onboarding</h3>
+                    <p style="color:#999; margin-bottom: 15px; line-height: 1.5;">
+                        Your account is logged in, but it is not approved as a manufacturer yet.
+                        Use a one-time invite code from the main node to activate instantly, or submit an application.
+                    </p>
+
+                    <div class="form-group">
+                        <label>One-Time Invite Code (hex)</label>
+                        <input id="manufacturerInviteCode" type="text" placeholder="a1b2c3..." />
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="redeemManufacturerInvite()">Redeem Invite</button>
+                    </div>
+
+                    <div style="margin-top: 18px; padding-top: 15px; border-top: 1px solid rgba(212, 175, 55, 0.15);"></div>
+
+                    <div class="form-group">
+                        <label>Company Name</label>
+                        <input id="manufacturerCompanyName" type="text" placeholder="Acme Manufacturing" />
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Email</label>
+                        <input id="manufacturerContactEmail" type="text" placeholder="ops@acme.com" />
+                    </div>
+                    <div class="form-group">
+                        <label>Website</label>
+                        <input id="manufacturerWebsite" type="text" placeholder="https://acme.com" />
+                    </div>
+                    <div class="form-group">
+                        <label>Notes</label>
+                        <input id="manufacturerNotes" type="text" placeholder="What you manufacture, how you plan to use Autho..." />
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" id="manufacturerSubmitApplicationBtn" type="button" onclick="submitManufacturerApplication()">Submit Application</button>
+                        <button class="btn btn-secondary" type="button" onclick="recheckManufacturerRole()">Re-check Approval</button>
+                    </div>
+                    <div id="manufacturerApplicationBanner" style="display:none; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(76, 217, 100, 0.55); background: rgba(76, 217, 100, 0.10); color: #c9f7d5; line-height: 1.4;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- Top Navigation -->
+        <div class="top-nav">
+            <div class="nav-left">
+                <span style="font-size: 1.5rem;">🏭</span>
+                <span style="color: #d4af37; font-weight: 600;">Manufacturer Dashboard</span>
+            </div>
+            <div class="nav-right">
+                <div class="user-info">
+                    <span id="navUsername">Manufacturer</span>
+                </div>
+                <button class="btn-logout" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <div class="header">
+            <h1>🏭 Manufacturer Dashboard</h1>
+            <p id="manufacturerName">Welcome back!</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📦</div>
+                <div class="stat-value" id="totalItems">0</div>
+                <div class="stat-label">Items Minted</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value" id="verifiedItems">0</div>
+                <div class="stat-label">Verified Items</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">💰</div>
+                <div class="stat-value" id="totalRevenue">0 sats</div>
+                <div class="stat-label">Total Revenue</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🔗</div>
+                <div class="stat-value" id="activeProducts">0</div>
+                <div class="stat-label">Active Products</div>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>⚡ Quick Actions</h2>
+            <button class="btn" onclick="openMintModal()">
+                📦 Mint New Item
+            </button>
+            <button class="btn btn-secondary" onclick="viewInventory()">
+                📋 View Inventory
+            </button>
+            <button class="btn btn-secondary" onclick="viewWallet()">
+                💳 View Wallet
+            </button>
+            <button class="btn btn-secondary" onclick="window.location.href='/scan'">
+                🔍 Scan Item
+            </button>
+        </div>
+
+        <div class="action-section">
+            <h2>🏢 Edit Public Profile</h2>
+            <div style="color:#999; line-height: 1.6; margin-bottom: 12px;">
+                This information will be shown to buyers and owners when they view your manufacturer profile.
+            </div>
+            <div class="error-message" id="profileError" style="display:none;"></div>
+            <div class="success-message" id="profileSuccess" style="display:none;"></div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input id="profileDisplayName" type="text" placeholder="e.g., Autho Labs" />
+                </div>
+                <div class="form-group">
+                    <label>Company Name</label>
+                    <input id="profileCompanyName" type="text" placeholder="Legal entity name" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Website</label>
+                    <input id="profileWebsite" type="text" placeholder="example.com" />
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input id="profilePhone" type="text" placeholder="+1 555 123 4567" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <input id="profileAddress" type="text" placeholder="Street, City, State/Province, Country" />
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Public Contact Email</label>
+                    <input id="profileContactEmail" type="email" placeholder="support@example.com" />
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input id="profileNotes" type="text" placeholder="Optional public notes" />
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" type="button" onclick="loadMyVerifierProfile()">Reload</button>
+                <button class="btn" type="button" onclick="saveMyVerifierProfile()">Save Profile</button>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>🔒 Bond Proof (Non-Custodial)</h2>
+            <div style="color:#999; line-height: 1.6; margin-bottom: 12px;">
+                Autho never holds your funds. This check proves your wallet has enough confirmed sats to meet the platform bond requirement.
+            </div>
+            <div class="error-message" id="bondError" style="display:none;"></div>
+            <div class="success-message" id="bondSuccess" style="display:none;"></div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Bond Status</label>
+                    <input id="bondStatus" type="text" readonly placeholder="Unknown" />
+                </div>
+                <div class="form-group">
+                    <label>Last Checked</label>
+                    <input id="bondLastChecked" type="text" readonly placeholder="" />
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Confirmed Sats</label>
+                    <input id="bondConfirmedSats" type="text" readonly placeholder="" />
+                </div>
+                <div class="form-group">
+                    <label>Minimum Required</label>
+                    <input id="bondMinSats" type="text" readonly placeholder="" />
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" type="button" onclick="loadMyVerifierProfile()">Refresh Status</button>
+                <button class="btn" type="button" onclick="runBondCheck()" id="bondCheckBtn">Run Bond Check</button>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>📦 Recent Items</h2>
+            <div class="items-list" id="recentItems">
+                <p style="color: #666; text-align: center; padding: 20px;">
+                    No items minted yet. Click "Mint New Item" to get started!
+                </p>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>💰 Offers for Your Items</h2>
+            <div class="items-list" id="receivedOffers">
+                <p style="color: #666; text-align: center; padding: 20px;">
+                    No offers yet.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mint Item Modal -->
+    <div class="modal" id="mintModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📦 Mint New Item</h2>
+                <button class="close-btn" onclick="closeMintModal()">&times;</button>
+            </div>
+
+            <div class="success-message" id="mintSuccess">
+                ✅ Item minted successfully! QR code generated below.
+            </div>
+
+            <form id="mintForm" onsubmit="mintItem(event)">
+                <div class="form-group">
+                    <label>Product Name *</label>
+                    <input type="text" id="productName" required placeholder="e.g., Luxury Watch Model X">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="productDescription" placeholder="Detailed description of the item..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Serial Number</label>
+                    <input type="text" id="serialNumber" placeholder="e.g., SN123456789">
+                </div>
+
+                <div class="form-group">
+                    <label>Category</label>
+                    <select id="category">
+                        <option value="luxury">Luxury Goods</option>
+                        <option value="electronics">Electronics</option>
+                        <option value="jewelry">Jewelry</option>
+                        <option value="art">Art & Collectibles</option>
+                        <option value="fashion">Fashion</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Price (optional)</label>
+                    <input type="number" id="price" placeholder="Price in USD">
+                </div>
+
+                <div class="form-group">
+                    <label>Item Photos (optional, up to 3)</label>
+                    <input type="file" id="mintImages" accept="image/*" multiple>
+                    <div id="mintImagesPreview" style="margin-top: 10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+                </div>
+
+                <div id="qrCodeDisplay" class="qr-code" style="display: none;">
+                    <canvas id="qrCanvas"></canvas>
+                    <p style="margin-top: 10px; color: #666;">
+                        <strong>Item ID:</strong> <span id="generatedItemId"></span>
+                    </p>
+                    <button type="button" class="btn" onclick="downloadQR()">
+                        💾 Download QR Code
+                    </button>
+                </div>
+
+                <button type="submit" class="btn" id="mintBtn">
+                    ⚡ Mint Item (1,000 sats)
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="closeMintModal()">
+                    Cancel
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Wallet Modal -->
+    <div class="modal" id="walletModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>💳 Your Bitcoin Wallet</h2>
+                <button class="close-btn" onclick="closeWalletModal()">&times;</button>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, 0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="color: #999; font-size: 0.9rem;">Balance</span>
+                    <button onclick="refreshManufacturerBalance()" style="background: none; border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 4px 12px; border-radius: 5px; cursor: pointer; font-size: 0.85rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div style="font-size: 2rem; font-weight: 600; color: #d4af37;" id="manufacturerBtcBalance">0.00000000</div>
+                <div style="color: #999; font-size: 0.9rem; margin-top: 5px;" id="manufacturerUsdBalance">$0.00 USD</div>
+                <div style="display:flex; justify-content: space-between; gap: 12px; margin-top: 10px; color:#999; font-size: 0.85rem;">
+                    <div>Confirmed: <span id="manufacturerBtcConfirmed" style="color:#d4af37;">0.00000000 BTC</span></div>
+                    <div>Unconfirmed: <span id="manufacturerBtcUnconfirmed" style="color:#d4af37;">0.00000000 BTC</span></div>
+                </div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color: #d4af37; margin-bottom: 10px; font-size: 1.1rem;">📥 Receive BTC</h3>
+                <p style="color: #999; font-size: 0.85rem; margin-bottom: 10px;">Your payment address for item sales and minting fees:</p>
+                <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #d4af37; word-break: break-all; margin-bottom: 10px;" id="manufacturerWalletAddress"></div>
+                <button class="btn" onclick="copyManufacturerAddress()" style="width: 100%;">
+                    📋 Copy Address
+                </button>
+                <div style="margin-top: 12px; background: rgba(0,0,0,0.15); padding: 12px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.2); text-align: center;">
+                    <img id="manufacturerReceiveQr" alt="Receive BTC QR" style="width: 220px; height: 220px; max-width: 100%; background: #fff; padding: 10px; border-radius: 10px;" />
+                </div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color: #d4af37; margin-bottom: 10px; font-size: 1.1rem;">📤 Send BTC</h3>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Recipient Address</label>
+                    <input id="manufacturerSendToAddress" type="text" placeholder="bc1q..." style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%; font-family: monospace; font-size: 0.85rem;" />
+                </div>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Amount (sats)</label>
+                    <input id="manufacturerSendAmountSats" type="number" placeholder="10000" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;" />
+                </div>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Network Fee (Priority)</label>
+                    <select id="manufacturerSendFeePriority" onchange="updateManufacturerFeePriority()" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;">
+                        <option value="nopriority">No Priority</option>
+                        <option value="low" selected>Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <input id="manufacturerSendFeeRateCustom" type="number" step="0.1" placeholder="0.9" style="display:none; margin-top: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;" />
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: -6px; margin-bottom: 10px;">
+                    <button class="btn" onclick="fillManufacturerSendMax()" type="button" style="flex: 1; background: rgba(212, 175, 55, 0.12); color: #d4af37; border: 1px solid rgba(212, 175, 55, 0.35);">Send Max</button>
+                </div>
+                <div style="color: #999; font-size: 0.85rem; margin-bottom: 10px;" id="manufacturerSendFeeInfo">Fee: Auto (~1 sat/vB)</div>
+                <button class="btn" onclick="sendManufacturerBtc()" style="width: 100%;">
+                    💸 Send BTC
+                </button>
+                <div id="manufacturerSendStatus" style="margin-top: 10px; color: #d4af37; font-size: 0.9rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script src="/js/btc.bundle.js"></script>
+    <script>
+        let userConfig = {};
+        let mintedItems = [];
+        let manufacturerConfirmedSats = 0;
+        let manufacturerConfirmedUtxos = [];
+        let manufacturerLastFeeRate = 1;
+        let manufacturerFeePriority = 'low';
+
+        function getWalletNetworkName() {
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+            const net = String(wallet.network || 'mainnet').toLowerCase();
+            return net.includes('test') ? 'testnet' : 'mainnet';
+        }
+
+        function getAuthHeaders() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            return sessionId ? { 'Authorization': `Bearer ${sessionId}` } : {};
+        }
+
+        function showProfileError(message) {
+            const el = document.getElementById('profileError');
+            const ok = document.getElementById('profileSuccess');
+            if (ok) { ok.style.display = 'none'; ok.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function showBondError(message) {
+            const el = document.getElementById('bondError');
+            const ok = document.getElementById('bondSuccess');
+            if (ok) { ok.style.display = 'none'; ok.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function showBondSuccess(message) {
+            const el = document.getElementById('bondSuccess');
+            const err = document.getElementById('bondError');
+            if (err) { err.style.display = 'none'; err.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function fmtDateTime(ts) {
+            const n = Number(ts || 0);
+            if (!n) return '';
+            try {
+                return new Date(n).toLocaleString();
+            } catch {
+                return String(ts);
+            }
+        }
+
+        function setBondField(id, v) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = v ? String(v) : '';
+        }
+
+        function setBondUiFromProfile(p) {
+            const min = Number(p?.bondMinSats || 0);
+            const confirmed = Number(p?.bondConfirmedSats || 0);
+            const meets = (typeof p?.bondMeetsMin === 'boolean') ? Boolean(p?.bondMeetsMin) : null;
+            const last = Number(p?.bondLastCheckedAt || 0);
+            const maxAgeMs = 24 * 60 * 60 * 1000;
+            const isStale = !!min && (!last || (Date.now() - last) > maxAgeMs);
+
+            if (!min) {
+                setBondField('bondStatus', 'Not required');
+                setBondField('bondMinSats', '0');
+            } else {
+                const base = meets === true ? 'OK' : (meets === false ? 'NOT MET' : 'UNKNOWN');
+                setBondField('bondStatus', isStale ? `${base} (STALE)` : base);
+                setBondField('bondMinSats', String(min));
+            }
+            setBondField('bondConfirmedSats', confirmed ? String(confirmed) : '');
+            setBondField('bondLastChecked', fmtDateTime(last));
+        }
+
+        function showProfileSuccess(message) {
+            const el = document.getElementById('profileSuccess');
+            const err = document.getElementById('profileError');
+            if (err) { err.style.display = 'none'; err.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function getProfileInputValue(id) {
+            const el = document.getElementById(id);
+            return el ? String(el.value || '') : '';
+        }
+
+        function setProfileInputValue(id, v) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = v ? String(v) : '';
+        }
+
+        async function loadMyVerifierProfile() {
+            try {
+                showProfileError('');
+                showProfileSuccess('');
+                const accountId = String(userConfig?.accountId || '').trim();
+                if (!accountId) return;
+
+                const r = await fetch(`/api/verifiers/${encodeURIComponent(accountId)}/profile`, { cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    showProfileError(data?.error || 'Failed to load profile');
+                    return;
+                }
+                const p = data.profile || {};
+                setProfileInputValue('profileDisplayName', p.displayName);
+                setProfileInputValue('profileCompanyName', p.companyName);
+                setProfileInputValue('profileWebsite', p.website);
+                setProfileInputValue('profilePhone', p.phone);
+                setProfileInputValue('profileAddress', p.address);
+                setProfileInputValue('profileContactEmail', p.contactEmail);
+                setProfileInputValue('profileNotes', p.notes);
+                setBondUiFromProfile(p);
+            } catch (e) {
+                showProfileError(e?.message || String(e));
+            }
+        }
+
+        async function runBondCheck() {
+            showBondError('');
+            showBondSuccess('');
+            const sessionId = localStorage.getItem('autho_session_id');
+            if (!sessionId) {
+                showBondError('Please sign in again.');
+                return;
+            }
+
+            const btn = document.getElementById('bondCheckBtn');
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+            } catch {}
+
+            try {
+                const r = await fetch('/api/verifiers/me/bond/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                    body: JSON.stringify({})
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    showBondError(data?.error || 'Bond check failed');
+                    return;
+                }
+
+                showBondSuccess(`Checked. Confirmed: ${Number(data.confirmedSats || 0).toLocaleString()} sats. Meets min: ${data.meetsMin ? 'YES' : 'NO'}.`);
+                await loadMyVerifierProfile();
+            } catch (e) {
+                showBondError(e?.message || String(e));
+            } finally {
+                try {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Run Bond Check'; }
+                } catch {}
+            }
+        }
+
+        async function saveMyVerifierProfile() {
+            try {
+                showProfileError('');
+                showProfileSuccess('');
+                const sessionId = localStorage.getItem('autho_session_id');
+                if (!sessionId) {
+                    showProfileError('Please sign in again.');
+                    return;
+                }
+
+                const toOptional = (s) => {
+                    const t = String(s || '').trim();
+                    return t ? t : null;
+                };
+
+                const payload = {
+                    displayName: toOptional(getProfileInputValue('profileDisplayName')),
+                    companyName: toOptional(getProfileInputValue('profileCompanyName')),
+                    website: toOptional(getProfileInputValue('profileWebsite')),
+                    phone: toOptional(getProfileInputValue('profilePhone')),
+                    address: toOptional(getProfileInputValue('profileAddress')),
+                    contactEmail: toOptional(getProfileInputValue('profileContactEmail')),
+                    notes: toOptional(getProfileInputValue('profileNotes')),
+                };
+
+                const r = await fetch('/api/verifiers/me/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    showProfileError(data?.error || 'Failed to save profile');
+                    return;
+                }
+
+                showProfileSuccess('Saved. Your public profile is now updated.');
+                await loadMyVerifierProfile();
+            } catch (e) {
+                showProfileError(e?.message || String(e));
+            }
+        }
+
+        async function requireManufacturerAuth() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            if (!sessionId) {
+                document.getElementById('authModal').style.display = 'block';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${sessionId}`
+                    }
+                });
+                const data = await r.json();
+                if (!r.ok || !data || !data.account) {
+                    localStorage.removeItem('autho_session_id');
+                    document.getElementById('authModal').style.display = 'block';
+                    return;
+                }
+
+                if (String(data.account.role) !== 'manufacturer') {
+                    const e = document.getElementById('authError');
+                    e.textContent = 'Signed in, but this account is not approved as a manufacturer yet.';
+                    e.style.display = 'block';
+                    document.getElementById('manufacturerOnboarding').style.display = 'block';
+                    document.getElementById('authModal').style.display = 'block';
+                    return;
+                }
+
+                userConfig = {
+                    name: data.account.username || 'Manufacturer',
+                    email: data.account.email,
+                    accountId: data.account.accountId,
+                    role: data.account.role
+                };
+
+                try {
+                    if (data.account.walletVault) {
+                        localStorage.setItem('autho_wallet_vault', JSON.stringify(data.account.walletVault));
+                    }
+                    const existing = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                    const merged = {
+                        ...existing,
+                        publicKey: String(data.account.accountId || existing.publicKey || ''),
+                        paymentAddress: String(data.account.walletAddress || existing.paymentAddress || existing.address || ''),
+                        address: String(data.account.walletAddress || existing.address || existing.paymentAddress || ''),
+                    };
+                    localStorage.setItem('autho_wallet', JSON.stringify(merged));
+                } catch {}
+
+                document.getElementById('manufacturerName').textContent = `Welcome back, ${userConfig.name}!`;
+                if (userConfig.wallet && userConfig.wallet.address) {
+                    document.getElementById('walletAddress').textContent = userConfig.wallet.address;
+                }
+
+                document.getElementById('manufacturerOnboarding').style.display = 'none';
+                document.getElementById('authModal').style.display = 'none';
+
+                try {
+                    await refreshMintedItemsFromRegistry();
+                } catch {}
+
+                try {
+                    await loadReceivedOffers();
+                } catch {}
+
+                try {
+                    await loadMyVerifierProfile();
+                } catch {}
+
+                try {
+                    if (window.__authoBondAutoRefreshTimer) clearInterval(window.__authoBondAutoRefreshTimer);
+                    window.__authoBondAutoRefreshTimer = setInterval(async () => {
+                        try { await loadMyVerifierProfile(); } catch {}
+                    }, 60_000);
+                } catch {}
+            } catch (err) {
+                document.getElementById('authModal').style.display = 'block';
+            }
+        }
+
+        async function loadReceivedOffers() {
+            const fetchJson = async (url) => {
+                const r = await fetch(url);
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return await r.json();
+            };
+
+            const formatUsd = (n) => {
+                try {
+                    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+                } catch {
+                    return `$${Number(n).toFixed(2)}`;
+                }
+            };
+
+            const getBtcUsdRate = async () => {
+                const now = Date.now();
+                if (window.__authoOfferUsdCache && window.__authoOfferUsdCache.rate > 0 && (now - window.__authoOfferUsdCache.ts) < 60_000) {
+                    return window.__authoOfferUsdCache.rate;
+                }
+
+                const sources = [
+                    async () => {
+                        const j = await fetchJson('https://api.coinbase.com/v2/exchange-rates?currency=BTC');
+                        const r = Number(j?.data?.rates?.USD);
+                        return Number.isFinite(r) && r > 0 ? r : 0;
+                    },
+                    async () => {
+                        const j = await fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+                        const r = Number(j?.bitcoin?.usd);
+                        return Number.isFinite(r) && r > 0 ? r : 0;
+                    },
+                    async () => {
+                        const j = await fetchJson('https://blockchain.info/ticker');
+                        const r = Number(j?.USD?.last);
+                        return Number.isFinite(r) && r > 0 ? r : 0;
+                    },
+                ];
+
+                for (const fn of sources) {
+                    try {
+                        const r = await fn();
+                        if (r > 0) {
+                            window.__authoOfferUsdCache = { rate: r, ts: now };
+                            return r;
+                        }
+                    } catch {}
+                }
+
+                return 0;
+            };
+
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            const addrA = String(wallet.address || '').trim();
+            const addrB = String(wallet.paymentAddress || '').trim();
+            const addresses = Array.from(new Set([addrA, addrB].filter(Boolean)));
+            if (addresses.length === 0) return;
+
+            const allOffers = [];
+            let lastErrMsg = '';
+            for (const ownerAddress of addresses) {
+                try {
+                    const r = await fetch(`/api/offers/owner/${encodeURIComponent(ownerAddress)}`, {
+                        headers: {
+                            ...getAuthHeaders(),
+                        }
+                    });
+                    const text = await r.text();
+                    if (!r.ok) {
+                        lastErrMsg = text || `HTTP ${r.status}`;
+                        continue;
+                    }
+                    let data;
+                    try {
+                        data = JSON.parse(text || '{}');
+                    } catch {
+                        lastErrMsg = text || 'Invalid JSON response';
+                        continue;
+                    }
+                    const offers = (data && Array.isArray(data.offers)) ? data.offers : [];
+                    for (const o of offers) allOffers.push(o);
+                } catch (e) {
+                    lastErrMsg = String(e?.message || e || 'Failed to load offers');
+                }
+            }
+
+            const byId = new Map();
+            for (const o of allOffers) {
+                const id = String(o?.offerId || '').trim();
+                if (!id) continue;
+                if (!byId.has(id)) byId.set(id, o);
+            }
+            const offers = Array.from(byId.values());
+            if (offers.length === 0 && lastErrMsg) {
+                const container = document.getElementById('receivedOffers');
+                if (container) {
+                    container.innerHTML = `<p style="color:#ef4444; text-align:center; padding: 20px;">Failed to load offers. ${String(lastErrMsg).substring(0, 120)}</p>`;
+                }
+                return;
+            }
+
+            try {
+                await Promise.all(offers.map(async (offer) => {
+                    const txid = String(offer?.paymentTxid || '').trim();
+                    if (!txid) return;
+                    try {
+                        const st = await fetchChainTxStatus(txid);
+                        const conf = Number(st?.confirmations || 0);
+                        const chainConfirmed = Boolean(st?.confirmed);
+                        offer.paymentChainConfirmed = chainConfirmed;
+                        offer.paymentConfirmations = conf > 0 ? conf : (chainConfirmed ? 1 : 0);
+                        offer.paymentFinalized = Number(offer.paymentConfirmations || 0) >= 6;
+                    } catch {
+                        offer.paymentConfirmations = 0;
+                        offer.paymentChainConfirmed = false;
+                        offer.paymentFinalized = false;
+                    }
+                }));
+            } catch {}
+
+            try {
+                const pending = new Map();
+                for (const offer of offers) {
+                    const itemId = String(offer?.itemId || '').trim();
+                    const txid = String(offer?.paymentTxid || '').trim();
+                    if (!itemId || !txid) continue;
+                    const conf = Number(offer?.paymentConfirmations || 0);
+                    const prev = pending.get(itemId);
+                    const createdAt = Number(offer?.createdAt || 0);
+                    if (!prev || createdAt >= Number(prev.createdAt || 0)) {
+                        pending.set(itemId, {
+                            offerId: String(offer?.offerId || '').trim(),
+                            paymentTxid: txid,
+                            confirmations: conf,
+                            createdAt,
+                        });
+                    }
+                }
+                window.__authoPendingSaleByItemId = pending;
+            } catch {}
+
+            try {
+                await getBtcUsdRate();
+            } catch {}
+
+            window.__authoFormatOfferUsd = (offer) => {
+                const sats = Number(offer?.sats || 0);
+                const amountUsdRaw = Number(offer?.amount || 0);
+                if (Number.isFinite(amountUsdRaw) && amountUsdRaw > 0) {
+                    return `≈ ${formatUsd(amountUsdRaw)}`;
+                }
+                const rate = window.__authoOfferUsdCache && window.__authoOfferUsdCache.rate ? Number(window.__authoOfferUsdCache.rate) : 0;
+                if (rate > 0 && sats > 0) {
+                    const usd = (sats / 1e8) * rate;
+                    return `≈ ${formatUsd(usd)}`;
+                }
+                return '$—';
+            };
+
+            displayReceivedOffers(offers);
+            try {
+                displayRecentItems();
+            } catch {}
+            try {
+                const inv = document.getElementById('inventoryList');
+                if (inv) inv.innerHTML = displayAllItems(mintedItems);
+            } catch {}
+        }
+
+        function displayReceivedOffers(offers) {
+            const container = document.getElementById('receivedOffers');
+            if (!container) return;
+
+            if (!Array.isArray(offers) || offers.length === 0) {
+                container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No offers yet.</p>';
+                return;
+            }
+
+            container.innerHTML = offers.slice(-10).reverse().map((offer) => {
+                const status = String(offer.status || 'PENDING').toUpperCase();
+                const isPending = status === 'PENDING';
+                const isPaid = status === 'PAID' || status === 'COMPLETED' || status === 'SETTLED';
+                const paymentTxid = String(offer?.paymentTxid || '').trim();
+                const paymentConfs = Number(offer?.paymentConfirmations || 0);
+                const chainConfirmed = Boolean(offer?.paymentChainConfirmed) || paymentConfs > 0;
+                const paymentFinalized = Boolean(offer?.paymentFinalized) || paymentConfs >= 6;
+
+                let statusLabel = status;
+                if (paymentTxid) {
+                    if (isPaid) {
+                        statusLabel = paymentFinalized
+                            ? `PAID (6/6)`
+                            : `PAID (${chainConfirmed ? (paymentConfs > 0 ? paymentConfs : '1+') : 0}/6)`;
+                    } else {
+                        statusLabel = paymentFinalized
+                            ? `PAYMENT_CONFIRMED (6/6)`
+                            : (chainConfirmed
+                                ? `PAYMENT_CONFIRMED (${paymentConfs > 0 ? paymentConfs : '1+'}/6)`
+                                : `PAYMENT_SUBMITTED (${paymentConfs}/6)`);
+                    }
+                }
+
+                const statusColor = paymentTxid
+                    ? (paymentFinalized ? '#4ade80' : chainConfirmed ? '#f4d03f' : '#f4d03f')
+                    : (isPending ? '#f4d03f' : isPaid ? '#4ade80' : '#ef4444');
+
+                const txidRow = paymentTxid ? `
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+                        <span style="font-size:0.78rem; color:#999;">TXID:</span>
+                        <span style="font-size:0.78rem; color:#d4af37; font-family: 'Courier New', monospace; word-break: break-all;">${paymentTxid}</span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:6px;">
+                        <button onclick="copyTxid('${paymentTxid}')" style="background: rgba(212, 175, 55, 0.18); color:#d4af37; border: 1px solid rgba(212, 175, 55, 0.35); padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.78rem;">Copy TXID</button>
+                        <a href="${getTxExplorerUrl(paymentTxid)}" target="_blank" rel="noopener noreferrer" style="background: rgba(255,255,255,0.06); color:#ddd; border: 1px solid rgba(255,255,255,0.12); padding:6px 10px; border-radius:6px; text-decoration:none; font-weight:600; font-size:0.78rem;">View</a>
+                    </div>
+                ` : '';
+                
+                return `
+                <div class="item-card">
+                    <div class="item-info">
+                        <h3>${String(offer.itemName || offer.itemId || 'Offer')}</h3>
+                        <p>Status: <span style="color: ${statusColor};">${statusLabel}</span></p>
+                        <span class="item-id">Offer: ${String(offer.offerId || '').substring(0, 24)}</span>
+                        ${offer.buyerAddress ? `<p style="font-size:0.8rem; color:#999; margin-top:4px;">Buyer: ${String(offer.buyerAddress).substring(0, 20)}...</p>` : ''}
+                        ${txidRow}
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
+                        <div style="color:#d4af37; font-weight:600;">${window.__authoFormatOfferUsd ? window.__authoFormatOfferUsd(offer) : '$—'}</div>
+                        <div style="color:#999; font-family: 'Courier New', monospace; font-size:0.85rem;">${Number(offer.sats || 0).toLocaleString()} sats</div>
+                        <div style="color:#777; font-size:0.78rem; max-width: 260px; text-align:right; line-height:1.3;">Paid in sats. USD is an estimate and may vary slightly.</div>
+                        ${isPending ? `
+                            <div style="display:flex; gap:8px; margin-top:8px;">
+                                <button onclick="acceptOffer('${offer.offerId}')" style="background:#4ade80; color:#000; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.85rem;">
+                                    ✓ Accept
+                                </button>
+                                <button onclick="rejectOffer('${offer.offerId}')" style="background:#ef4444; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:600; font-size:0.85rem;">
+                                    ✗ Reject
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        async function acceptOffer(offerId) {
+            if (!confirm('Accept this offer? The buyer will be notified and can proceed with payment.')) return;
+            
+            try {
+                const r = await fetch(`/api/offers/${encodeURIComponent(offerId)}/accept`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    }
+                });
+                
+                const data = await r.json();
+                if (!r.ok) {
+                    alert('Failed to accept offer: ' + (data?.error || 'Unknown error'));
+                    return;
+                }
+                
+                alert('✓ Offer accepted! Buyer can now complete payment.');
+                await loadReceivedOffers();
+            } catch (err) {
+                alert('Error accepting offer: ' + err.message);
+            }
+        }
+
+        async function rejectOffer(offerId) {
+            if (!confirm('Reject this offer? This cannot be undone.')) return;
+            
+            try {
+                const r = await fetch(`/api/offers/${encodeURIComponent(offerId)}/cancel`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    }
+                });
+                
+                const data = await r.json();
+                if (!r.ok) {
+                    alert('Failed to reject offer: ' + (data?.error || 'Unknown error'));
+                    return;
+                }
+                
+                alert('✓ Offer rejected.');
+                await loadReceivedOffers();
+            } catch (err) {
+                alert('Error rejecting offer: ' + err.message);
+            }
+        }
+
+        async function redeemManufacturerInvite() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const codeHex = document.getElementById('manufacturerInviteCode').value.trim();
+            const errorEl = document.getElementById('authError');
+            errorEl.style.display = 'none';
+
+            if (!sessionId) {
+                errorEl.textContent = 'Please sign in first.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (!codeHex) {
+                errorEl.textContent = 'Please enter an invite code.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const r = await fetch('/api/roles/invites/redeem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                body: JSON.stringify({ codeHex, expectedRole: 'manufacturer' })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                errorEl.textContent = data?.error || 'Failed to redeem invite.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            await requireManufacturerAuth();
+        }
+
+        async function submitManufacturerApplication() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const errorEl = document.getElementById('authError');
+            const bannerEl = document.getElementById('manufacturerApplicationBanner');
+            const submitBtn = document.getElementById('manufacturerSubmitApplicationBtn');
+            errorEl.style.display = 'none';
+            if (bannerEl) bannerEl.style.display = 'none';
+
+            if (!sessionId) {
+                errorEl.textContent = 'Please sign in first.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const companyName = document.getElementById('manufacturerCompanyName').value.trim();
+            const contactEmail = document.getElementById('manufacturerContactEmail').value.trim();
+            const website = document.getElementById('manufacturerWebsite').value.trim();
+            const notes = document.getElementById('manufacturerNotes').value.trim();
+
+            try {
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Submitting…';
+                }
+            } catch {}
+
+            const r = await fetch('/api/roles/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                body: JSON.stringify({
+                    requestedRole: 'manufacturer',
+                    companyName: companyName || undefined,
+                    contactEmail: contactEmail || undefined,
+                    website: website || undefined,
+                    notes: notes || undefined,
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                errorEl.textContent = data?.error || 'Failed to submit application.';
+                errorEl.style.display = 'block';
+                try {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit Application';
+                    }
+                } catch {}
+                return;
+            }
+
+            try {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Application';
+                }
+            } catch {}
+
+            const msg = `✅ Application submitted.\n\nApplication ID: ${data.applicationId}\n\nStatus: Waiting for approval.`;
+            if (bannerEl) {
+                bannerEl.textContent = msg;
+                bannerEl.style.display = 'block';
+                try {
+                    bannerEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch {}
+            } else {
+                errorEl.textContent = `Application submitted: ${data.applicationId}. Waiting for approval.`;
+                errorEl.style.display = 'block';
+            }
+        }
+
+        async function recheckManufacturerRole() {
+            await requireManufacturerAuth();
+        }
+
+        async function loginWithPassword() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const totpCode = document.getElementById('loginTotp').value.trim();
+            const loginError = document.getElementById('loginError');
+            
+            loginError.style.display = 'none';
+
+            if (!email || !password) {
+                loginError.textContent = 'Email and password are required';
+                loginError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, totpCode: totpCode || undefined })
+                });
+                const data = await r.json();
+                
+                if (!r.ok) {
+                    if (data.requires2FA) {
+                        document.getElementById('login2faGroup').style.display = 'block';
+                        loginError.textContent = data.error || '2FA code required';
+                        loginError.style.display = 'block';
+                        return;
+                    }
+                    loginError.textContent = data?.error || 'Login failed';
+                    loginError.style.display = 'block';
+                    return;
+                }
+
+                // Store session
+                localStorage.setItem('autho_session_id', data.sessionId);
+
+                try {
+                    if (data.walletVault) {
+                        localStorage.setItem('autho_wallet_vault', JSON.stringify(data.walletVault));
+                    }
+                    const existing = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                    const merged = {
+                        ...existing,
+                        publicKey: String(data.accountId || existing.publicKey || ''),
+                        paymentAddress: String(data.walletAddress || existing.paymentAddress || existing.address || ''),
+                        address: String(data.walletAddress || existing.address || existing.paymentAddress || ''),
+                    };
+                    localStorage.setItem('autho_wallet', JSON.stringify(merged));
+                } catch {}
+                
+                // Reload to check auth
+                await requireManufacturerAuth();
+            } catch (err) {
+                loginError.textContent = 'Network error: ' + err.message;
+                loginError.style.display = 'block';
+            }
+        }
+
+        async function registerNewUser() {
+            const username = document.getElementById('regUsername').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const regError = document.getElementById('regError');
+            const regSuccess = document.getElementById('regSuccess');
+            
+            regError.style.display = 'none';
+            regSuccess.style.display = 'none';
+
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            const bitcoinAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+            const publicKey = String(wallet.publicKey || '').trim();
+
+            let walletVault;
+            try {
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (vaultStr) walletVault = JSON.parse(vaultStr);
+            } catch {}
+
+            if (!username || !email || !password) {
+                regError.textContent = 'Username, email, and password are required';
+                regError.style.display = 'block';
+                return;
+            }
+
+            if (!bitcoinAddress || !publicKey || !walletVault) {
+                regError.textContent = 'Please create or import your wallet first at /m/wallet, then come back here.';
+                regError.style.display = 'block';
+                return;
+            }
+
+            if (password.length < 8) {
+                regError.textContent = 'Password must be at least 8 characters';
+                regError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        email,
+                        bitcoinAddress,
+                        publicKey,
+                        password,
+                        role: 'buyer',
+                        walletVault,
+                    })
+                });
+                const data = await r.json();
+                if (!r.ok) {
+                    regError.textContent = data?.error || 'Registration failed';
+                    regError.style.display = 'block';
+                    return;
+                }
+
+                regSuccess.textContent = '✅ Account created! Now sign in below with your email and password.';
+                regSuccess.style.display = 'block';
+                
+                // Clear form
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regPassword').value = '';
+                
+                // Pre-fill email in login and show login section
+                document.getElementById('loginEmail').value = email;
+                document.getElementById('emailPasswordLogin').style.display = 'block';
+            } catch (err) {
+                regError.textContent = 'Network error: ' + err.message;
+                regError.style.display = 'block';
+            }
+        }
+
+        // Load user configuration
+        function loadConfig() {
+            const storedItems = localStorage.getItem('mintedItems');
+            if (storedItems) {
+                mintedItems = JSON.parse(storedItems);
+                updateStats();
+                displayRecentItems();
+            }
+        }
+
+        async function refreshMintedItemsFromRegistry() {
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            const manufacturerId = String(userConfig.accountId || wallet.publicKey || '').trim();
+            if (!manufacturerId) return;
+
+            try {
+                const r = await fetch(`/api/registry/manufacturer/${encodeURIComponent(manufacturerId)}`, {
+                    headers: {
+                        ...getAuthHeaders(),
+                    }
+                });
+                const data = await r.json();
+                if (!r.ok || !data || data.success !== true || !Array.isArray(data.items)) return;
+
+                const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                const myAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+
+                const next = data.items.map((it) => ({
+                    itemId: String(it.itemId),
+                    name: String(it?.metadata?.itemType || it?.metadata?.name || it.itemId),
+                    description: String(it?.metadata?.description || ''),
+                    serialNumber: '',
+                    category: '',
+                    price: '',
+                    manufacturer: userConfig.name || 'Unknown',
+                    manufacturerId,
+                    currentOwner: String(it.currentOwner || ''),
+                    isOwned: String(it.currentOwner || '').trim() === myAddress,
+                    timestamp: Number(it.registeredAt || Date.now()),
+                    feeTxid: String(it?.feeTxid || ''),
+                    feeBlockHeight: (it?.feeBlockHeight !== undefined && it?.feeBlockHeight !== null) ? Number(it.feeBlockHeight) : undefined,
+                    feeCommitmentHex: String(it?.feeCommitmentHex || ''),
+                    verified: true,
+                }));
+
+                try {
+                    await Promise.all(next.map(async (it) => {
+                        const txid = String(it?.feeTxid || '').trim();
+                        if (!txid) return;
+                        try {
+                            const st = await fetchChainTxStatus(txid);
+                            it.feeConfirmations = Number(st?.confirmations || 0);
+                            it.feeConfirmed = Number(st?.confirmations || 0) >= 6;
+                        } catch {
+                            it.feeConfirmations = 0;
+                            it.feeConfirmed = false;
+                        }
+                    }));
+                } catch {}
+
+                mintedItems = next;
+                localStorage.setItem('mintedItems', JSON.stringify(mintedItems));
+                updateStats();
+                displayRecentItems();
+            } catch {}
+        }
+
+        async function startManufacturerLogin() {
+            const accountId = document.getElementById('authAccountId').value.trim();
+            const errorEl = document.getElementById('authError');
+            errorEl.style.display = 'none';
+
+            if (!accountId) {
+                errorEl.textContent = 'Please enter your Account ID (public key hex).';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const r = await fetch('/api/auth/challenge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accountId })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                errorEl.textContent = data?.error || 'Failed to create login challenge.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            document.getElementById('authChallengeId').value = data.challengeId;
+            document.getElementById('authNonce').value = data.nonce;
+            document.getElementById('challengeGroup').style.display = 'block';
+            document.getElementById('signatureGroup').style.display = 'block';
+            document.getElementById('totpGroup').style.display = 'block';
+            document.getElementById('verifyBtn').style.display = 'inline-flex';
+        }
+
+        async function verifyManufacturerLogin() {
+            const accountId = document.getElementById('authAccountId').value.trim();
+            const challengeId = document.getElementById('authChallengeId').value;
+            const signature = document.getElementById('authSignature').value.trim();
+            const totpCode = document.getElementById('authTotp').value.trim();
+            const errorEl = document.getElementById('authError');
+            errorEl.style.display = 'none';
+
+            if (!challengeId || !signature) {
+                errorEl.textContent = 'Missing challenge or signature.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const r = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challengeId, accountId, signature, totpCode: totpCode || undefined })
+            });
+            const data = await r.json();
+            if (!r.ok || !data.sessionId) {
+                errorEl.textContent = data?.error || 'Login failed.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            localStorage.setItem('autho_session_id', data.sessionId);
+            await requireManufacturerAuth();
+        }
+
+        function updateStats() {
+            document.getElementById('totalItems').textContent = mintedItems.length;
+            document.getElementById('verifiedItems').textContent = mintedItems.filter(i => i.verified).length;
+            document.getElementById('activeProducts').textContent = mintedItems.length;
+        }
+
+        function displayRecentItems() {
+            const container = document.getElementById('recentItems');
+            if (mintedItems.length === 0) {
+                container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No items minted yet. Click "Mint New Item" to get started!</p>';
+                return;
+            }
+
+            container.innerHTML = mintedItems.slice(-5).reverse().map(item => {
+                const ownershipBadge = item.isOwned 
+                    ? '<span style="background: rgba(76, 217, 100, 0.2); color: #4cd964; padding: 4px 10px; border-radius: 5px; font-size: 0.85rem; margin-left: 8px;">✓ Owned</span>'
+                    : '<span style="background: rgba(255, 159, 10, 0.2); color: #ff9f0a; padding: 4px 10px; border-radius: 5px; font-size: 0.85rem; margin-left: 8px;">Sold</span>';
+
+                const pendingSale = window.__authoPendingSaleByItemId && typeof window.__authoPendingSaleByItemId.get === 'function'
+                    ? window.__authoPendingSaleByItemId.get(String(item.itemId))
+                    : null;
+                const saleConfs = pendingSale ? Number(pendingSale.confirmations || 0) : 0;
+                const salePending = Boolean(pendingSale);
+                const canSell = item.isOwned && !(item.feeTxid && item.feeConfirmed === false) && !salePending;
+                
+                return `
+                <div class="item-card">
+                    <div class="item-info">
+                        <h3>${item.name} ${ownershipBadge}</h3>
+                        <p>${item.description || 'No description'}</p>
+                        <span class="item-id">ID: ${item.itemId}</span>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn" onclick="viewItemQR('${item.itemId}')">
+                            📱 View QR
+                        </button>
+                        ${item.isOwned ? `
+                            <button class="btn-sell" onclick="${canSell ? `sellItem('${item.itemId}')` : ''}" style="${(!canSell) ? 'opacity:0.5; cursor:not-allowed;' : ''}">
+                                ${salePending ? `⏳ Sale Pending (${saleConfs}/6)` : ((item.feeTxid && item.feeConfirmed === false) ? `⏳ Pending (${Number(item.feeConfirmations || 0)}/6)` : '💰 Sell This Item')}
+                            </button>
+                        ` : `
+                            <button class="btn btn-secondary" onclick="viewItemHistory('${item.itemId}')" style="opacity: 0.7;">
+                                📜 View History
+                            </button>
+                        `}
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        function getTxExplorerUrl(txid) {
+            const id = String(txid || '').trim();
+            if (!id) return '#';
+            const net = getWalletNetworkName();
+            return net === 'testnet'
+                ? `https://mempool.space/testnet/tx/${encodeURIComponent(id)}`
+                : `https://mempool.space/tx/${encodeURIComponent(id)}`;
+        }
+
+        function copyTxid(txid) {
+            const id = String(txid || '').trim();
+            if (!id) return;
+            try {
+                navigator.clipboard.writeText(id);
+                alert('✅ TXID copied to clipboard!');
+            } catch {
+                alert('Failed to copy TXID');
+            }
+        }
+
+        function openMintModal() {
+            document.getElementById('mintModal').classList.add('active');
+            document.getElementById('mintSuccess').classList.remove('active');
+            document.getElementById('qrCodeDisplay').style.display = 'none';
+            document.getElementById('mintForm').reset();
+            try {
+                const preview = document.getElementById('mintImagesPreview');
+                if (preview) preview.innerHTML = '';
+                const input = document.getElementById('mintImages');
+                if (input) input.value = '';
+            } catch {}
+        }
+
+        function closeMintModal() {
+            document.getElementById('mintModal').classList.remove('active');
+        }
+
+        function viewWallet() {
+            document.getElementById('walletModal').classList.add('active');
+            const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            const address = wallet.paymentAddress || wallet.address || '';
+            document.getElementById('manufacturerWalletAddress').textContent = address || 'No address';
+            try {
+                const qr = document.getElementById('manufacturerReceiveQr');
+                if (qr) {
+                    const uri = address ? `bitcoin:${address}` : '';
+                    qr.src = uri ? `/api/qr.png?text=${encodeURIComponent(uri)}` : '';
+                }
+            } catch {}
+            refreshManufacturerBalance();
+        }
+
+        function closeWalletModal() {
+            document.getElementById('walletModal').classList.remove('active');
+        }
+
+        function copyAddress() {
+            const address = document.getElementById('walletAddress').textContent;
+            navigator.clipboard.writeText(address);
+            alert('✅ Address copied to clipboard!');
+        }
+
+        function copyManufacturerAddress() {
+            const address = document.getElementById('manufacturerWalletAddress').textContent;
+            navigator.clipboard.writeText(address);
+            alert('✅ Address copied to clipboard!');
+        }
+
+        async function refreshManufacturerBalance() {
+            const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            const address = wallet.paymentAddress || wallet.address;
+            if (!address) return;
+
+            try {
+                const addrResp = await fetch(`/api/chain/address/${encodeURIComponent(String(address))}`, { cache: 'no-store' });
+                const addrJson = await addrResp.json().catch(() => ({}));
+                if (!addrResp.ok) throw new Error(String(addrJson?.error || `HTTP ${addrResp.status}`));
+
+                const confirmedSats = Number(addrJson?.chain_stats?.funded_txo_sum || 0) - Number(addrJson?.chain_stats?.spent_txo_sum || 0);
+                const unconfirmedSats = Number(addrJson?.mempool_stats?.funded_txo_sum || 0) - Number(addrJson?.mempool_stats?.spent_txo_sum || 0);
+                const totalSats = Number(confirmedSats || 0) + Number(unconfirmedSats || 0);
+
+                const utxoResp = await fetch(`/api/chain/address/${encodeURIComponent(String(address))}/utxo`, { cache: 'no-store' });
+                const utxos = await utxoResp.json().catch(() => ([]));
+                const confirmedUtxos = (Array.isArray(utxos) ? utxos : []).filter(u => u?.status?.confirmed === true);
+
+                manufacturerConfirmedSats = Number(confirmedSats || 0);
+                manufacturerConfirmedUtxos = confirmedUtxos
+                    .filter((u) => u && u.txid && Number.isFinite(Number(u.vout)) && Number.isFinite(Number(u.value)))
+                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+
+                const fmt = (sats) => {
+                    const btc = Number(sats) / 1e8;
+                    return btc.toFixed(8) + ' BTC';
+                };
+
+                document.getElementById('manufacturerBtcBalance').textContent = fmt(totalSats);
+                const cEl = document.getElementById('manufacturerBtcConfirmed');
+                const uEl = document.getElementById('manufacturerBtcUnconfirmed');
+                if (cEl) cEl.textContent = fmt(confirmedSats);
+                if (uEl) uEl.textContent = fmt(unconfirmedSats);
+
+                try {
+                    await updateManufacturerFeeEstimate();
+                } catch {}
+
+                try {
+                    const rateResp = await fetch('https://blockchain.info/ticker');
+                    const rates = await rateResp.json();
+                    const usdRate = rates?.USD?.last || 0;
+                    const usdValue = (totalSats / 1e8) * usdRate;
+                    document.getElementById('manufacturerUsdBalance').textContent = `$${usdValue.toFixed(2)} USD`;
+                } catch {}
+            } catch (err) {
+                console.error('Balance refresh failed:', err);
+            }
+        }
+
+        function getFeeSpeedFromPriority(priority) {
+            const p = String(priority || 'low');
+            if (p === 'high') return 'fast';
+            if (p === 'medium') return 'normal';
+            return 'economy';
+        }
+
+        async function getManufacturerFeeRateSatPerVb() {
+            const priority = String(manufacturerFeePriority || 'low');
+            const speed = getFeeSpeedFromPriority(priority);
+
+            if (priority === 'custom') {
+                const raw = String(document.getElementById('manufacturerSendFeeRateCustom')?.value || '').trim();
+                const parsed = Number(raw);
+                if (Number.isFinite(parsed) && parsed > 0) {
+                    manufacturerLastFeeRate = Math.max(0.6, Math.min(500, parsed));
+                    return manufacturerLastFeeRate;
+                }
+                manufacturerLastFeeRate = Math.max(0.6, Number(manufacturerLastFeeRate || 1));
+                return manufacturerLastFeeRate;
+            }
+
+            try {
+                const network = getWalletNetworkName();
+                const base = network === 'testnet' ? 'https://mempool.space/testnet/api' : 'https://mempool.space/api';
+                const rec = await fetch(`${base}/v1/fees/recommended`, { cache: 'no-store' }).then(r => r.json());
+
+                let picked = 0;
+                if (priority === 'nopriority') {
+                    picked = Number(rec?.minimumFee ?? rec?.economyFee ?? rec?.hourFee);
+                } else if (speed === 'fast') {
+                    picked = Number(rec?.fastestFee ?? rec?.halfHourFee ?? rec?.hourFee);
+                } else if (speed === 'normal') {
+                    picked = Number(rec?.hourFee ?? rec?.halfHourFee ?? rec?.economyFee);
+                } else {
+                    picked = Number(rec?.economyFee ?? rec?.minimumFee ?? rec?.hourFee);
+                }
+
+                if (Number.isFinite(picked) && picked > 0) {
+                    manufacturerLastFeeRate = Math.max(0.6, Math.min(500, picked));
+                    return manufacturerLastFeeRate;
+                }
+            } catch {}
+
+            manufacturerLastFeeRate = Math.max(0.6, Number(manufacturerLastFeeRate || 1));
+            return manufacturerLastFeeRate;
+        }
+
+        function formatSatPerVb(rate) {
+            const r = Number(rate);
+            if (!Number.isFinite(r) || r <= 0) return '1';
+            if (r < 1) return r.toFixed(1);
+            if (r < 10) return r.toFixed(1);
+            return r.toFixed(0);
+        }
+
+        function parseSatsFromInput(rawValue) {
+            const raw = String(rawValue ?? '').trim();
+            if (!raw) return 0;
+
+            // If a user pastes BTC-style decimals (e.g. 0.00054), convert to sats.
+            if (raw.includes('.') || raw.toLowerCase().includes('e')) {
+                const f = Number(raw);
+                if (!Number.isFinite(f) || f <= 0) return 0;
+                // If it's smaller than 1 BTC, treat as BTC.
+                if (f < 1) {
+                    return Math.floor(f * 1e8);
+                }
+                // Otherwise it's ambiguous; reject decimals.
+                throw new Error('Amount must be an integer number of sats (no decimals).');
+            }
+
+            const n = Number(raw);
+            if (!Number.isFinite(n) || n <= 0) return 0;
+            return Math.floor(n);
+        }
+
+        function bytesToHex(bytes) {
+            const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+            let out = '';
+            for (let i = 0; i < b.length; i++) {
+                out += b[i].toString(16).padStart(2, '0');
+            }
+            return out;
+        }
+
+        function bytesToB64(bytes) {
+            const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+            let bin = '';
+            const chunk = 0x8000;
+            for (let i = 0; i < b.length; i += chunk) {
+                bin += String.fromCharCode.apply(null, Array.from(b.subarray(i, i + chunk)));
+            }
+            return btoa(bin);
+        }
+
+        async function sha256HexFromBytes(bytes) {
+            const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+            const digest = await crypto.subtle.digest('SHA-256', b);
+            return bytesToHex(new Uint8Array(digest));
+        }
+
+        function stableStringify(value) {
+            const seen = new WeakSet();
+            const helper = (v) => {
+                if (v === null || v === undefined) return v;
+                const t = typeof v;
+                if (t === 'number' || t === 'string' || t === 'boolean') return v;
+                if (t !== 'object') return String(v);
+                if (seen.has(v)) return '[Circular]';
+                seen.add(v);
+                if (Array.isArray(v)) return v.map(helper);
+                const out = {};
+                const keys = Object.keys(v).sort();
+                for (const k of keys) {
+                    const vv = v[k];
+                    if (vv === undefined) continue;
+                    out[k] = helper(vv);
+                }
+                return out;
+            };
+            return JSON.stringify(helper(value));
+        }
+
+        async function sha256HexFromUtf8(text) {
+            const enc = new TextEncoder();
+            return sha256HexFromBytes(enc.encode(String(text || '')));
+        }
+
+        function opReturnScriptHexFromDataHex(dataHex) {
+            const h = String(dataHex || '').trim().toLowerCase();
+            if (!/^[0-9a-f]+$/.test(h) || (h.length % 2 !== 0)) throw new Error('Invalid commitment hex');
+            const byteLen = h.length / 2;
+            if (byteLen > 75) throw new Error('Commitment too large for simple OP_RETURN');
+            return '6a' + byteLen.toString(16).padStart(2, '0') + h;
+        }
+
+        async function fetchChainTxStatus(txid) {
+            const r = await fetch(`/api/chain/tx/${encodeURIComponent(String(txid))}/status`, { cache: 'no-store' });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j || j.ok !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+            return j;
+        }
+
+        async function broadcastTxHexViaApi(txHex) {
+            const r = await fetch('/api/chain/tx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ txHex }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j || j.success !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+            return String(j.txid || '').trim();
+        }
+
+        async function waitForConfirmations(txid, requiredConfirmations, onUpdate) {
+            const target = Number(requiredConfirmations || 6);
+            let delayMs = 15_000;
+            for (;;) {
+                const st = await fetchChainTxStatus(txid);
+                const conf = Number(st?.confirmations || 0);
+                const bh = st?.blockHeight;
+                try { if (typeof onUpdate === 'function') onUpdate({ confirmations: conf, blockHeight: bh, confirmed: !!st?.confirmed }); } catch {}
+                if (conf >= target) return st;
+                await new Promise(r => setTimeout(r, delayMs));
+                delayMs = Math.min(60_000, Math.floor(delayMs * 1.2));
+            }
+        }
+
+        function canvasToBlob(canvas, mime, quality) {
+            return new Promise((resolve) => {
+                try {
+                    canvas.toBlob((blob) => resolve(blob), mime, quality);
+                } catch {
+                    resolve(null);
+                }
+            });
+        }
+
+        async function fileToLedgerImage(file) {
+            const MAX_BYTES = 80_000;
+            const targetMimes = ['image/webp'];
+            const sizes = [360, 300, 240];
+            const qualities = [0.72, 0.62, 0.52, 0.42];
+
+            let bitmap;
+            try {
+                bitmap = await createImageBitmap(file);
+            } catch {
+                const url = URL.createObjectURL(file);
+                try {
+                    const img = new Image();
+                    img.decoding = 'async';
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = url;
+                    });
+                    bitmap = await createImageBitmap(img);
+                } finally {
+                    try { URL.revokeObjectURL(url); } catch {}
+                }
+            }
+
+            if (!bitmap) throw new Error('Failed to decode image');
+
+            for (const maxDim of sizes) {
+                const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+                const w = Math.max(1, Math.round(bitmap.width * scale));
+                const h = Math.max(1, Math.round(bitmap.height * scale));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) throw new Error('Canvas not supported');
+                ctx.drawImage(bitmap, 0, 0, w, h);
+
+                for (const mime of targetMimes) {
+                    for (const q of qualities) {
+                        const blob = await canvasToBlob(canvas, mime, q);
+                        if (!blob) continue;
+                        if (blob.size > MAX_BYTES) continue;
+                        const buf = new Uint8Array(await blob.arrayBuffer());
+                        const sha256Hex = await sha256HexFromBytes(buf);
+                        return {
+                            mime,
+                            dataB64: bytesToB64(buf),
+                            sha256Hex,
+                            w,
+                            h,
+                            _previewUrl: URL.createObjectURL(blob),
+                        };
+                    }
+                }
+            }
+
+            throw new Error('Image too large. Please choose a smaller photo.');
+        }
+
+        async function buildLedgerImagesFromFiles(files) {
+            const out = [];
+            const arr = Array.isArray(files) ? files : [];
+            for (let i = 0; i < arr.length; i++) {
+                const f = arr[i];
+                if (!f) continue;
+                const img = await fileToLedgerImage(f);
+                out.push({ mime: img.mime, dataB64: img.dataB64, sha256Hex: img.sha256Hex, w: img.w, h: img.h });
+            }
+            return out;
+        }
+
+        async function updateMintImagesPreview() {
+            const preview = document.getElementById('mintImagesPreview');
+            const input = document.getElementById('mintImages');
+            if (!preview || !input) return;
+
+            preview.innerHTML = '';
+
+            const files = Array.from(input.files || []);
+            if (files.length === 0) return;
+            if (files.length > 3) {
+                preview.innerHTML = '<div style="color:#ff6b6b;">You can only attach up to 3 images.</div>';
+                return;
+            }
+
+            try {
+                for (const f of files) {
+                    const thumb = await fileToLedgerImage(f);
+                    const img = document.createElement('img');
+                    img.src = thumb._previewUrl;
+                    img.style.width = '96px';
+                    img.style.height = '96px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '10px';
+                    img.style.border = '1px solid rgba(212, 175, 55, 0.35)';
+                    preview.appendChild(img);
+                }
+            } catch (e) {
+                preview.innerHTML = `<div style="color:#ff6b6b;">${String(e?.message || e || 'Failed to process images')}</div>`;
+            }
+        }
+
+        try {
+            document.getElementById('mintImages')?.addEventListener('change', () => {
+                try { updateMintImagesPreview(); } catch {}
+            });
+        } catch {}
+
+        function estimateFeeInfoForSpend(utxos, amountSats, feeRateSatPerVb) {
+            // Fee rate can be fractional; fee sats must still be integer.
+            const rate = Math.max(0.1, Number(feeRateSatPerVb || 1));
+            const sorted = (Array.isArray(utxos) ? utxos : []).slice().sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
+
+            let needed = Math.max(0, Math.floor(Number(amountSats || 0)));
+            let inCount = 0;
+            let selectedTotal = 0;
+            let fee = 0;
+            let vbytes = 10 + (68 * 1) + (31 * 2);
+
+            for (let i = 0; i < sorted.length; i++) {
+                inCount++;
+                selectedTotal += Number(sorted[i].value || 0);
+                // Rough vbytes: p2wpkh input ~68 vB, output ~31 vB.
+                vbytes = 10 + (68 * inCount) + (31 * 2);
+                fee = Math.max(0, Math.ceil(vbytes * rate));
+
+                if (selectedTotal >= needed + fee) {
+                    return { feeSats: fee, inputCount: inCount, vbytes };
+                }
+            }
+
+            // fallback
+            vbytes = 10 + (68 * Math.max(1, inCount)) + (31 * 2);
+            fee = Math.max(0, Math.ceil(vbytes * rate));
+            return { feeSats: fee, inputCount: Math.max(1, inCount), vbytes };
+        }
+
+        function estimateFeeSatsForSpend(utxos, amountSats, feeRateSatPerVb) {
+            return estimateFeeInfoForSpend(utxos, amountSats, feeRateSatPerVb).feeSats;
+        }
+
+        async function updateManufacturerFeeEstimate() {
+            const feeEl = document.getElementById('manufacturerSendFeeInfo');
+            if (!feeEl) return;
+
+            const feeRate = await getManufacturerFeeRateSatPerVb();
+            let amountSats = 0;
+            try {
+                amountSats = parseSatsFromInput(document.getElementById('manufacturerSendAmountSats')?.value || '');
+            } catch {
+                amountSats = 0;
+            }
+            const info = estimateFeeInfoForSpend(
+                manufacturerConfirmedUtxos,
+                amountSats || Math.min(10000, manufacturerConfirmedSats),
+                feeRate
+            );
+            const safetyBuffer = Math.max(0, Math.min(100, Math.floor(Number(manufacturerConfirmedSats || 0) * 0.001)));
+            feeEl.textContent = `Fee: ${String(manufacturerFeePriority)} (~${formatSatPerVb(feeRate)} sat/vB | ~${Number(info.feeSats).toLocaleString()} sats | buffer: ${Number(safetyBuffer).toLocaleString()} sats | ~${Math.round(info.vbytes)} vB | inputs: ${info.inputCount} | assumes change)`;
+        }
+
+        async function updateManufacturerFeePriority() {
+            const sel = document.getElementById('manufacturerSendFeePriority');
+            const custom = document.getElementById('manufacturerSendFeeRateCustom');
+            manufacturerFeePriority = String(sel?.value || 'low');
+
+            try {
+                if (custom) custom.style.display = manufacturerFeePriority === 'custom' ? 'block' : 'none';
+            } catch {}
+
+            try {
+                manufacturerLastFeeRate = await getManufacturerFeeRateSatPerVb();
+            } catch {}
+            try {
+                await updateManufacturerFeeEstimate();
+            } catch {}
+        }
+
+        async function fillManufacturerSendMax() {
+            const input = document.getElementById('manufacturerSendAmountSats');
+            if (!input) return;
+
+            const feeRate = await getManufacturerFeeRateSatPerVb();
+            // Estimate fee to sweep confirmed funds with ~2 outputs.
+            const feeEstimate = estimateFeeSatsForSpend(manufacturerConfirmedUtxos, manufacturerConfirmedSats, feeRate);
+            // Small safety buffer so "Send Max" doesn't fail if fee rate moves slightly.
+            // Keep this small; it's not part of miner fee.
+            const safetyBuffer = Math.max(0, Math.min(100, Math.floor(Number(manufacturerConfirmedSats || 0) * 0.001)));
+            const max = Math.max(0, Math.floor(Number(manufacturerConfirmedSats || 0) - feeEstimate - safetyBuffer));
+            input.value = String(max);
+
+            try {
+                await updateManufacturerFeeEstimate();
+            } catch {}
+        }
+
+        function bytesFromB64(b64) {
+            return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        }
+
+        async function deriveVaultKey(password, saltBytes, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(String(password)),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptWalletVault(walletVault, password) {
+            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+                throw new Error('Unsupported wallet vault format');
+            }
+            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+            const iterations = Number(walletVault.kdf?.iterations || 0);
+            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            const json = new TextDecoder().decode(pt);
+            return JSON.parse(json);
+        }
+
+        async function sendManufacturerBtc() {
+            const statusEl = document.getElementById('manufacturerSendStatus');
+            const setStatus = (t) => {
+                if (statusEl) statusEl.textContent = t;
+            };
+
+            try {
+                const toAddress = String(document.getElementById('manufacturerSendToAddress').value || '').trim();
+                let amountSats;
+                try {
+                    amountSats = parseSatsFromInput(document.getElementById('manufacturerSendAmountSats').value || '');
+                } catch (e) {
+                    alert(e?.message || 'Invalid amount');
+                    setStatus('');
+                    return;
+                }
+
+                // If input was BTC-style decimals, reflect as sats.
+                try {
+                    const raw = String(document.getElementById('manufacturerSendAmountSats').value || '').trim();
+                    if (raw.includes('.') || raw.toLowerCase().includes('e')) {
+                        document.getElementById('manufacturerSendAmountSats').value = String(amountSats);
+                    }
+                } catch {}
+
+                if (!toAddress) {
+                    alert('Enter recipient address');
+                    return;
+                }
+
+                if (!Number.isFinite(amountSats) || amountSats <= 0) {
+                    alert('Enter a valid amount in sats');
+                    setStatus('');
+                    return;
+                }
+
+                const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                const fromAddress = wallet.paymentAddress || wallet.address;
+                if (!fromAddress) {
+                    alert('No wallet address');
+                    return;
+                }
+
+                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+                    alert('Signing library not loaded');
+                    return;
+                }
+
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (!vaultStr) {
+                    alert('No encrypted wallet vault found. Please sign in again.');
+                    return;
+                }
+
+                let vault;
+                try {
+                    vault = JSON.parse(vaultStr);
+                } catch {
+                    alert('Wallet vault is corrupted. Please sign in again.');
+                    return;
+                }
+
+                const getSecret = (attempt) => {
+                    const label = attempt > 1
+                        ? 'Unlock failed. Enter your wallet passcode again (this is the 6+ character passcode you set in /m/wallet):'
+                        : 'Enter your wallet passcode to unlock and send BTC:';
+                    return prompt(label);
+                };
+
+                const secret1 = getSecret(1);
+                if (!secret1) return;
+
+                setStatus('Fetching UTXOs...');
+                const withChainProvider = async (fn) => {
+                    const bases = ['https://blockstream.info/api', 'https://mempool.space/api'];
+                    for (const base of bases) {
+                        try {
+                            return await fn(base);
+                        } catch {}
+                    }
+                    throw new Error('All chain providers failed');
+                };
+
+                const fetchJson = async (url) => {
+                    const r = await fetch(url);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return await r.json();
+                };
+
+                const broadcastTx = async (base, txHex) => {
+                    const r = await fetch(`${base}/tx`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: txHex
+                    });
+                    if (!r.ok) throw new Error(`Broadcast failed: ${r.status}`);
+                    return await r.text();
+                };
+
+                const utxosRaw = await withChainProvider((base) => fetchJson(`${base}/address/${fromAddress}/utxo`));
+                const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+                const spendable = utxos
+                    .filter((u) => u && u.txid && (u.status?.confirmed === true))
+                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+
+                if (spendable.length === 0) {
+                    alert('No confirmed funds available to spend yet.');
+                    setStatus('');
+                    return;
+                }
+
+                setStatus('Getting fee estimates...');
+
+                const getRecommendedFeeRate = async () => {
+                    manufacturerLastFeeRate = await getManufacturerFeeRateSatPerVb();
+                    return manufacturerLastFeeRate;
+                };
+
+                const feeRate = await getRecommendedFeeRate();
+                try {
+                    manufacturerLastFeeRate = Number(feeRate || manufacturerLastFeeRate || 1);
+                    const feeEl = document.getElementById('manufacturerSendFeeInfo');
+                    if (feeEl) {
+                        const info = estimateFeeInfoForSpend(spendable, amountSats, feeRate);
+                        const safetyBuffer = Math.max(0, Math.min(100, Math.floor(Number(manufacturerConfirmedSats || 0) * 0.001)));
+                        feeEl.textContent = `Fee: ${String(manufacturerFeePriority)} (~${formatSatPerVb(feeRate)} sat/vB | ~${Number(info.feeSats).toLocaleString()} sats | buffer: ${Number(safetyBuffer).toLocaleString()} sats | ~${Math.round(info.vbytes)} vB | inputs: ${info.inputCount} | assumes change)`;
+                    }
+                } catch {}
+
+                setStatus('Unlocking vault...');
+                let payload;
+                try {
+                    payload = await decryptWalletVault(vault, secret1);
+                } catch {
+                    const secret2 = getSecret(2);
+                    if (!secret2) {
+                        setStatus('');
+                        return;
+                    }
+                    try {
+                        payload = await decryptWalletVault(vault, secret2);
+                    } catch {
+                        alert('Failed to decrypt wallet vault. Incorrect passcode.');
+                        setStatus('');
+                        return;
+                    }
+                }
+
+                const mnemonic = String(payload?.mnemonic || '');
+                if (!mnemonic) {
+                    alert('Mnemonic missing in vault');
+                    setStatus('');
+                    return;
+                }
+
+                setStatus('Signing transaction locally...');
+                const network = getWalletNetworkName();
+                const signed = window.AuthoBTC.buildAndSignP2WPKH({
+                    mnemonic,
+                    toAddress,
+                    amountSats,
+                    utxos: spendable,
+                    feeRateSatPerVb: feeRate,
+                    network,
+                });
+
+                setStatus('Broadcasting...');
+                const txid = await withChainProvider((base) => broadcastTx(base, signed.txHex));
+                setStatus(`✓ Sent! TXID: ${txid.substring(0, 16)}...`);
+
+                document.getElementById('manufacturerSendToAddress').value = '';
+                document.getElementById('manufacturerSendAmountSats').value = '';
+
+                setTimeout(() => refreshManufacturerBalance(), 2000);
+            } catch (e) {
+                alert('Send failed: ' + (e?.message || String(e)));
+                setStatus('');
+            }
+        }
+
+        try {
+            document.getElementById('manufacturerSendAmountSats')?.addEventListener('input', () => {
+                try { updateManufacturerFeeEstimate(); } catch {}
+            });
+        } catch {}
+
+        try {
+            document.getElementById('manufacturerSendFeeRateCustom')?.addEventListener('input', () => {
+                try { updateManufacturerFeePriority(); } catch {}
+            });
+        } catch {}
+
+        async function mintItem(event) {
+            event.preventDefault();
+
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            const manufacturerId = String(userConfig.accountId || wallet.publicKey || '').trim();
+            const initialOwner = String(wallet.paymentAddress || wallet.address || '').trim();
+            if (!manufacturerId || !initialOwner) {
+                alert('Missing wallet info. Please sign in again and ensure your wallet is set up.');
+                return;
+            }
+            
+            const itemData = {
+                serialNumber: document.getElementById('serialNumber').value,
+                itemType: document.getElementById('productName').value,
+                description: document.getElementById('productDescription').value,
+                manufacturerId: manufacturerId,
+                category: document.getElementById('category').value,
+                price: document.getElementById('price').value
+            };
+
+            if (!String(itemData.serialNumber || '').trim()) {
+                alert('Serial Number is required');
+                document.getElementById('mintBtn').textContent = '⚡ Mint Item (1,000 sats)';
+                document.getElementById('mintBtn').disabled = false;
+                return;
+            }
+
+            // Disable button
+            document.getElementById('mintBtn').textContent = '⏳ Registering...';
+            document.getElementById('mintBtn').disabled = true;
+
+            try {
+                let images = undefined;
+                try {
+                    const input = document.getElementById('mintImages');
+                    const files = Array.from(input?.files || []);
+                    if (files.length > 3) {
+                        throw new Error('You can only attach up to 3 images.');
+                    }
+                    if (files.length > 0) {
+                        images = await buildLedgerImagesFromFiles(files);
+                    }
+                } catch (e) {
+                    throw new Error(String(e?.message || e || 'Failed to process images'));
+                }
+
+                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+                    throw new Error('Signing library not loaded');
+                }
+
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (!vaultStr) {
+                    throw new Error('No encrypted wallet vault found. Please sign in again.');
+                }
+
+                let vault;
+                try {
+                    vault = JSON.parse(vaultStr);
+                } catch {
+                    throw new Error('Wallet vault is corrupted. Please sign in again.');
+                }
+
+                const getSecret = (attempt) => {
+                    const label = attempt > 1
+                        ? 'Unlock failed. Enter your wallet passcode again:'
+                        : 'Enter your wallet passcode to pay the mint fee:';
+                    return prompt(label);
+                };
+
+                const secret1 = getSecret(1);
+                if (!secret1) throw new Error('Wallet unlock cancelled');
+
+                let walletPayload;
+                try {
+                    walletPayload = await decryptWalletVault(vault, secret1);
+                } catch {
+                    const secret2 = getSecret(2);
+                    if (!secret2) throw new Error('Wallet unlock cancelled');
+                    walletPayload = await decryptWalletVault(vault, secret2);
+                }
+
+                const mnemonic = String(walletPayload?.mnemonic || '').trim();
+                if (!mnemonic) throw new Error('Mnemonic missing in vault');
+
+                const descriptionForMetadata = String(itemData.description || '').trim() || String(itemData.itemType || '').trim();
+                const manufacturerSignature = 'sig_' + Date.now();
+                const requestBody = {
+                    manufacturerId,
+                    serialNumber: String(itemData.serialNumber || ''),
+                    metadata: {
+                        itemType: String(itemData.itemType || ''),
+                        description: descriptionForMetadata,
+                        manufacturingDate: Date.now(),
+                        images: images && Array.isArray(images) && images.length > 0 ? images : undefined,
+                    },
+                    initialOwner,
+                    manufacturerSignature,
+                };
+
+                const commitmentPreimage = stableStringify({ type: 'ITEM_REGISTERED', payload: requestBody });
+                const feeCommitmentHex = await sha256HexFromUtf8(commitmentPreimage);
+
+                const feeAddress = '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U';
+                const feeAmountSats = 1000;
+
+                const utxosRaw = await fetch(`/api/chain/address/${encodeURIComponent(initialOwner)}/utxo`, { cache: 'no-store' }).then(r => r.json());
+                const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+                const spendable = utxos
+                    .filter((u) => u && u.txid && (u.status?.confirmed === true))
+                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+
+                if (spendable.length === 0) {
+                    throw new Error('No confirmed funds available to pay the mint fee yet.');
+                }
+
+                document.getElementById('mintBtn').textContent = '⏳ Signing fee transaction...';
+
+                const feeRate = await getManufacturerFeeRateSatPerVb();
+                const opReturnScriptHex = opReturnScriptHexFromDataHex(feeCommitmentHex);
+                const signedFee = window.AuthoBTC.buildAndSignP2WPKH({
+                    mnemonic,
+                    outputs: [
+                        { address: feeAddress, amountSats: feeAmountSats },
+                        { scriptHex: opReturnScriptHex, amountSats: 0 },
+                    ],
+                    utxos: spendable,
+                    feeRateSatPerVb: feeRate,
+                    changeAddress: initialOwner,
+                    network: getWalletNetworkName(),
+                });
+
+                document.getElementById('mintBtn').textContent = '⏳ Broadcasting fee transaction...';
+                const feeTxid = await broadcastTxHexViaApi(signedFee.txHex);
+
+                const submitOnce = async () => {
+                    const response = await fetch('/api/registry/item', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...getAuthHeaders(),
+                        },
+                        body: JSON.stringify({
+                            ...requestBody,
+                            feeTxid,
+                            feeCommitmentHex,
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    return { response, data };
+                };
+
+                let submitResult = await submitOnce();
+                if (submitResult.response.status === 409) {
+                    await waitForConfirmations(feeTxid, 6, (st) => {
+                        document.getElementById('mintBtn').textContent = `⏳ Waiting confirmations (${Number(st.confirmations || 0)}/6)...`;
+                    });
+                    submitResult = await submitOnce();
+                }
+
+                if (!submitResult.response.ok) {
+                    throw new Error(String(submitResult.data?.error || submitResult.data?.message || `Failed to register item (HTTP ${submitResult.response.status})`));
+                }
+
+                const result = submitResult.data;
+                const itemRecord = result && result.itemRecord ? result.itemRecord : null;
+                const itemId = String(itemRecord?.itemId || '');
+                if (!itemId) {
+                    throw new Error('Failed to register item');
+                }
+
+                const localItem = {
+                    itemId,
+                    name: itemData.itemType,
+                    description: itemData.description,
+                    serialNumber: itemData.serialNumber,
+                    category: itemData.category,
+                    price: itemData.price,
+                    manufacturer: userConfig.name || 'Unknown',
+                    manufacturerId,
+                    timestamp: Date.now(),
+                    verified: true,
+                    feeTxid,
+                    feeCommitmentHex,
+                    feeConfirmations: 6,
+                    feeConfirmed: true,
+                    isOwned: true,
+                };
+
+                mintedItems.push(localItem);
+                localStorage.setItem('mintedItems', JSON.stringify(mintedItems));
+
+                try {
+                    await refreshMintedItemsFromRegistry();
+                } catch {}
+
+                const qrCanvas = document.getElementById('qrCanvas');
+                await QRCode.toCanvas(qrCanvas, itemId, {
+                    width: 300,
+                    margin: 2,
+                    color: {
+                        dark: '#667eea',
+                        light: '#ffffff'
+                    }
+                });
+
+                document.getElementById('generatedItemId').textContent = itemId;
+                document.getElementById('mintSuccess').classList.add('active');
+                document.getElementById('qrCodeDisplay').style.display = 'block';
+                document.getElementById('mintBtn').textContent = '✅ Item Registered!';
+
+                updateStats();
+                displayRecentItems();
+
+                setTimeout(() => {
+                    document.getElementById('mintBtn').textContent = '⚡ Mint Item (1,000 sats)';
+                    document.getElementById('mintBtn').disabled = false;
+                }, 3000);
+
+                return;
+
+            } catch (error) {
+                console.error('Error registering item:', error);
+                alert('Failed to register item: ' + error.message);
+                document.getElementById('mintBtn').textContent = '⚡ Mint Item (1,000 sats)';
+                document.getElementById('mintBtn').disabled = false;
+            }
+        }
+
+        function downloadQR() {
+            const canvas = document.getElementById('qrCanvas');
+            const url = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `item-qr-${document.getElementById('generatedItemId').textContent}.png`;
+            link.href = url;
+            link.click();
+        }
+
+        function viewItemQR(itemId) {
+            const item = mintedItems.find(i => i.itemId === itemId);
+            if (item) {
+                openMintModal();
+                document.getElementById('productName').value = item.name;
+                document.getElementById('productDescription').value = item.description || '';
+                document.getElementById('serialNumber').value = item.serialNumber || '';
+                document.getElementById('category').value = item.category || 'other';
+                document.getElementById('price').value = item.price || '';
+                
+                const qrCanvas = document.getElementById('qrCanvas');
+                QRCode.toCanvas(qrCanvas, itemId, {
+                    width: 300,
+                    margin: 2,
+                    color: {
+                        dark: '#667eea',
+                        light: '#ffffff'
+                    }
+                });
+                
+                document.getElementById('generatedItemId').textContent = itemId;
+                document.getElementById('qrCodeDisplay').style.display = 'block';
+                document.getElementById('mintBtn').style.display = 'none';
+            }
+        }
+
+        function viewInventory() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 900px;">
+                    <div class="modal-header">
+                        <h2>📋 Full Inventory - All Minted Items</h2>
+                        <button class="close-btn" onclick="this.closest('.modal').remove()">&times;</button>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <p style="color: #999; font-size: 0.9rem;">
+                            Showing all items you've minted, including those you've sold. You are the manufacturer of record.
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button class="btn btn-secondary" onclick="filterInventory('all', this)" style="background: rgba(212, 175, 55, 0.3);">
+                            All (${mintedItems.length})
+                        </button>
+                        <button class="btn btn-secondary" onclick="filterInventory('owned', this)">
+                            Owned (${mintedItems.filter(i => i.isOwned).length})
+                        </button>
+                        <button class="btn btn-secondary" onclick="filterInventory('sold', this)">
+                            Sold (${mintedItems.filter(i => !i.isOwned).length})
+                        </button>
+                    </div>
+                    <div id="inventoryList" style="max-height: 500px; overflow-y: auto;">
+                        ${displayAllItems(mintedItems)}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function displayAllItems(items) {
+            if (items.length === 0) {
+                return '<p style="color: #666; text-align: center; padding: 40px;">No items found.</p>';
+            }
+
+            return items.map(item => {
+                const ownershipBadge = item.isOwned 
+                    ? '<span style="background: rgba(76, 217, 100, 0.2); color: #4cd964; padding: 4px 10px; border-radius: 5px; font-size: 0.85rem;">✓ Owned</span>'
+                    : '<span style="background: rgba(255, 159, 10, 0.2); color: #ff9f0a; padding: 4px 10px; border-radius: 5px; font-size: 0.85rem;">Sold</span>';
+
+                const pendingSale = window.__authoPendingSaleByItemId && typeof window.__authoPendingSaleByItemId.get === 'function'
+                    ? window.__authoPendingSaleByItemId.get(String(item.itemId))
+                    : null;
+                const saleConfs = pendingSale ? Number(pendingSale.confirmations || 0) : 0;
+                const salePending = Boolean(pendingSale);
+                const canSell = item.isOwned && !(item.feeTxid && item.feeConfirmed === false) && !salePending;
+                
+                return `
+                <div class="item-card" style="margin-bottom: 15px;">
+                    <div class="item-info">
+                        <h3>${item.name} ${ownershipBadge}</h3>
+                        <p>${item.description || 'No description'}</p>
+                        <span class="item-id">ID: ${item.itemId}</span>
+                        <p style="font-size: 0.85rem; color: #999; margin-top: 4px;">
+                            Minted: ${new Date(item.timestamp).toLocaleDateString()}
+                        </p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn" onclick="viewItemQR('${item.itemId}')">
+                            📱 View QR
+                        </button>
+                        ${item.isOwned ? `
+                            <button class="btn-sell" onclick="${canSell ? `sellItem('${item.itemId}'); this.closest('.modal').remove();` : ''}" style="${(!canSell) ? 'opacity:0.5; cursor:not-allowed;' : ''}">
+                                ${salePending ? `⏳ Sale Pending (${saleConfs}/6)` : ((item.feeTxid && item.feeConfirmed === false) ? `⏳ Pending (${Number(item.feeConfirmations || 0)}/6)` : '💰 Sell This Item')}
+                            </button>
+                        ` : `
+                            <button class="btn btn-secondary" onclick="viewItemHistory('${item.itemId}')" style="opacity: 0.7;">
+                                📜 View History
+                            </button>
+                        `}
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        function filterInventory(filter, btn) {
+            const buttons = btn.parentElement.querySelectorAll('button');
+            buttons.forEach(b => b.style.background = '');
+            btn.style.background = 'rgba(212, 175, 55, 0.3)';
+
+            let filtered = mintedItems;
+            if (filter === 'owned') {
+                filtered = mintedItems.filter(i => i.isOwned);
+            } else if (filter === 'sold') {
+                filtered = mintedItems.filter(i => !i.isOwned);
+            }
+
+            document.getElementById('inventoryList').innerHTML = displayAllItems(filtered);
+        }
+
+        function viewItemHistory(itemId) {
+            window.open(`/verify?id=${encodeURIComponent(itemId)}`, '_blank');
+        }
+
+        function sellItem(itemId) {
+            const item = mintedItems.find(i => i.itemId === itemId);
+            if (item && item.feeTxid && item.feeConfirmed === false) {
+                alert(`This item is still pending mainnet confirmations (${Number(item.feeConfirmations || 0)}/6). Selling is disabled until finalized.`);
+                return;
+            }
+            // Redirect to create offer page with item ID
+            window.location.href = `/create-offer.html?itemId=${itemId}`;
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                // Clear user session
+                localStorage.removeItem('userConfig');
+                localStorage.removeItem('autho_wallet_vault');
+                localStorage.removeItem('autho_wallet');
+                localStorage.removeItem('autho_wallet_encrypted');
+                localStorage.removeItem('autho_wallet_pin');
+                localStorage.removeItem('autho_session_id');
+                sessionStorage.clear();
+                
+                // Redirect to home
+                window.location.href = '/';
+            }
+        }
+
+        requireManufacturerAuth().then(() => {
+            loadConfig();
+
+            refreshMintedItemsFromRegistry();
+
+            if (userConfig.name) {
+                document.getElementById('navUsername').textContent = userConfig.name;
+            }
+        });
+    </script>
+</body>
+</html>

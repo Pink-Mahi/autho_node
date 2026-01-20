@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Install Autho Operator Node</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #f5f5f5;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; }
+
+        h1 {
+            font-size: 2.5em;
+            color: #d4af37;
+            margin-bottom: 20px;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.1em;
+            color: #cccccc;
+            margin-bottom: 30px;
+        }
+
+        .install-section {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #d4af37;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.3);
+        }
+
+        .platform-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s ease;
+            font-size: 1.1em;
+        }
+
+        .tab:hover {
+            background: rgba(212, 175, 55, 0.1);
+            border-color: #d4af37;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #1a1a1a;
+            border-color: #d4af37;
+            font-weight: bold;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .command-box {
+            background: #1a1a1a;
+            border: 1px solid #d4af37;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .command {
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            color: #4af626;
+            word-break: break-all;
+            line-height: 1.6;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 15px;
+            background: #d4af37;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #f4d03f;
+            transform: translateY(-2px);
+        }
+
+        .copy-btn.copied { background: #4af626; }
+
+        .info-box {
+            background: rgba(212, 175, 55, 0.1);
+            border-left: 4px solid #d4af37;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            color: #cccccc;
+        }
+
+        .warning-box {
+            background: rgba(255, 68, 68, 0.1);
+            border-left: 4px solid #ff4444;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            color: #ffcccc;
+        }
+
+        a { color: #d4af37; }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8em; }
+            .platform-tabs { flex-direction: column; }
+            .tab { min-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Install Autho Operator Node</h1>
+        <p class="subtitle">Run a consensus/validation node and participate in the network</p>
+
+        <div class="warning-box">
+            <strong>Important:</strong> Operator nodes sign state transitions. Only run an operator node if you intend to participate in governance/validation.
+        </div>
+
+        <div class="install-section">
+            <h2 style="color:#d4af37; margin-bottom: 15px;">⚡ Quick Install</h2>
+            <p style="color:#cccccc; line-height:1.6;">These commands install the operator node to your machine and create a start script. Requires Node.js 18+ and Git.</p>
+
+            <div class="platform-tabs">
+                <div class="tab active" onclick="showTab('windows')">🪟 Windows</div>
+                <div class="tab" onclick="showTab('macos')">🍎 macOS</div>
+                <div class="tab" onclick="showTab('linux')">🐧 Linux</div>
+            </div>
+
+            <div id="windows" class="tab-content active">
+                <div class="info-box">
+                    Run this in <strong>PowerShell</strong> (not CMD):
+                </div>
+                <div class="command-box">
+                    <button class="copy-btn" onclick="copyCommand('windows-cmd')">Copy</button>
+                    <div class="command" id="windows-cmd">irm https://autho.pinkmahi.com/downloads/operator-node/quick-install.ps1 | iex</div>
+                </div>
+            </div>
+
+            <div id="macos" class="tab-content">
+                <div class="info-box">
+                    Run this in Terminal:
+                </div>
+                <div class="command-box">
+                    <button class="copy-btn" onclick="copyCommand('macos-cmd')">Copy</button>
+                    <div class="command" id="macos-cmd">curl -fsSL https://autho.pinkmahi.com/downloads/operator-node/quick-install.sh | bash</div>
+                </div>
+            </div>
+
+            <div id="linux" class="tab-content">
+                <div class="info-box">
+                    Run this in Terminal:
+                </div>
+                <div class="command-box">
+                    <button class="copy-btn" onclick="copyCommand('linux-cmd')">Copy</button>
+                    <div class="command" id="linux-cmd">curl -fsSL https://autho.pinkmahi.com/downloads/operator-node/quick-install.sh | bash</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                📖 Full instructions: <a href="/downloads/operator-node/README.md">README</a>
+            </div>
+        </div>
+
+        <div class="install-section">
+            <h2 style="color:#d4af37; margin-bottom: 15px;">🧰 Manual Install (Advanced)</h2>
+            <p style="color:#cccccc; line-height:1.6;">
+                You can also clone the repo and run the operator manually. See the README for details.
+            </p>
+        </div>
+
+        <div style="text-align:center; margin-top: 25px; color:#aaaaaa;">
+            <a href="/">← Back to Home</a>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            const tabs = Array.from(document.querySelectorAll('.tab'));
+            const idx = ['windows','macos','linux'].indexOf(tabName);
+            if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
+
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        async function copyCommand(id) {
+            const el = document.getElementById(id);
+            const text = el.textContent;
+            await navigator.clipboard.writeText(text);
+
+            const btn = el.parentElement.querySelector('.copy-btn');
+            btn.classList.add('copied');
+            btn.textContent = 'Copied!';
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.textContent = 'Copy';
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

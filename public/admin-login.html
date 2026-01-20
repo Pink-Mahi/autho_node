@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Bitcoin Ownership Protocol</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            max-width: 450px;
+            width: 100%;
+        }
+
+        .login-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 50px 40px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.3);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            color: #d4af37;
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 10px rgba(212, 175, 55, 0.5);
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #d4af37;
+            opacity: 0.7;
+            margin-bottom: 40px;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-label {
+            display: block;
+            color: #d4af37;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 15px;
+            background: rgba(26, 26, 26, 0.5);
+            border: 2px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            color: #d4af37;
+            font-size: 1rem;
+            transition: all 0.3s;
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #d4af37;
+            background: rgba(26, 26, 26, 0.8);
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
+        }
+
+        .form-input::placeholder {
+            color: rgba(212, 175, 55, 0.4);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #0a0a0a;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.5);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff3b30;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .footer-links {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .footer-links a {
+            color: #d4af37;
+            text-decoration: none;
+            font-size: 0.85rem;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+
+        .footer-links a:hover {
+            opacity: 1;
+        }
+
+        .security-note {
+            background: rgba(212, 175, 55, 0.1);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #d4af37;
+            text-align: center;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <div class="logo-icon">💎</div>
+                <h1>Admin Access</h1>
+                <p class="subtitle">Main Node Dashboard</p>
+            </div>
+
+            <div id="errorMessage" class="error-message"></div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" id="username" class="form-input" placeholder="Enter admin username" required autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="password" class="form-input" placeholder="Enter password" required autocomplete="current-password">
+                </div>
+
+                <div class="form-group" id="totpGroup" style="display: none;">
+                    <label class="form-label">Two-Factor Code</label>
+                    <input type="text" id="totpCode" class="form-input" placeholder="Enter 6-digit code" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code">
+                    <div style="font-size: 0.8rem; color: rgba(212, 175, 55, 0.6); margin-top: 5px;">
+                        Enter the 6-digit code from your authenticator app
+                    </div>
+                </div>
+
+                <button type="submit" class="btn" id="loginBtn">
+                    🔐 Login to Dashboard
+                </button>
+            </form>
+
+            <div class="security-note">
+                🔒 Secure admin access required. All login attempts are logged.
+            </div>
+
+            <div class="footer-links">
+                <a href="/">← Back to Home</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const totpCode = document.getElementById('totpCode').value;
+            const loginBtn = document.getElementById('loginBtn');
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = '🔄 Authenticating...';
+
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, totpCode })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    // Store session token
+                    sessionStorage.setItem('admin_token', data.token);
+                    sessionStorage.setItem('admin_user', username);
+                    
+                    // Redirect to dashboard
+                    window.location.href = '/dashboard';
+                } else if (data.requires2FA) {
+                    // Show 2FA input field
+                    document.getElementById('totpGroup').style.display = 'block';
+                    document.getElementById('totpCode').focus();
+                    showError('Please enter your two-factor authentication code');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '🔐 Login to Dashboard';
+                } else {
+                    showError(data.error || 'Invalid credentials');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '🔐 Login to Dashboard';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Connection error. Please try again.');
+                loginBtn.disabled = false;
+                loginBtn.textContent = '🔐 Login to Dashboard';
+            }
+        }
+
+        // Check if already logged in
+        window.addEventListener('load', () => {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) return;
+            (async () => {
+                try {
+                    const r = await fetch('/api/admin/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token })
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    if (r.ok && data && data.valid === true) {
+                        window.location.href = '/dashboard';
+                        return;
+                    }
+                } catch {}
+
+                try { sessionStorage.removeItem('admin_token'); } catch {}
+                try { sessionStorage.removeItem('admin_user'); } catch {}
+            })();
+        });
+    </script>
+</body>
+</html>

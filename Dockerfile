@@ -15,6 +15,10 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# Ensure static assets are available in the runtime image
+RUN test -d /app/public
+RUN test -d /app/downloads
+
 # Build TypeScript
 RUN npm run build
 

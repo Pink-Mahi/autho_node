@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - Autho</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #d4af37;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-align: center;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #999;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #d4af37;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 10px;
+            color: #0a0a0a;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid #ff4444;
+            color: #ff4444;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success {
+            background: rgba(68, 255, 68, 0.1);
+            border: 1px solid #44ff44;
+            color: #44ff44;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .link {
+            text-align: center;
+            margin-top: 20px;
+            color: #999;
+        }
+
+        .link a {
+            color: #d4af37;
+            text-decoration: none;
+        }
+
+        .link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sign In</h1>
+        <p class="subtitle">Access your Bitcoin Ownership account</p>
+
+        <div id="errorMessage" class="error"></div>
+        <div id="successMessage" class="success"></div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="email" required placeholder="your@email.com">
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" required placeholder="Enter your password">
+            </div>
+
+            <button type="submit" class="btn" id="submitBtn">Sign In</button>
+        </form>
+
+        <div class="link">
+            Don't have an account? <a href="/customer/signup">Create Account</a>
+        </div>
+    </div>
+
+    <script>
+        function b64FromBytes(bytes) {
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        function bytesFromB64(b64) {
+            return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        }
+
+        async function deriveVaultKey(password, saltBytes, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(String(password)),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptWalletVault(walletVault, password) {
+            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+                throw new Error('Unsupported wallet vault format');
+            }
+            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+            const iterations = Number(walletVault.kdf?.iterations || 0);
+            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            const json = new TextDecoder().decode(pt);
+            return JSON.parse(json);
+        }
+
+        function persistRestoredWallet(walletPayload) {
+            const wallet = {
+                publicKey: walletPayload.publicKey,
+                address: walletPayload.address,
+                paymentAddress: walletPayload.paymentAddress || walletPayload.address,
+                network: walletPayload.network || 'mainnet',
+                derivationPath: walletPayload.derivationPath || "m/84'/0'/0'/0/0",
+            };
+            localStorage.setItem('autho_wallet', JSON.stringify(wallet));
+            localStorage.setItem('autho_wallet_encrypted', b64FromBytes(new TextEncoder().encode(JSON.stringify({ createdAt: walletPayload.createdAt || Date.now() }))));
+            sessionStorage.setItem('autho_wallet_unlocked', 'true');
+            sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+
+            const errorEl = document.getElementById('errorMessage');
+            const successEl = document.getElementById('successMessage');
+            const submitBtn = document.getElementById('submitBtn');
+
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Signing In...';
+
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const contentType = response.headers.get('content-type') || '';
+                let data = null;
+                let text = '';
+                if (contentType.includes('application/json')) {
+                    data = await response.json().catch(() => null);
+                } else {
+                    text = await response.text().catch(() => '');
+                }
+
+                if (!response.ok) {
+                    const msg = (data && (data.error || data.message))
+                        ? (data.error || data.message)
+                        : (text ? text.slice(0, 200) : `Login failed (HTTP ${response.status})`);
+                    throw new Error(msg);
+                }
+
+                if (!data) {
+                    throw new Error('Unexpected server response (non-JSON)');
+                }
+
+                // Store session
+                localStorage.setItem('autho_session_id', data.sessionId);
+                localStorage.setItem('autho_account_id', data.accountId);
+                localStorage.setItem('autho_email', email);
+
+                if (data.walletVault) {
+                    try {
+                        localStorage.setItem('autho_wallet_vault', JSON.stringify(data.walletVault));
+                        const walletPayload = await decryptWalletVault(data.walletVault, password);
+                        persistRestoredWallet(walletPayload);
+                    } catch (e) {
+                        console.warn('Failed to restore wallet from vault:', e);
+                    }
+                }
+
+                successEl.textContent = '✅ Signed in successfully! Redirecting...';
+                successEl.style.display = 'block';
+
+                setTimeout(() => {
+                    const returnUrl = new URLSearchParams(window.location.search).get('return') || '/m';
+                    window.location.href = returnUrl;
+                }, 1000);
+
+            } catch (error) {
+                errorEl.textContent = error.message;
+                errorEl.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sign In';
+            }
+        }
+    </script>
+</body>
+</html>

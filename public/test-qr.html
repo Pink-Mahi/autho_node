@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test QR Code</title>
+</head>
+<body>
+    <h1>2FA QR Code Test</h1>
+    <button onclick="testQR()">Generate QR Code</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testQR() {
+            try {
+                const response = await fetch('/api/admin/2fa/setup', { method: 'POST' });
+                const data = await response.json();
+                
+                console.log('Response:', data);
+                
+                const resultDiv = document.getElementById('result');
+                
+                if (data.qrCodeUrl) {
+                    resultDiv.innerHTML = `
+                        <h2>QR Code:</h2>
+                        <img src="${data.qrCodeUrl}&r=${Date.now()}" style="border: 2px solid black;">
+                        <h3>Manual Entry:</h3>
+                        <p>${data.secret}</p>
+                        <h3>OTPAuth URL:</h3>
+                        <p style="word-break: break-all;">${data.otpauthUrl}</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = '<p style="color: red;">No QR code in response</p>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+This is a placeholder for the Windows gateway node package.
+In production, this would be a real ZIP file containing:
+- gateway.exe (compiled binary)
+- config.json (hardcoded seed configuration)
+- README.md
+- start.bat

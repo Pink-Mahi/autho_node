@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join the Network - Bitcoin Ownership Protocol</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            color: #d4af37;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #999;
+            margin-bottom: 40px;
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%);
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(212, 175, 55, 0.1);
+        }
+
+        .card h2 {
+            font-family: 'Playfair Display', serif;
+            color: #d4af37;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .card h3 {
+            color: #d4af37;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .info-item {
+            background: rgba(212, 175, 55, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .info-label {
+            color: #999;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            color: #d4af37;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .code-block {
+            background: #1a1a1a;
+            border: 1px solid #d4af37;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            position: relative;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+
+        .code-block pre {
+            margin: 0;
+            color: #d4af37;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #d4af37;
+            color: #1a1a1a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #f0c040;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+        }
+
+        .copy-btn:active {
+            transform: translateY(0);
+        }
+
+        .qr-code {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .qr-code img {
+            max-width: 300px;
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+        }
+
+        .step {
+            background: rgba(212, 175, 55, 0.05);
+            border-left: 4px solid #d4af37;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #d4af37;
+            color: #1a1a1a;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #d4af37 0%, #f0c040 100%);
+            color: #1a1a1a;
+            padding: 15px 40px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            margin: 10px 10px 10px 0;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .warning {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #ffc107;
+        }
+
+        .success {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #4caf50;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(212, 175, 55, 0.2);
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 Join the Network</h1>
+        <p class="subtitle">Bootstrap your gateway node from this peer</p>
+
+        <!-- Network Info -->
+        <div class="card">
+            <h2>Network Information</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Network</div>
+                    <div class="info-value" id="networkName">Loading...</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Chain ID</div>
+                    <div class="info-value" id="chainId">Loading...</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Total Gateways</div>
+                    <div class="info-value" id="totalGateways">Loading...</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Total Operators</div>
+                    <div class="info-value" id="totalOperators">Loading...</div>
+                </div>
+            </div>
+
+            <div class="success">
+                ✅ This gateway is online and ready to help you bootstrap into the network.
+            </div>
+        </div>
+
+        <!-- Quick Start -->
+        <div class="card">
+            <h2>Quick Start</h2>
+            
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Download the gateway software</strong>
+                <div style="margin-top: 15px;">
+                    <a href="https://github.com/Pink-Mahi/autho/releases" class="download-btn" target="_blank">
+                        📥 Download Latest Release
+                    </a>
+                </div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Download the bootstrap configuration</strong>
+                <div style="margin-top: 15px;">
+                    <a href="/bootstrap.json" class="download-btn" download>
+                        📄 Download bootstrap.json
+                    </a>
+                </div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Start your gateway node</strong>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyToClipboard('startCommand')">Copy</button>
+                    <pre id="startCommand">./autho-gateway --bootstrap bootstrap.json</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bootstrap Configuration -->
+        <div class="card">
+            <h2>Bootstrap Configuration</h2>
+            <p style="margin-bottom: 20px; color: #999;">
+                This configuration file contains the connection details to join the network through this gateway.
+            </p>
+
+            <h3>Bootstrap URL</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyToClipboard('bootstrapUrl')">Copy</button>
+                <pre id="bootstrapUrl">Loading...</pre>
+            </div>
+
+            <h3>Alternative: Use Command Line</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyToClipboard('cliCommand')">Copy</button>
+                <pre id="cliCommand">Loading...</pre>
+            </div>
+
+            <div class="qr-code" id="qrCodeContainer" style="display: none;">
+                <h3>Scan QR Code</h3>
+                <img id="qrCodeImage" src="" alt="Bootstrap QR Code">
+            </div>
+        </div>
+
+        <!-- Advanced Options -->
+        <div class="card">
+            <h2>Advanced Options</h2>
+            
+            <h3>Manual Configuration</h3>
+            <p style="color: #999; margin-bottom: 15px;">
+                If you prefer to configure manually, use these settings:
+            </p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyToClipboard('manualConfig')">Copy</button>
+                <pre id="manualConfig">Loading...</pre>
+            </div>
+
+            <div class="warning">
+                ⚠️ <strong>Important:</strong> Seeds are NOT trusted authorities. They only help you discover peers. 
+                All data is verified locally via signatures, checkpoints, and Bitcoin anchors.
+            </div>
+        </div>
+
+        <!-- What Happens Next -->
+        <div class="card">
+            <h2>What Happens Next?</h2>
+            
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Bootstrap Phase</strong>
+                <p style="margin-top: 10px; color: #999;">
+                    Your node will connect to multiple seed sources (hardcoded seeds, DNS seeds, and signed manifests) 
+                    to discover peers in the network.
+                </p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Peer Discovery</strong>
+                <p style="margin-top: 10px; color: #999;">
+                    Once connected to initial peers, your node will exchange peer addresses and build a diverse 
+                    connection table for resilience.
+                </p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Event Log Sync</strong>
+                <p style="margin-top: 10px; color: #999;">
+                    Your node will sync the complete event log, verifying all signatures and Bitcoin anchors 
+                    to ensure data integrity.
+                </p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">4</span>
+                <strong>Ready to Serve</strong>
+                <p style="margin-top: 10px; color: #999;">
+                    Once synced, your gateway can serve verification requests and help others bootstrap. 
+                    You can optionally apply to become an operator after 90 days of proven uptime.
+                </p>
+            </div>
+        </div>
+
+        <footer>
+            <p>Bitcoin Ownership Protocol - Decentralized, Non-Custodial, Regulation-Safe</p>
+            <p style="margin-top: 10px; font-size: 0.9rem;">
+                <a href="https://github.com/Pink-Mahi/autho" style="color: #d4af37; text-decoration: none;">GitHub</a> | 
+                <a href="/dashboard" style="color: #d4af37; text-decoration: none;">Dashboard</a>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // Load join page configuration
+        async function loadJoinConfig() {
+            try {
+                const response = await fetch('/api/join/config');
+                const config = await response.json();
+
+                if (config.success) {
+                    const data = config.data;
+
+                    // Update network info
+                    document.getElementById('networkName').textContent = data.networkName;
+                    document.getElementById('chainId').textContent = data.chainId;
+                    document.getElementById('totalGateways').textContent = data.networkStats?.totalGateways || 'N/A';
+                    document.getElementById('totalOperators').textContent = data.networkStats?.totalOperators || 'N/A';
+
+                    // Update bootstrap URL
+                    const bootstrapUrl = `${window.location.origin}/bootstrap.json`;
+                    document.getElementById('bootstrapUrl').textContent = bootstrapUrl;
+
+                    // Update CLI command
+                    const cliCommand = `./autho-gateway --bootstrap-url ${bootstrapUrl}`;
+                    document.getElementById('cliCommand').textContent = cliCommand;
+
+                    // Update manual config
+                    const manualConfig = JSON.stringify({
+                        version: "1.0.0",
+                        chainId: data.chainId,
+                        gatewayEndpoint: data.gatewayEndpoint,
+                        dnsSeed: "seeds.autho.network",
+                        manifestUrls: [
+                            "https://autho.pinkmahi.com/seed-manifest.json",
+                            "https://autho.network/seed-manifest.json"
+                        ]
+                    }, null, 2);
+                    document.getElementById('manualConfig').textContent = manualConfig;
+
+                    // Show QR code if available
+                    if (data.qrCodeDataUrl) {
+                        document.getElementById('qrCodeImage').src = data.qrCodeDataUrl;
+                        document.getElementById('qrCodeContainer').style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load join config:', error);
+            }
+        }
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = element.parentElement.querySelector('.copy-btn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        // Load config on page load
+        loadJoinConfig();
+    </script>
+</body>
+</html>

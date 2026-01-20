@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restore Wallet - Bitcoin Ownership Protocol</title>
+    
+    <!-- Bitcoin Libraries -->
+    <script src="https://bundle.run/bip39@3.0.4"></script>
+    <script src="https://bundle.run/bip32@2.0.6"></script>
+    <script src="https://bundle.run/bitcoinjs-lib@6.0.1"></script>
+    
+    <!-- QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #d4af37;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-align: center;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #999;
+            margin-bottom: 30px;
+        }
+
+        .method-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .method-btn {
+            padding: 20px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 2px solid #555;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .method-btn:hover {
+            border-color: #d4af37;
+            background: rgba(212, 175, 55, 0.1);
+        }
+
+        .method-btn.active {
+            border-color: #d4af37;
+            background: rgba(212, 175, 55, 0.2);
+        }
+
+        .method-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .method-title {
+            color: #d4af37;
+            font-weight: 600;
+        }
+
+        .restore-section {
+            display: none;
+        }
+
+        .restore-section.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        textarea {
+            min-height: 100px;
+            font-family: monospace;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #d4af37;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 10px;
+            color: #0a0a0a;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        #qr-reader {
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .success-message {
+            background: rgba(76, 217, 100, 0.1);
+            border: 1px solid #4cd964;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #4cd964;
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid #ff3b30;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #ff3b30;
+        }
+
+        .wallet-info {
+            background: rgba(212, 175, 55, 0.1);
+            border: 1px solid #d4af37;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .wallet-info h3 {
+            color: #d4af37;
+            margin-bottom: 10px;
+        }
+
+        .address-display {
+            background: rgba(42, 42, 42, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔓 Restore Your Wallet</h1>
+        <p class="subtitle">Import your wallet using seed phrase or QR code</p>
+
+        <div class="method-selector">
+            <div class="method-btn active" onclick="selectMethod('text')">
+                <div class="method-icon">📝</div>
+                <div class="method-title">Seed Phrase</div>
+            </div>
+            <div class="method-btn" onclick="selectMethod('qr')">
+                <div class="method-icon">📱</div>
+                <div class="method-title">Scan QR Code</div>
+            </div>
+        </div>
+
+        <!-- Text Input Method -->
+        <div class="restore-section active" id="textMethod">
+            <div class="form-group">
+                <label>Enter Your 12-Word Seed Phrase</label>
+                <textarea id="seedPhraseInput" placeholder="word1 word2 word3 ... word12"></textarea>
+                <small style="color: #999; display: block; margin-top: 5px;">
+                    Separate words with spaces
+                </small>
+            </div>
+            <button class="btn" onclick="restoreFromText()">🔓 Restore Wallet</button>
+        </div>
+
+        <!-- QR Code Scanner Method -->
+        <div class="restore-section" id="qrMethod">
+            <p style="color: #999; margin-bottom: 15px;">
+                Position your QR code backup in front of the camera
+            </p>
+            <div id="qr-reader"></div>
+            <button class="btn" onclick="stopScanner()" id="stopBtn" style="display: none;">⏹️ Stop Scanner</button>
+        </div>
+
+        <!-- Result Display -->
+        <div id="resultMessage"></div>
+        
+        <div id="walletResult" style="display: none;">
+            <div class="wallet-info">
+                <h3>✅ Wallet Restored Successfully!</h3>
+                <p style="color: #999; margin: 10px 0;">Your Bitcoin Address:</p>
+                <div class="address-display" id="restoredAddress"></div>
+            </div>
+            <button class="btn" onclick="continueToLogin()">Continue to Login →</button>
+        </div>
+    </div>
+
+    <script src="/wallet-generator.js"></script>
+    <script>
+        let html5QrCode;
+        let restoredWallet = null;
+
+        function selectMethod(method) {
+            // Update button states
+            document.querySelectorAll('.method-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.closest('.method-btn').classList.add('active');
+
+            // Show selected method
+            document.querySelectorAll('.restore-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            if (method === 'text') {
+                document.getElementById('textMethod').classList.add('active');
+                stopScanner();
+            } else if (method === 'qr') {
+                document.getElementById('qrMethod').classList.add('active');
+                startScanner();
+            }
+        }
+
+        function startScanner() {
+            const qrReader = document.getElementById('qr-reader');
+            
+            html5QrCode = new Html5Qrcode("qr-reader");
+            
+            html5QrCode.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                },
+                (decodedText) => {
+                    // QR code successfully scanned
+                    console.log('QR Code scanned:', decodedText);
+                    restoreFromSeedPhrase(decodedText);
+                    stopScanner();
+                },
+                (errorMessage) => {
+                    // Scanning error (can be ignored)
+                }
+            ).catch(err => {
+                showError('Camera access denied or not available. Please use text input method.');
+                console.error('Scanner error:', err);
+            });
+
+            document.getElementById('stopBtn').style.display = 'block';
+        }
+
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    document.getElementById('stopBtn').style.display = 'none';
+                }).catch(err => {
+                    console.error('Error stopping scanner:', err);
+                });
+            }
+        }
+
+        function restoreFromText() {
+            const seedPhrase = document.getElementById('seedPhraseInput').value.trim();
+            restoreFromSeedPhrase(seedPhrase);
+        }
+
+        function restoreFromSeedPhrase(seedPhrase) {
+            try {
+                // Validate and restore wallet
+                if (!WalletGenerator.validateAddress || !window.bip39.validateMnemonic(seedPhrase)) {
+                    showError('Invalid seed phrase. Please check and try again.');
+                    return;
+                }
+
+                const wallet = WalletGenerator.restoreWallet(seedPhrase);
+                restoredWallet = {
+                    mnemonic: seedPhrase,
+                    address: wallet.address,
+                    publicKey: wallet.publicKey
+                };
+
+                // Show success
+                document.getElementById('restoredAddress').textContent = wallet.address;
+                document.getElementById('walletResult').style.display = 'block';
+                showSuccess('Wallet restored successfully!');
+
+                // Hide input sections
+                document.getElementById('textMethod').style.display = 'none';
+                document.getElementById('qrMethod').style.display = 'none';
+                document.querySelector('.method-selector').style.display = 'none';
+
+            } catch (error) {
+                showError('Error restoring wallet: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function showSuccess(message) {
+            const resultDiv = document.getElementById('resultMessage');
+            resultDiv.innerHTML = `<div class="success-message">${message}</div>`;
+        }
+
+        function showError(message) {
+            const resultDiv = document.getElementById('resultMessage');
+            resultDiv.innerHTML = `<div class="error-message">${message}</div>`;
+        }
+
+        function continueToLogin() {
+            // Store wallet info in session for login
+            sessionStorage.setItem('restored_wallet', JSON.stringify(restoredWallet));
+            alert('Wallet restored! You can now log in with your credentials.');
+            window.location.href = '/m';
+        }
+    </script>
+</body>
+</html>

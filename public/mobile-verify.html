@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Verify Item - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: block;
+    }
+
+    .scan-container {
+      background: rgba(212, 175, 55, 0.1);
+      border: 2px dashed #d4af37;
+      border-radius: 15px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #reader {
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 15px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border: none;
+      border-radius: 12px;
+      padding: 15px 25px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-bottom: 10px;
+      transition: all 0.3s ease;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn.secondary {
+      background: rgba(212, 175, 55, 0.2);
+      color: #d4af37;
+      border: 2px solid #d4af37;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-label {
+      display: block;
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(212, 175, 55, 0.3);
+      border-radius: 10px;
+      padding: 15px;
+      color: #ffffff;
+      font-size: 16px;
+    }
+
+    .input:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+
+    .item-card {
+      background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+      border: 2px solid #d4af37;
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+
+    .item-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      color: #d4af37;
+      margin-bottom: 5px;
+    }
+
+    .item-serial {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #999;
+    }
+
+    .status-badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-badge.active {
+      background: rgba(76, 217, 100, 0.2);
+      color: #4cd964;
+      border: 1px solid #4cd964;
+    }
+
+    .status-badge.locked {
+      background: rgba(255, 149, 0, 0.2);
+      color: #ff9500;
+      border: 1px solid #ff9500;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      font-size: 13px;
+      color: #999;
+    }
+
+    .info-value {
+      font-size: 14px;
+      color: #d4af37;
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .proof-section {
+      background: rgba(76, 217, 100, 0.1);
+      border: 1px solid #4cd964;
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+
+    .proof-title {
+      font-size: 12px;
+      color: #4cd964;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .proof-item {
+      font-size: 12px;
+      color: #ccc;
+      padding: 8px 0;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .spinner {
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error-box {
+      background: rgba(255, 87, 87, 0.1);
+      border: 2px solid #ff5757;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .error-title {
+      font-weight: 600;
+      color: #ff5757;
+      margin-bottom: 8px;
+    }
+
+    .error-text {
+      font-size: 13px;
+      color: #ccc;
+    }
+
+    .price-display {
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      border-radius: 15px;
+      padding: 20px;
+      text-align: center;
+      margin: 20px 0;
+      color: #1a1a1a;
+    }
+
+    .price-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+      opacity: 0.7;
+    }
+
+    .price-value {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .price-sats {
+      font-size: 14px;
+      margin-top: 5px;
+      opacity: 0.7;
+    }
+
+    .section-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .section-card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px;
+      color: #d4af37;
+      margin-bottom: 10px;
+    }
+
+    .mini-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+      font-size: 12px;
+    }
+
+    .mini-row:last-child {
+      border-bottom: none;
+    }
+
+    .mini-label {
+      color: #999;
+    }
+
+    .mini-value {
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      text-align: right;
+      word-break: break-all;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      color: #d4af37;
+      background: rgba(212, 175, 55, 0.12);
+    }
+
+    .pill.good {
+      color: #4cd964;
+      border-color: rgba(76, 217, 100, 0.35);
+      background: rgba(76, 217, 100, 0.12);
+    }
+
+    .pill.warn {
+      color: #ffcc00;
+      border-color: rgba(255, 204, 0, 0.35);
+      background: rgba(255, 204, 0, 0.12);
+    }
+
+    .pill.bad {
+      color: #ff5757;
+      border-color: rgba(255, 87, 87, 0.35);
+      background: rgba(255, 87, 87, 0.12);
+    }
+
+    .offer-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .offer-card {
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(212,175,55,0.15);
+    }
+
+    .offer-card.selected {
+      border: 1px solid rgba(212,175,55,0.6);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: rgba(212, 175, 55, 0.08);
+    }
+
+    .qr-box {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 12px;
+      border-radius: 12px;
+      background: #fff;
+      margin: 10px 0;
+    }
+
+    .share-link {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      word-break: break-all;
+      color: #fff;
+      margin-top: 6px;
+    }
+
+    .inline-qr {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(212,175,55,0.15);
+    }
+
+    .inline-qr img {
+      display: block;
+      width: 100%;
+      max-width: 280px;
+      height: auto;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div style="flex:1; min-width:0;">
+      <h1>Verify Item</h1>
+      <div id="loggedInAs" style="margin-top:2px; font-size:11px; color:#999; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Logged in as: —</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Scan/Enter Screen -->
+    <div id="scanScreen" class="screen active">
+      <div class="scan-container">
+        <div id="reader"></div>
+        <p style="color: #999; font-size: 13px; margin-top: 10px;">
+          Position the QR code within the frame
+        </p>
+      </div>
+
+      <div style="text-align: center; color: #999; margin: 20px 0;">
+        <p>— OR —</p>
+      </div>
+
+      <div class="input-group">
+        <label class="input-label">Enter Item ID or Serial Number</label>
+        <input type="text" id="itemIdInput" class="input" placeholder="e.g., ITEM-12345 or SN-ABC123">
+      </div>
+
+      <button class="btn" onclick="verifyManual()">Verify Item</button>
+      <button class="btn secondary" onclick="toggleScanner()">
+        <span id="scannerToggleText">Stop Scanner</span>
+      </button>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="screen">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div id="loadingText">Verifying item...</div>
+        <p style="color: #999; font-size: 13px; margin-top: 10px;">
+          Checking with multiple operators
+        </p>
+      </div>
+    </div>
+
+    <!-- Item Details Screen -->
+    <div id="itemDetailsScreen" class="screen">
+      <div class="item-card">
+        <div class="item-header">
+          <div>
+            <div class="item-title" id="itemName">Loading...</div>
+            <div class="item-serial" id="itemSerial">SN: ...</div>
+          </div>
+          <div class="status-badge active" id="itemStatus">ACTIVE</div>
+        </div>
+
+        <div id="itemImagesSection" style="display:none; margin: 10px 0 15px;">
+          <div style="font-size: 12px; color: #999; margin-bottom: 8px;">Item Images</div>
+          <div id="itemImages" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+        </div>
+
+        <div class="info-row">
+          <span class="info-label">Manufacturer</span>
+          <span class="info-value" id="manufacturer">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Authenticator</span>
+          <span class="info-value" id="authenticator">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Current Owner</span>
+          <span class="info-value" id="currentOwner">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Registered</span>
+          <span class="info-value" id="registeredDate">-</span>
+        </div>
+
+        <div class="info-row" id="serialRow" style="display:none;">
+          <span class="info-label">Serial Number</span>
+          <span class="info-value" id="serialNumber">-</span>
+        </div>
+
+        <div class="info-row" id="mfgDateRow" style="display:none;">
+          <span class="info-label">Manufactured</span>
+          <span class="info-value" id="manufacturingDate">-</span>
+        </div>
+
+        <div class="info-row" id="descRow" style="display:none;">
+          <span class="info-label">Description</span>
+          <span class="info-value" id="itemDescription">-</span>
+        </div>
+
+        <div class="proof-section">
+          <div class="proof-title">✓ Verified Authentic</div>
+          <div class="proof-item">
+            <span>Operator Signatures</span>
+            <span id="signatureCount">5/5</span>
+          </div>
+          <div class="proof-item">
+            <span>Last Checkpoint</span>
+            <span id="lastCheckpoint">2 hours ago</span>
+          </div>
+          <div class="proof-item">
+            <span>Bitcoin Anchor</span>
+            <span id="bitcoinAnchor">Block 820,000</span>
+          </div>
+        </div>
+
+        <div id="attestationImagesSection" style="display:none; margin-top: 15px;">
+          <div style="font-size: 12px; color: #999; margin-bottom: 8px;">Authenticator Images</div>
+          <div id="attestationImages" style="display:flex; gap:10px; flex-wrap:wrap;"></div>
+        </div>
+      </div>
+
+      <div class="section-card" id="offersSection" style="display:none;">
+        <div class="section-card-title">Offers for this Item</div>
+        <div id="offersList" style="color:#999; font-size: 13px;">Loading offers...</div>
+      </div>
+
+      <div class="section-card" id="consignmentSection" style="display:none;">
+        <div class="section-card-title">Consignment Relationship</div>
+        <div style="color:#999; font-size: 13px; margin-bottom: 10px;">This shows whether the current owner has an active consignment agreement with a retailer.</div>
+        <div id="consignmentBox" style="color:#999; font-size: 13px;">Loading…</div>
+      </div>
+
+      <div class="section-card" id="shareOfferSection" style="display:none;">
+        <div class="section-card-title">Share This Offer</div>
+        <div class="qr-box"><div id="offerQr"></div></div>
+        <div class="share-link" id="offerShareUrl"></div>
+        <div class="offer-actions" style="grid-template-columns: 1fr;">
+          <button class="btn secondary" onclick="copyOfferLink()">📋 Copy Link</button>
+        </div>
+        <div style="color:#999; font-size: 12px; margin-top: 8px;">
+          Have the buyer scan the QR code to open the purchase page.
+        </div>
+      </div>
+
+      <div class="section-card" id="eventsSection" style="display:none;">
+        <div class="section-card-title">Item History</div>
+        <div id="eventsList" style="color:#999; font-size: 13px;">Loading history...</div>
+      </div>
+
+      <div class="price-display" id="priceDisplay" style="display: none;">
+        <div class="price-label">Listed Price</div>
+        <div class="price-value" id="priceUSD">$0</div>
+        <div class="price-sats" id="priceSats">0 sats</div>
+      </div>
+
+      <button class="btn" onclick="makeOffer()" id="makeOfferBtn">Make Offer</button>
+      <button class="btn secondary" onclick="viewHistory()">View History</button>
+      <button class="btn secondary" onclick="scanAnother()">Scan Another Item</button>
+    </div>
+
+    <!-- Error Screen -->
+    <div id="errorScreen" class="screen">
+      <div class="error-box">
+        <div class="error-title">⚠️ Verification Failed</div>
+        <div class="error-text" id="errorMessage">Item not found or could not be verified</div>
+      </div>
+
+      <button class="btn secondary" onclick="scanAnother()">Try Another Item</button>
+      <button class="btn secondary" onclick="goBack()">Back to Home</button>
+    </div>
+  </div>
+
+  <script>
+    let html5QrCode = null;
+    let scannerActive = false;
+    let currentItemId = null;
+    let selectedOfferId = null;
+    let currentOfferForShare = null;
+    let currentConsignment = null;
+    let currentIsOwner = false;
+
+    function shortTxid(txid) {
+      const t = String(txid || '').trim();
+      if (!t) return '';
+      return t.length > 18 ? `${t.substring(0, 10)}...${t.substring(t.length - 8)}` : t;
+    }
+
+    function getTxExplorerUrl(txid) {
+      const t = String(txid || '').trim();
+      if (!t) return '';
+      return `https://mempool.space/tx/${encodeURIComponent(t)}`;
+    }
+
+    function getSessionId() {
+      try {
+        return String(localStorage.getItem('autho_session_id') || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    async function updateLoggedInAs() {
+      const el = document.getElementById('loggedInAs');
+      if (!el) return;
+      const sid = getSessionId();
+      if (!sid) {
+        el.textContent = 'Logged in as: (not signed in)';
+        return;
+      }
+      try {
+        const r = await fetch('/api/auth/me', { method: 'GET', headers: { 'Authorization': `Bearer ${sid}` } });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          el.textContent = 'Logged in as: (unknown)';
+          return;
+        }
+        const a = data.account || {};
+        const email = String(a.email || '').trim();
+        const username = String(a.username || '').trim();
+        const accountId = String(a.accountId || '').trim();
+        const ident = email || username || (accountId ? `${accountId.substring(0, 12)}...` : '—');
+        const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
+        el.textContent = `Logged in as: ${shortId && ident !== shortId ? `${ident} (${shortId})` : ident}`;
+      } catch {
+        el.textContent = 'Logged in as: (unknown)';
+      }
+    }
+
+    async function fetchChainTxStatus(txid) {
+      const r = await fetch(`/api/chain/tx/${encodeURIComponent(String(txid))}/status`, { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j || j.ok !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+      return j;
+    }
+
+    window.goBack = () => {
+      window.location.href = '/m';
+    };
+
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    window.scanAnother = () => {
+      currentItemId = null;
+      document.getElementById('itemIdInput').value = '';
+      showScreen('scanScreen');
+      if (!scannerActive) {
+        startScanner();
+      }
+    };
+
+    // Initialize QR scanner
+    function startScanner() {
+      if (scannerActive) return;
+
+      html5QrCode = new Html5Qrcode("reader");
+      
+      html5QrCode.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 }
+        },
+        onScanSuccess,
+        onScanError
+      ).then(() => {
+        scannerActive = true;
+        document.getElementById('scannerToggleText').textContent = 'Stop Scanner';
+      }).catch(err => {
+        console.error('Scanner error:', err);
+        scannerActive = false;
+      });
+    }
+
+    function stopScanner() {
+      if (!scannerActive || !html5QrCode) return;
+
+      html5QrCode.stop().then(() => {
+        scannerActive = false;
+        document.getElementById('scannerToggleText').textContent = 'Start Scanner';
+      }).catch(err => {
+        console.error('Error stopping scanner:', err);
+      });
+    }
+
+    window.toggleScanner = () => {
+      if (scannerActive) {
+        stopScanner();
+      } else {
+        startScanner();
+      }
+    };
+
+    function onScanSuccess(decodedText) {
+      console.log('QR Code scanned:', decodedText);
+      stopScanner();
+      handleScannedValue(decodedText);
+    }
+
+    function onScanError(error) {
+      // Ignore scan errors (too noisy)
+    }
+
+    window.verifyManual = () => {
+      const itemId = document.getElementById('itemIdInput').value.trim();
+      if (!itemId) {
+        alert('Please enter an item ID or serial number');
+        return;
+      }
+      stopScanner();
+      handleScannedValue(itemId);
+    };
+
+    function parseOfferIdFromScannedValue(raw) {
+      const text = String(raw || '').trim();
+      if (!text) return null;
+
+      // If it's a URL (absolute or relative) with offerId param
+      if (text.includes('offerId=')) {
+        try {
+          const u = text.startsWith('http') ? new URL(text) : new URL(text, window.location.origin);
+          const offerId = String(u.searchParams.get('offerId') || '').trim();
+          if (offerId) return offerId;
+        } catch {}
+      }
+
+      // If the QR just encodes the offerId directly
+      if (/^offer[_-]/i.test(text) || /^offer\d/i.test(text) || /^offer:/i.test(text)) {
+        const cleaned = text.replace(/^offer[:\s]/i, '').trim();
+        return cleaned || null;
+      }
+
+      if (/^OFFER_/i.test(text) || /^offer_/i.test(text)) {
+        return text;
+      }
+
+      return null;
+    }
+
+    function parseRetailerAccountIdFromScannedValue(raw) {
+      const text = String(raw || '').trim();
+      if (!text) return null;
+      try {
+        if (text.includes('retailerAccountId=')) {
+          const u = text.startsWith('http') ? new URL(text) : new URL(text, window.location.origin);
+          const id = String(u.searchParams.get('retailerAccountId') || '').trim();
+          if (id) return id;
+        }
+      } catch {}
+      return null;
+    }
+
+    function parseConsignmentIdFromScannedValue(raw) {
+      const text = String(raw || '').trim();
+      if (!text) return null;
+
+      try {
+        if (text.includes('consignmentId=') || text.includes('?id=')) {
+          const u = text.startsWith('http') ? new URL(text) : new URL(text, window.location.origin);
+          const id = String(u.searchParams.get('consignmentId') || u.searchParams.get('id') || '').trim();
+          if (id) return id;
+        }
+      } catch {}
+
+      if (/^consignment[_-]/i.test(text) || /^consignment\d/i.test(text) || /^consignment:/i.test(text)) {
+        const cleaned = text.replace(/^consignment[:\s]/i, '').trim();
+        return cleaned || null;
+      }
+
+      return null;
+    }
+
+    function handleScannedValue(value) {
+      const retailerAccountId = parseRetailerAccountIdFromScannedValue(value);
+      if (retailerAccountId) {
+        window.location.href = `/m/consign?retailerAccountId=${encodeURIComponent(String(retailerAccountId))}`;
+        return;
+      }
+
+      const consignmentId = parseConsignmentIdFromScannedValue(value);
+      if (consignmentId) {
+        window.location.href = `/m/consignment?consignmentId=${encodeURIComponent(String(consignmentId))}`;
+        return;
+      }
+
+      const offerId = parseOfferIdFromScannedValue(value);
+      if (offerId) {
+        window.location.href = `/buy?offerId=${encodeURIComponent(String(offerId))}`;
+        return;
+      }
+      verifyItem(String(value || '').trim());
+    }
+
+    async function verifyItem(itemId) {
+      currentItemId = itemId;
+      showScreen('loadingScreen');
+
+      try {
+        // Query multiple operators for item proof
+        const response = await fetch(`/api/registry/item/${encodeURIComponent(itemId)}`);
+        
+        if (!response.ok) {
+          throw new Error('Item not found');
+        }
+
+        const raw = await response.json();
+        const data = raw && raw.itemRecord ? raw.itemRecord : raw;
+        displayItemDetails(data);
+        showScreen('itemDetailsScreen');
+
+        try {
+          await Promise.all([
+            loadItemConsignment(String(data?.itemId || itemId)),
+            loadItemOffers(String(data?.itemId || itemId)),
+            loadItemEvents(String(data?.itemId || itemId)),
+          ]);
+        } catch {}
+      } catch (error) {
+        console.error('Verification error:', error);
+        document.getElementById('errorMessage').textContent = error.message;
+        showScreen('errorScreen');
+      }
+    }
+
+    function fmtDateTime(ts) {
+      const n = Number(ts || 0);
+      if (!n) return '—';
+      try { return new Date(n).toLocaleString(); } catch { return String(n); }
+    }
+
+    async function loadPublicAccount(accountId) {
+      const id = String(accountId || '').trim();
+      if (!id) return null;
+      try {
+        const r = await fetch(`/api/accounts/${encodeURIComponent(id)}/public`, { cache: 'no-store' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) return null;
+        return data.account || null;
+      } catch {
+        return null;
+      }
+    }
+
+    function accountDisplayName(a) {
+      if (!a) return '';
+      return String(a.displayName || a.companyName || a.username || a.accountId || '').trim();
+    }
+
+    async function loadItemConsignment(itemId) {
+      const section = document.getElementById('consignmentSection');
+      const box = document.getElementById('consignmentBox');
+      if (!section || !box) return;
+
+      section.style.display = 'block';
+      box.textContent = 'Loading…';
+
+      try {
+        const r = await fetch(`/api/consignments/item/${encodeURIComponent(String(itemId))}`, { cache: 'no-store' });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 404) {
+          section.style.display = 'none';
+          box.textContent = '';
+          currentConsignment = null;
+          try {
+            const btn = document.getElementById('makeOfferBtn');
+            if (btn && !currentIsOwner) {
+              btn.textContent = 'Make Offer';
+              btn.disabled = false;
+            }
+          } catch {}
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(String(data?.error || 'Failed to load consignment'));
+        }
+
+        const c = data.consignment || null;
+        if (!c) {
+          section.style.display = 'none';
+          box.textContent = '';
+          currentConsignment = null;
+          try {
+            const btn = document.getElementById('makeOfferBtn');
+            if (btn && !currentIsOwner) {
+              btn.textContent = 'Make Offer';
+              btn.disabled = false;
+            }
+          } catch {}
+          return;
+        }
+
+        currentConsignment = c;
+        try {
+          const statusRaw = String(c.status || '').toLowerCase();
+          const isLocked = (statusRaw === 'active' || statusRaw === 'pending');
+          const consignmentId = String(c.consignmentId || '').trim();
+          const btn = document.getElementById('makeOfferBtn');
+          if (btn && !currentIsOwner) {
+            if (isLocked && consignmentId) {
+              btn.textContent = 'Buy via Consignment';
+              btn.disabled = false;
+            } else {
+              btn.textContent = 'Make Offer';
+              btn.disabled = false;
+            }
+          }
+        } catch {}
+
+        const [ownerAcc, retailerAcc] = await Promise.all([
+          loadPublicAccount(String(c.ownerAccountId || '')),
+          loadPublicAccount(String(c.retailerAccountId || '')),
+        ]);
+
+        const ownerName = accountDisplayName(ownerAcc) || String(c.ownerAccountId || '').trim();
+        const retailerName = accountDisplayName(retailerAcc) || String(c.retailerAccountId || '').trim();
+
+        const retailerVerified = String(retailerAcc?.retailerStatus || '').toLowerCase() === 'verified';
+        const retailerLabel = retailerVerified ? `${retailerName} (verified retailer)` : retailerName;
+
+        const status = String(c.status || '').toUpperCase();
+        const expires = fmtDateTime(Number(c.expiresAt || 0));
+        const sats = Number(c.askingPriceSats || 0);
+        const consignmentId = String(c.consignmentId || '').trim();
+        const consignmentUrl = consignmentId ? `${window.location.origin}/m/consignment?consignmentId=${encodeURIComponent(consignmentId)}` : '';
+
+        box.innerHTML = `
+          <div class="mini-row">
+            <span class="mini-label">Status</span>
+            <span class="mini-value">${status || '—'}</span>
+          </div>
+          <div class="mini-row">
+            <span class="mini-label">Owner</span>
+            <span class="mini-value">${ownerName || '—'}</span>
+          </div>
+          <div class="mini-row">
+            <span class="mini-label">Retailer</span>
+            <span class="mini-value">${retailerLabel || '—'}</span>
+          </div>
+          <div class="mini-row">
+            <span class="mini-label">Asking</span>
+            <span class="mini-value">${sats ? `${sats.toLocaleString()} sats` : '—'}</span>
+          </div>
+          <div class="mini-row">
+            <span class="mini-label">Expires</span>
+            <span class="mini-value">${expires}</span>
+          </div>
+          ${consignmentUrl ? `
+            <div class="mini-row">
+              <span class="mini-label">Link</span>
+              <span class="mini-value"><a href="${consignmentUrl}" style="color:#d4af37; text-decoration: underline;" rel="noreferrer">Open consignment</a></span>
+            </div>
+          ` : ''}
+        `;
+      } catch (e) {
+        box.innerHTML = `<div style="color:#ff5757; font-size: 13px;">${String(e?.message || e)}</div>`;
+      }
+    }
+
+    function getStatusPill(status) {
+      const s = String(status || '').toUpperCase();
+      if (s === 'PAID') return '<span class="pill good">PAID</span>';
+      if (s === 'ACCEPTED') return '<span class="pill good">ACCEPTED</span>';
+      if (s === 'PENDING') return '<span class="pill warn">PENDING</span>';
+      if (s === 'OPEN') return '<span class="pill warn">OPEN</span>';
+      if (s === 'EXPIRED') return '<span class="pill bad">EXPIRED</span>';
+      if (s === 'FAILED' || s === 'CANCELLED') return `<span class="pill bad">${s}</span>`;
+      return `<span class="pill">${s || 'UNKNOWN'}</span>`;
+    }
+
+    function shortAddr(addr) {
+      const a = String(addr || '').trim();
+      if (!a) return '—';
+      return a.length > 24 ? `${a.substring(0, 10)}...${a.substring(a.length - 10)}` : a;
+    }
+
+    async function loadItemOffers(itemId) {
+      const section = document.getElementById('offersSection');
+      const list = document.getElementById('offersList');
+      if (!section || !list) return;
+
+      section.style.display = 'block';
+      list.textContent = 'Loading offers...';
+
+      try {
+        const r = await fetch(`/api/offers/item/${encodeURIComponent(itemId)}`);
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(data?.error || 'Failed to load offers');
+        }
+
+        const offers = Array.isArray(data?.offers) ? data.offers : [];
+        if (!offers.length) {
+          list.innerHTML = '<div style="color:#999; font-size: 13px;">No offers for this item.</div>';
+          return;
+        }
+
+        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+        const myAddr = String(wallet?.paymentAddress || wallet?.address || '').trim();
+        const sessionId = String(localStorage.getItem('autho_session_id') || '').trim();
+
+        const shareUrlFor = (offerId) => `${window.location.origin}/buy?offerId=${encodeURIComponent(String(offerId))}`;
+
+        list.innerHTML = offers.map((o) => {
+          const status = String(o?.status || '').toUpperCase();
+          const canAccept = !!(myAddr && String(o?.sellerAddress || '').trim() === myAddr && status === 'PENDING');
+          const canCancel = !!(sessionId && myAddr && (String(o?.sellerAddress || '').trim() === myAddr || String(o?.buyerAddress || '').trim() === myAddr) && (status === 'OPEN' || status === 'PENDING'));
+          const offerUrl = o?.offerId ? shareUrlFor(o.offerId) : '';
+          const canShowQr = !!(status === 'OPEN' && o?.offerId && offerUrl);
+          const isSelected = selectedOfferId && String(o?.offerId || '') === String(selectedOfferId);
+          const toggleLabel = isSelected ? '🙈 Hide QR' : '📱 Show QR';
+          return `
+            <div class="offer-card ${isSelected ? 'selected' : ''}">
+              <div style="display:flex; justify-content: space-between; gap:10px; align-items: center;">
+                <div style="font-weight:700; color:#d4af37; font-size: 13px;">${Number(o?.sats || 0).toLocaleString()} sats</div>
+                <div>${getStatusPill(status)}</div>
+              </div>
+              <div class="mini-row">
+                <span class="mini-label">Offer</span>
+                <span class="mini-value">${String(o?.offerId || '').substring(0, 18)}...</span>
+              </div>
+              <div class="mini-row">
+                <span class="mini-label">Seller</span>
+                <span class="mini-value">${shortAddr(o?.sellerAddress)}</span>
+              </div>
+              <div class="mini-row">
+                <span class="mini-label">Buyer</span>
+                <span class="mini-value">${shortAddr(o?.buyerAddress)}</span>
+              </div>
+              ${offerUrl ? `
+                <div class="mini-row">
+                  <span class="mini-label">Link</span>
+                  <span class="mini-value">${offerUrl}</span>
+                </div>
+              ` : ''}
+              ${(canAccept || canCancel || canShowQr) ? `
+                <div class="offer-actions">
+                  ${canAccept ? `<button class="btn" onclick="acceptOffer('${String(o?.offerId || '')}')">✅ Accept</button>` : (canShowQr ? `<button class="btn" onclick="showOfferQr('${String(o?.offerId || '')}')">${toggleLabel}</button>` : '<div></div>')}
+                  ${canCancel ? `<button class="btn secondary" onclick="cancelOffer('${String(o?.offerId || '')}')">❌ Cancel</button>` : (canShowQr && canAccept ? `<button class="btn secondary" onclick="showOfferQr('${String(o?.offerId || '')}')">${toggleLabel}</button>` : '<div></div>')}
+                </div>
+              ` : ''}
+
+              ${(isSelected && canShowQr && offerUrl) ? `
+                <div class="inline-qr">
+                  <div style="font-weight: 700; color: #d4af37; margin-bottom: 8px;">Share This Offer</div>
+                  <img alt="Offer QR" src="/api/qr?size=280&text=${encodeURIComponent(offerUrl)}" />
+                  <div class="share-link">${offerUrl}</div>
+                  <div class="offer-actions" style="grid-template-columns: 1fr; margin-top: 10px;">
+                    <button class="btn secondary" onclick="copyOfferText('${encodeURIComponent(offerUrl)}')">📋 Copy Link</button>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+
+        try {
+          renderOfferShare(null);
+        } catch {}
+      } catch (e) {
+        list.innerHTML = `<div style="color:#ff5757; font-size: 13px;">${String(e?.message || e)}</div>`;
+      }
+    }
+
+    function renderOfferShare(offer) {
+      const section = document.getElementById('shareOfferSection');
+      const qrEl = document.getElementById('offerQr');
+      const urlEl = document.getElementById('offerShareUrl');
+      if (!section || !qrEl || !urlEl) return;
+
+      if (!offer || !offer.offerId) {
+        section.style.display = 'none';
+        currentOfferForShare = null;
+        try { qrEl.innerHTML = ''; } catch {}
+        try { urlEl.textContent = ''; } catch {}
+        return;
+      }
+
+      const shareUrl = `${window.location.origin}/buy?offerId=${encodeURIComponent(String(offer.offerId))}`;
+      currentOfferForShare = { ...offer, shareUrl };
+      section.style.display = 'block';
+      urlEl.textContent = shareUrl;
+
+      try {
+        qrEl.innerHTML = '';
+      } catch {}
+
+      try {
+        if (typeof QRCode !== 'function') {
+          qrEl.textContent = 'QR generator not available (network blocked?)';
+          return;
+        }
+        new QRCode(qrEl, {
+          text: shareUrl,
+          width: 220,
+          height: 220,
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      } catch (e) {
+        qrEl.textContent = String(e?.message || e);
+      }
+    }
+
+    function renderOfferShareForOfferId(offerId) {
+      const id = String(offerId || '').trim();
+      if (!id) {
+        renderOfferShare(null);
+        return;
+      }
+
+      renderOfferShare({ offerId: id });
+    }
+
+    window.showOfferQr = (offerId) => {
+      const id = String(offerId || '').trim();
+      if (!id) return;
+      selectedOfferId = (selectedOfferId && String(selectedOfferId) === id) ? null : id;
+      try {
+        if (currentItemId) {
+          loadItemOffers(String(currentItemId));
+        }
+      } catch {}
+    };
+
+    window.copyOfferText = async (encodedText) => {
+      try {
+        const text = decodeURIComponent(String(encodedText || ''));
+        if (!text) {
+          alert('No link to copy.');
+          return;
+        }
+
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+        }
+        alert('✅ Link copied');
+      } catch (e) {
+        alert('❌ Copy failed: ' + String(e?.message || e));
+      }
+    };
+
+    window.copyOfferLink = async () => {
+      try {
+        const url = String(currentOfferForShare?.shareUrl || '').trim();
+        if (!url) {
+          alert('No offer link to copy.');
+          return;
+        }
+
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(url);
+        } else {
+          const temp = document.createElement('textarea');
+          temp.value = url;
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+        }
+        alert('✅ Link copied');
+      } catch (e) {
+        alert('❌ Copy failed: ' + String(e?.message || e));
+      }
+    };
+
+    async function loadItemEvents(itemId) {
+      const section = document.getElementById('eventsSection');
+      const list = document.getElementById('eventsList');
+      if (!section || !list) return;
+
+      section.style.display = 'block';
+      list.textContent = 'Loading history...';
+
+      try {
+        const r = await fetch(`/api/item/${encodeURIComponent(itemId)}/events`);
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(data?.error || 'Failed to load history');
+        }
+
+        const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
+        if (!events.length) {
+          list.innerHTML = '<div style="color:#999; font-size: 13px;">No events found.</div>';
+          return;
+        }
+
+        const rows = events
+          .slice()
+          .sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))
+          .slice(0, 20)
+          .map((ev) => {
+            const t = Number(ev?.timestamp || 0);
+            const date = t ? new Date(t).toLocaleString() : '';
+            const type = String(ev?.type || '').toUpperCase();
+            const payload = ev?.payload || ev;
+            let detail = '';
+            if (type === 'OWNERSHIP_TRANSFERRED') {
+              const from = payload?.fromOwner || payload?.from || '';
+              const to = payload?.toOwner || payload?.to || '';
+              const price = payload?.price;
+              detail = `from ${shortAddr(from)} → ${shortAddr(to)}${price ? ` (${Number(price).toLocaleString()} sats)` : ''}`;
+            } else if (type.startsWith('SETTLEMENT_')) {
+              const sid = payload?.settlementId || payload?.offerId || '';
+              detail = sid ? `offer ${String(sid).substring(0, 18)}...` : '';
+            }
+            return `
+              <div class="mini-row">
+                <span class="mini-label">${type}</span>
+                <span class="mini-value">${date}${detail ? `\n${detail}` : ''}</span>
+              </div>
+            `;
+          }).join('');
+
+        list.innerHTML = rows;
+      } catch (e) {
+        list.innerHTML = `<div style="color:#ff5757; font-size: 13px;">${String(e?.message || e)}</div>`;
+      }
+    }
+
+    window.acceptOffer = async (offerId) => {
+      try {
+        const sessionId = String(localStorage.getItem('autho_session_id') || '').trim();
+        if (!sessionId) {
+          alert('Please sign in to accept offers.');
+          return;
+        }
+        const r = await fetch(`/api/offers/${encodeURIComponent(String(offerId))}/accept`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${sessionId}` }
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.error || 'Failed to accept offer');
+        await loadItemOffers(String(currentItemId || ''));
+      } catch (e) {
+        alert(String(e?.message || e));
+      }
+    };
+
+    window.cancelOffer = async (offerId) => {
+      const confirmed = confirm('Cancel this offer?');
+      if (!confirmed) return;
+      try {
+        const sessionId = String(localStorage.getItem('autho_session_id') || '').trim();
+        if (!sessionId) {
+          alert('Please sign in to cancel offers.');
+          return;
+        }
+        const r = await fetch(`/api/offers/${encodeURIComponent(String(offerId))}/cancel`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${sessionId}` }
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.error || 'Failed to cancel offer');
+        await loadItemOffers(String(currentItemId || ''));
+      } catch (e) {
+        alert(String(e?.message || e));
+      }
+    };
+
+    function displayItemDetails(item) {
+      try {
+        const btn = document.getElementById('makeOfferBtn');
+        if (btn) {
+          btn.textContent = 'Make Offer';
+          btn.disabled = false;
+        }
+      } catch {}
+      currentConsignment = null;
+      currentIsOwner = false;
+
+      const itemType = item?.metadata?.itemType || item?.metadata?.name || item?.itemType || 'Unknown Item';
+      document.getElementById('itemName').textContent = itemType;
+      document.getElementById('itemSerial').textContent = `ID: ${item.itemId || 'Unknown'}`;
+      document.getElementById('itemStatus').textContent = item.status || item.state || 'registered';
+      document.getElementById('manufacturer').textContent = item.manufacturerDisplayName || item.manufacturerId || 'Unknown';
+
+      let authDisplay = '';
+      try {
+        const atts = Array.isArray(item.authentications) ? item.authentications : [];
+        if (atts.length > 0) {
+          const last = atts[atts.length - 1] || {};
+          authDisplay = last.authenticatorDisplayName || last.authenticatorName || last.authenticatorId || '';
+        }
+      } catch {}
+      document.getElementById('authenticator').textContent = authDisplay || '—';
+      
+      // Format owner address
+      const owner = item.currentOwner || item.ownerPubKey || 'Unknown';
+      document.getElementById('currentOwner').textContent = 
+        owner.length > 20 ? owner.substring(0, 10) + '...' + owner.substring(owner.length - 10) : owner;
+      
+      document.getElementById('registeredDate').textContent = 
+        item.registeredAt ? new Date(item.registeredAt).toLocaleDateString() : '-';
+
+      const serialDisplay = String(
+        item?.serialNumberDisplay ||
+        item?.metadata?.serialNumberDisplay ||
+        item?.metadata?.serialNumber ||
+        item?.metadata?.serial ||
+        ''
+      ).trim();
+      const serialHash = String(item?.serialNumberHash || '').trim();
+      const serialText = serialDisplay || (serialHash ? `Hash: ${serialHash.substring(0, 12)}...` : '');
+      if (serialText) {
+        document.getElementById('serialNumber').textContent = serialText;
+        document.getElementById('serialRow').style.display = 'flex';
+      } else {
+        document.getElementById('serialRow').style.display = 'none';
+      }
+
+      const mfg = Number(item?.metadata?.manufacturingDate || 0);
+      if (Number.isFinite(mfg) && mfg > 0) {
+        document.getElementById('manufacturingDate').textContent = new Date(mfg).toLocaleDateString();
+        document.getElementById('mfgDateRow').style.display = 'flex';
+      } else {
+        document.getElementById('mfgDateRow').style.display = 'none';
+      }
+
+      const desc = String(item?.metadata?.description || '').trim();
+      if (desc) {
+        document.getElementById('itemDescription').textContent = desc;
+        document.getElementById('descRow').style.display = 'flex';
+      } else {
+        document.getElementById('descRow').style.display = 'none';
+      }
+
+      try {
+        const wrap = document.getElementById('itemImagesSection');
+        const el = document.getElementById('itemImages');
+        if (wrap && el) {
+          const imgs = Array.isArray(item?.metadata?.images) ? item.metadata.images : [];
+          const render = imgs.slice(0, 3)
+            .map((img) => {
+              const mime = String(img?.mime || '').trim();
+              const b64 = String(img?.dataB64 || '').trim();
+              if (!mime || !b64) return '';
+              const src = `data:${mime};base64,${b64}`;
+              return `<img alt="Item image" src="${src}" style="width:110px; height:110px; object-fit:cover; border-radius:12px; background:#fff; padding:6px;" />`;
+            })
+            .filter(Boolean)
+            .join('');
+
+          if (render) {
+            el.innerHTML = render;
+            wrap.style.display = 'block';
+          } else {
+            el.innerHTML = '';
+            wrap.style.display = 'none';
+          }
+        }
+      } catch {}
+
+      try {
+        const wrap = document.getElementById('attestationImagesSection');
+        const el = document.getElementById('attestationImages');
+        if (wrap && el) {
+          const atts = Array.isArray(item?.authentications) ? item.authentications : [];
+          const last = atts.length ? atts[atts.length - 1] : null;
+          const imgs = Array.isArray(last?.images) ? last.images : [];
+          const render = imgs.slice(0, 3)
+            .map((img) => {
+              const mime = String(img?.mime || '').trim();
+              const b64 = String(img?.dataB64 || '').trim();
+              if (!mime || !b64) return '';
+              const src = `data:${mime};base64,${b64}`;
+              return `<img alt="Authenticator image" src="${src}" style="width:110px; height:110px; object-fit:cover; border-radius:12px; background:#fff; padding:6px;" />`;
+            })
+            .filter(Boolean)
+            .join('');
+
+          if (render) {
+            el.innerHTML = render;
+            wrap.style.display = 'block';
+          } else {
+            el.innerHTML = '';
+            wrap.style.display = 'none';
+          }
+        }
+      } catch {}
+
+      try {
+        const atts = Array.isArray(item?.authentications) ? item.authentications : [];
+        const lastAtt = atts.length ? atts[atts.length - 1] : null;
+
+        const signatureCountEl = document.getElementById('signatureCount');
+        const lastCheckpointEl = document.getElementById('lastCheckpoint');
+        const bitcoinAnchorEl = document.getElementById('bitcoinAnchor');
+
+        const sigs = Array.isArray(lastAtt?.operatorQuorumSignatures)
+          ? lastAtt.operatorQuorumSignatures
+          : Array.isArray(item?.operatorQuorumSignatures)
+            ? item.operatorQuorumSignatures
+            : [];
+
+        if (signatureCountEl) {
+          signatureCountEl.textContent = sigs.length ? `${sigs.length} sigs` : '—';
+        }
+        if (lastCheckpointEl) {
+          lastCheckpointEl.textContent = '—';
+        }
+
+        const txid = String(lastAtt?.feeTxid || item?.feeTxid || '').trim();
+        if (!bitcoinAnchorEl) {
+          // no-op
+        } else if (!txid) {
+          bitcoinAnchorEl.textContent = '—';
+        } else {
+          bitcoinAnchorEl.textContent = `TX ${shortTxid(txid)} • loading…`;
+          fetchChainTxStatus(txid)
+            .then((st) => {
+              const conf = Number(st?.confirmations || 0);
+              const bh = st?.blockHeight;
+
+              if (lastCheckpointEl) {
+                lastCheckpointEl.textContent = bh ? `Block ${bh} (${conf}/6 conf)` : `${conf}/6 conf`;
+              }
+
+              const href = getTxExplorerUrl(txid);
+              const label = shortTxid(txid);
+              if (href) {
+                bitcoinAnchorEl.innerHTML = `TX <a href="${href}" target="_blank" rel="noreferrer" style="color:#d4af37; text-decoration: underline;">${label}</a> • ${conf}/6 conf • Block ${bh || '—'}`;
+              } else {
+                bitcoinAnchorEl.textContent = `TX ${label} • ${conf}/6 conf • Block ${bh || '—'}`;
+              }
+            })
+            .catch(() => {
+              bitcoinAnchorEl.textContent = `TX ${shortTxid(txid)} • status unavailable`;
+              if (lastCheckpointEl) lastCheckpointEl.textContent = 'Status unavailable';
+            });
+        }
+      } catch {
+        try {
+          document.getElementById('signatureCount').textContent = '—';
+          document.getElementById('lastCheckpoint').textContent = '—';
+          document.getElementById('bitcoinAnchor').textContent = '—';
+        } catch {}
+      }
+
+      // Check if item has a price/offer
+      if (item.listedPrice) {
+        document.getElementById('priceDisplay').style.display = 'block';
+        document.getElementById('priceUSD').textContent = `$${item.listedPrice.toLocaleString()}`;
+        document.getElementById('priceSats').textContent = `${Math.floor(item.listedPrice * 2500)} sats`;
+      }
+
+      // Check if user can make offer (not owner)
+      const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+      if (wallet.address && String(wallet.address) === String(item.currentOwner || '')) {
+        currentIsOwner = true;
+        document.getElementById('makeOfferBtn').textContent = 'You Own This Item';
+        document.getElementById('makeOfferBtn').disabled = true;
+      }
+    }
+
+    window.makeOffer = () => {
+      try {
+        const c = currentConsignment;
+        const statusRaw = String(c?.status || '').toLowerCase();
+        const isLocked = (statusRaw === 'active' || statusRaw === 'pending');
+        const consignmentId = String(c?.consignmentId || '').trim();
+        if (isLocked && consignmentId) {
+          window.location.href = `/m/consignment?consignmentId=${encodeURIComponent(consignmentId)}`;
+          return;
+        }
+      } catch {}
+
+      // Check if wallet exists
+      const wallet = localStorage.getItem('autho_wallet');
+      if (!wallet) {
+        const createWallet = confirm('You need a Bitcoin wallet to make offers. Create one now?');
+        if (createWallet) {
+          window.location.href = '/m/wallet';
+        }
+        return;
+      }
+
+      // Navigate to offer page
+      window.location.href = `/m/offer?itemId=${encodeURIComponent(currentItemId)}`;
+    };
+
+    window.viewHistory = () => {
+      window.location.href = `/m/history?itemId=${encodeURIComponent(currentItemId)}`;
+    };
+
+    window.addEventListener('load', () => {
+      try { updateLoggedInAs().catch(() => {}); } catch {}
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const itemId = String(params.get('itemId') || '').trim();
+        const offerId = String(params.get('offerId') || '').trim();
+        selectedOfferId = offerId || null;
+
+        renderOfferShare(null);
+
+        if (itemId) {
+          stopScanner();
+          verifyItem(itemId);
+          return;
+        }
+      } catch {}
+      startScanner();
+    });
+
+    // Stop scanner when leaving page
+    window.addEventListener('beforeunload', () => {
+      stopScanner();
+    });
+  </script>
+</body>
+</html>

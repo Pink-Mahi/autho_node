@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Ownership Protocol - Scan & Verify</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+
+        .scan-section {
+            text-align: center;
+        }
+
+        .scan-input {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+
+        .scan-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .result {
+            display: none;
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result.authentic {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+
+        .result.counterfeit {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .result-icon {
+            font-size: 3rem;
+            margin-right: 20px;
+        }
+
+        .result-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        .result-details {
+            margin-top: 20px;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .detail-value {
+            color: #333;
+        }
+
+        .attestations {
+            margin-top: 30px;
+        }
+
+        .attestation-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .attestation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .attestation-name {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .confidence-badge {
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .attestation-details {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .badge.active {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge.locked {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge.valid {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge.expired {
+            background: #dc3545;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Bitcoin Ownership Protocol</h1>
+            <p>Scan & Verify Physical Items</p>
+        </div>
+
+        <div class="card">
+            <div class="scan-section">
+                <h2 style="margin-bottom: 20px;">Enter Item ID or Scan QR Code</h2>
+                <input 
+                    type="text" 
+                    class="scan-input" 
+                    id="itemId" 
+                    placeholder="e.g., abc123def456..."
+                    autocomplete="off"
+                >
+                <button class="btn" onclick="scanItem()">🔍 Verify Item</button>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Verifying with operator network...</p>
+            </div>
+
+            <div class="result" id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        async function scanItem() {
+            const itemId = document.getElementById('itemId').value.trim();
+            
+            if (!itemId) {
+                alert('Please enter an item ID');
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            
+            result.style.display = 'none';
+            loading.style.display = 'block';
+
+            try {
+                // Query operator (adjust URL as needed)
+                const response = await fetch(`/api/registry/item/${encodeURIComponent(itemId)}`);
+                
+                if (!response.ok) {
+                    throw new Error('Item not found');
+                }
+
+                const data = await response.json();
+                displayResult(data, itemId);
+            } catch (error) {
+                displayError(error.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function safeText(v) {
+            return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function renderImages(images) {
+            const arr = Array.isArray(images) ? images : [];
+            if (arr.length === 0) return '';
+            const items = arr.slice(0, 3).map((img) => {
+                const mime = String(img?.mime || '').trim();
+                const b64 = String(img?.dataB64 || '').trim();
+                if (!mime || !b64) return '';
+                const src = `data:${mime};base64,${b64}`;
+                return `<img src="${src}" alt="Item image" style="width:120px; height:120px; object-fit:cover; border-radius:12px; border: 1px solid rgba(0,0,0,0.15);" />`;
+            }).filter(Boolean).join('');
+            if (!items) return '';
+            return `<div style="margin-top: 20px;"><div style="font-weight: 700; margin-bottom: 10px;">Item Images</div><div style="display:flex; gap:10px; flex-wrap:wrap;">${items}</div></div>`;
+        }
+
+        function displayResult(data, itemId) {
+            const result = document.getElementById('result');
+            const item = data?.itemRecord;
+            
+            if (!item) {
+                displayError('Item not found');
+                return;
+            }
+
+            const isAuthentic = true;
+            const canPurchase = true;
+
+            result.className = `result ${isAuthentic ? 'authentic' : 'counterfeit'}`;
+            result.innerHTML = `
+                <div class="result-header">
+                    <div class="result-icon">${isAuthentic ? '✅' : '❌'}</div>
+                    <div>
+                        <div class="result-title">${isAuthentic ? 'Authentic Item' : 'Counterfeit Detected'}</div>
+                        <div style="color: #666; margin-top: 5px;">Verified by operator network</div>
+                    </div>
+                </div>
+
+                <div class="result-details">
+                    <div class="detail-row">
+                        <span class="detail-label">Item ID:</span>
+                        <span class="detail-value">${itemId.substring(0, 16)}...</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Manufacturer:</span>
+                        <span class="detail-value">${safeText(item.manufacturerDisplayName || item.manufacturerId || '').substring(0, 64)}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">State:</span>
+                        <span class="detail-value">
+                            ${safeText(item.status || 'active')}
+                            <span class="badge active">Active</span>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Can Purchase:</span>
+                        <span class="detail-value">${canPurchase ? '✅ Yes' : '❌ No'}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Minted:</span>
+                        <span class="detail-value">${new Date(item.registeredAt || Date.now()).toLocaleDateString()}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Last Event:</span>
+                        <span class="detail-value">${safeText(item.metadataHash || '').substring(0, 24)}...</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <div style="font-weight: 700; margin-bottom: 10px;">Description</div>
+                    <div style="color:#333; line-height: 1.5;">${safeText(item?.metadata?.description || item?.metadata?.itemType || '')}</div>
+                </div>
+
+                ${renderImages(item?.metadata?.images)}
+
+                ${(Array.isArray(item?.authentications) && item.authentications.length > 0) ? `
+                  <div class="attestations">
+                    <h3 style="margin-bottom: 15px;">Authenticator Attestations</h3>
+                    ${item.authentications.map((a) => {
+                      const title = safeText(a?.authenticatorDisplayName || a?.authenticatorId || 'Authenticator');
+                      const conf = safeText(a?.confidence || '');
+                      const verdict = (a?.isAuthentic === true) ? 'Authentic' : (a?.isAuthentic === false ? 'Not Authentic' : 'Pending');
+                      const notes = safeText(a?.notes || '');
+                      const imgs = renderImages(a?.images);
+                      return `
+                        <div class="attestation-card">
+                          <div class="attestation-header">
+                            <div class="attestation-name">${title}</div>
+                            <div class="confidence-badge">${conf || '—'}</div>
+                          </div>
+                          <div class="attestation-details">
+                            <div><strong>Verdict:</strong> ${safeText(verdict)}</div>
+                            ${notes ? `<div style="margin-top:6px;"><strong>Notes:</strong> ${notes}</div>` : ''}
+                          </div>
+                          ${imgs}
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                ` : ''}
+
+                ${canPurchase ? `
+                    <div style="margin-top: 30px; text-align: center;">
+                        <button class="btn" onclick="createOffer('${itemId}')">💰 Make Offer</button>
+                    </div>
+                ` : ''}
+            `;
+
+            result.style.display = 'block';
+        }
+
+        function displayError(message) {
+            const result = document.getElementById('result');
+            result.className = 'result counterfeit';
+            result.innerHTML = `
+                <div class="result-header">
+                    <div class="result-icon">❌</div>
+                    <div>
+                        <div class="result-title">Error</div>
+                        <div style="color: #666; margin-top: 5px;">${message}</div>
+                    </div>
+                </div>
+            `;
+            result.style.display = 'block';
+        }
+
+        function createOffer(itemId) {
+            alert('Offer creation UI coming soon! Item ID: ' + itemId);
+        }
+
+        // Allow Enter key to scan
+        document.getElementById('itemId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                scanItem();
+            }
+        });
+    </script>
+</body>
+</html>

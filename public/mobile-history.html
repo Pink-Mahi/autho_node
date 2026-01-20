@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Transaction History - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .timeline {
+      position: relative;
+      padding-left: 30px;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(180deg, #d4af37 0%, rgba(212, 175, 55, 0.2) 100%);
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 25px;
+      padding-bottom: 25px;
+    }
+
+    .timeline-dot {
+      position: absolute;
+      left: -26px;
+      top: 5px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #d4af37;
+      border: 3px solid #1a1a1a;
+      box-shadow: 0 0 0 2px #d4af37;
+    }
+
+    .timeline-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+    }
+
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+
+    .timeline-type {
+      font-size: 14px;
+      font-weight: 600;
+      color: #d4af37;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .timeline-date {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .timeline-content {
+      font-size: 13px;
+      color: #ccc;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .timeline-details {
+      display: grid;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .timeline-detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .timeline-detail-label {
+      color: #999;
+    }
+
+    .timeline-detail-value {
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+    }
+
+    .tx-link {
+      color: #d4af37;
+      text-decoration: none;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 8px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .empty-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+
+    .empty-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      color: #d4af37;
+      margin-bottom: 10px;
+    }
+
+    .empty-text {
+      color: #999;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .spinner {
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <h1>📜 Transaction History</h1>
+  </div>
+
+  <div class="container">
+    <div id="historyList">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div>Loading transaction history...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let userWallet = null;
+
+    window.addEventListener('load', () => {
+      // Check authentication
+      if (!WalletAuth.requireAuth('/m/history')) {
+        return;
+      }
+
+      userWallet = WalletAuth.getWallet();
+      if (userWallet) {
+        loadTransactionHistory();
+      }
+    });
+
+    async function loadTransactionHistory() {
+      try {
+        // Fetch transaction history from API
+        const response = await fetch(`/api/history/${encodeURIComponent(userWallet.address)}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to load history');
+        }
+
+        const data = await response.json();
+        const transactions = data.transactions || [];
+        
+        displayHistory(transactions);
+      } catch (error) {
+        console.error('Error loading history:', error);
+        
+        // Show empty state for now (API not implemented yet)
+        document.getElementById('historyList').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📜</div>
+            <div class="empty-title">No Transaction History</div>
+            <div class="empty-text">
+              Your transaction history will appear here once you start making offers and acquiring items.
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function displayHistory(transactions) {
+      const container = document.getElementById('historyList');
+
+      if (transactions.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📜</div>
+            <div class="empty-title">No Transactions Yet</div>
+            <div class="empty-text">
+              Your transaction history will appear here once you start making offers and acquiring items.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="timeline">
+          ${transactions.map(tx => {
+            const icon = getTransactionIcon(tx.type);
+            const description = getTransactionDescription(tx);
+            
+            return `
+              <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-card">
+                  <div class="timeline-header">
+                    <div class="timeline-type">
+                      ${icon} ${tx.type}
+                    </div>
+                    <div class="timeline-date">${formatDate(tx.timestamp)}</div>
+                  </div>
+                  
+                  <div class="timeline-content">${description}</div>
+                  
+                  <div class="timeline-details">
+                    ${tx.itemId ? `
+                      <div class="timeline-detail-row">
+                        <span class="timeline-detail-label">Item ID</span>
+                        <span class="timeline-detail-value">${tx.itemId.substring(0, 20)}...</span>
+                      </div>
+                    ` : ''}
+                    ${tx.amount ? `
+                      <div class="timeline-detail-row">
+                        <span class="timeline-detail-label">Amount</span>
+                        <span class="timeline-detail-value">$${tx.amount.toLocaleString()}</span>
+                      </div>
+                    ` : ''}
+                    ${tx.txHash ? `
+                      <div class="timeline-detail-row">
+                        <span class="timeline-detail-label">Bitcoin TX</span>
+                        <span class="timeline-detail-value">${tx.txHash.substring(0, 20)}...</span>
+                      </div>
+                    ` : ''}
+                  </div>
+                  
+                  ${tx.txHash ? `
+                    <a href="https://mempool.space/tx/${tx.txHash}" target="_blank" class="tx-link">
+                      🔗 View on Blockchain →
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function getTransactionIcon(type) {
+      const icons = {
+        'ITEM_REGISTERED': '📦',
+        'OFFER_CREATED': '💰',
+        'OFFER_ACCEPTED': '✅',
+        'PAYMENT_SENT': '💸',
+        'PAYMENT_RECEIVED': '💵',
+        'ITEM_TRANSFERRED': '🔄',
+        'ITEM_AUTHENTICATED': '✓'
+      };
+      return icons[type] || '📝';
+    }
+
+    function getTransactionDescription(tx) {
+      const descriptions = {
+        'ITEM_REGISTERED': `Registered new item: ${tx.itemName || 'Unknown'}`,
+        'OFFER_CREATED': `Made offer of $${tx.amount?.toLocaleString()} on ${tx.itemName || 'item'}`,
+        'OFFER_ACCEPTED': `Your offer was accepted for ${tx.itemName || 'item'}`,
+        'PAYMENT_SENT': `Sent payment of ${tx.sats?.toLocaleString()} sats`,
+        'PAYMENT_RECEIVED': `Received payment of ${tx.sats?.toLocaleString()} sats`,
+        'ITEM_TRANSFERRED': `Transferred ${tx.itemName || 'item'} to new owner`,
+        'ITEM_AUTHENTICATED': `Item ${tx.itemName || 'authenticated'} verified`
+      };
+      return descriptions[tx.type] || tx.description || 'Transaction completed';
+    }
+
+    function formatDate(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+      
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days < 7) return `${days}d ago`;
+      
+      return date.toLocaleDateString();
+    }
+
+    function goBack() {
+      window.location.href = '/m';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Consign with Retailer - Autho</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 6px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 18px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      color: #d4af37;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+    }
+
+    .row:last-child { border-bottom: none; }
+
+    .k { color: #999; font-size: 12px; }
+    .v { color: #fff; font-size: 12px; max-width: 70%; text-align: right; word-break: break-all; }
+
+    .field { margin-top: 12px; }
+
+    .label {
+      display: block;
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    input, select {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 12px;
+      padding: 12px;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    .btn {
+      width: 100%;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s;
+      margin-top: 12px;
+    }
+
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: rgba(212, 175, 55, 0.12);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .btn-row .btn { margin-top: 0; }
+
+    .msg {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+      font-size: 13px;
+      display: none;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .msg.error {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.10);
+      color: #ff6b6b;
+    }
+
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 4000;
+    }
+
+    .overlay-card {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(25, 25, 25, 0.98);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .overlay-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      color: #d4af37;
+      margin-bottom: 10px;
+    }
+
+    .overlay-subtitle {
+      color: #999;
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+
+    #qrReader { width: 100%; }
+
+    .mono { font-family: 'Courier New', monospace; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div style="flex:1; min-width:0;">
+      <h1>Consign with Retailer</h1>
+      <div id="loggedInAs" style="margin-top:2px; font-size:11px; color:#999; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Logged in as: —</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="card-title">📦 Item</div>
+      <div class="field">
+        <label class="label" for="itemId">Item ID</label>
+        <input id="itemId" type="text" placeholder="item_..." />
+      </div>
+      <div class="field">
+        <label class="label" for="itemSelect">Select from My Items</label>
+        <select id="itemSelect"></select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" type="button" onclick="openItemQrScanner()">Scan Item QR</button>
+        <button class="btn btn-secondary" type="button" onclick="loadOwnerItems()">Refresh Items</button>
+      </div>
+      <div class="row"><div class="k">Owner Account</div><div class="v mono" id="ownerAccount">—</div></div>
+      <div id="globalMsg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🏬 Retailer</div>
+      <div class="field">
+        <label class="label" for="retailerSelect">Choose Retailer (bonded)</label>
+        <select id="retailerSelect"></select>
+      </div>
+
+      <div class="field">
+        <label class="label" for="retailerAccountId">Or Paste Retailer Account ID</label>
+        <input id="retailerAccountId" type="text" placeholder="acc_..." />
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" type="button" onclick="openQrScanner()">Scan Store QR</button>
+        <button class="btn btn-secondary" type="button" onclick="loadRetailers()">Refresh List</button>
+      </div>
+
+      <div class="row"><div class="k">Retailer Wallet</div><div class="v mono" id="retailerWallet">—</div></div>
+      <div class="row"><div class="k">Retailer Status</div><div class="v" id="retailerStatus">—</div></div>
+      <div id="retailerMsg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">💰 Terms</div>
+      <div class="field">
+        <label class="label" for="sellerMinNetSats">Seller Minimum Net (sats)</label>
+        <input id="sellerMinNetSats" type="number" min="1" step="1" value="100000" />
+      </div>
+      <div class="field">
+        <label class="label" for="askingPriceSats">Asking Price (sats)</label>
+        <input id="askingPriceSats" type="number" min="1" step="1" value="120000" />
+      </div>
+      <div class="row"><div class="k">Retailer Markup Share</div><div class="v" id="markupShare">25%</div></div>
+      <div class="row"><div class="k">Expires</div><div class="v" id="expires">30 days</div></div>
+      <div id="createMsg" class="msg"></div>
+      <button class="btn" id="createBtn" onclick="createConsignment()" disabled>Create Consignment</button>
+    </div>
+
+    <div class="card" id="resultCard" style="display:none;">
+      <div class="card-title">✅ Created</div>
+      <div class="row"><div class="k">Consignment ID</div><div class="v mono" id="consignmentIdOut">—</div></div>
+      <div class="row"><div class="k">Status</div><div class="v" id="consignmentStatusOut">—</div></div>
+      <button class="btn btn-secondary" onclick="goToItems()">Back to My Items</button>
+    </div>
+  </div>
+
+  <div id="qrScannerOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="Scan QR">
+    <div class="overlay-card">
+      <div class="overlay-title">Scan Retailer QR</div>
+      <div class="overlay-subtitle">Scan the retailer's in-store QR to auto-fill the retailer account. Supports a full URL like <span class="mono">/m/consign?retailerAccountId=...</span> or a plain account id.</div>
+      <div id="qrReader"></div>
+      <div class="btn-row" style="margin-top: 12px;">
+        <button class="btn btn-secondary" onclick="closeQrScanner()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="itemQrScannerOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="Scan Item QR">
+    <div class="overlay-card">
+      <div class="overlay-title">Scan Item QR</div>
+      <div class="overlay-subtitle">Scan an item QR code to auto-fill Item ID. Supports links like <span class="mono">/verify?id=item_...</span> or <span class="mono">/m/verify?itemId=item_...</span>, or a plain <span class="mono">item_...</span>.</div>
+      <div id="itemQrReader"></div>
+      <div class="btn-row" style="margin-top: 12px;">
+        <button class="btn btn-secondary" onclick="closeItemQrScanner()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/qr.bundle.js"></script>
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let qrHtml5 = null;
+    let itemQrHtml5 = null;
+    let retailersCache = [];
+    let ownerItemsCache = [];
+    let userWallet = null;
+
+    function setMsg(elId, text, isError) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      if (!text) {
+        el.style.display = 'none';
+        el.textContent = '';
+        el.classList.remove('error');
+        return;
+      }
+      el.textContent = String(text);
+      el.style.display = 'block';
+      if (isError) el.classList.add('error');
+      else el.classList.remove('error');
+    }
+
+    function getSessionId() {
+      try {
+        return String(localStorage.getItem('autho_session_id') || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function clearSession() {
+      try { localStorage.removeItem('autho_session_id'); } catch {}
+      try { localStorage.removeItem('autho_account_id'); } catch {}
+    }
+
+    function apiFetch(path, options) {
+      const sid = getSessionId();
+      const headers = Object.assign({}, (options && options.headers) || {});
+      if (sid) headers['Authorization'] = `Bearer ${sid}`;
+      if (!headers['Content-Type'] && options && options.body) headers['Content-Type'] = 'application/json';
+      return fetch(path, Object.assign({}, options || {}, { headers }));
+    }
+
+    async function updateLoggedInAs() {
+      const el = document.getElementById('loggedInAs');
+      if (!el) return;
+      const sid = getSessionId();
+      if (!sid) {
+        el.textContent = 'Logged in as: (not signed in)';
+        return;
+      }
+      try {
+        const r = await apiFetch('/api/auth/me', { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          el.textContent = 'Logged in as: (unknown)';
+          return;
+        }
+        const a = data.account || {};
+        const email = String(a.email || '').trim();
+        const username = String(a.username || '').trim();
+        const accountId = String(a.accountId || '').trim();
+        const ident = email || username || (accountId ? `${accountId.substring(0, 12)}...` : '—');
+        const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
+        el.textContent = `Logged in as: ${shortId && ident !== shortId ? `${ident} (${shortId})` : ident}`;
+      } catch {
+        el.textContent = 'Logged in as: (unknown)';
+      }
+    }
+
+    function getParams() {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        return {
+          itemId: String(sp.get('itemId') || '').trim(),
+          retailerAccountId: String(sp.get('retailerAccountId') || '').trim(),
+        };
+      } catch {
+        return { itemId: '', retailerAccountId: '' };
+      }
+    }
+
+    function normalizeRetailerFromScan(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return '';
+      try {
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+          const u = new URL(raw);
+          const id = String(u.searchParams.get('retailerAccountId') || u.searchParams.get('accountId') || '').trim();
+          if (id) return id;
+        }
+      } catch {}
+      try {
+        if (raw.includes('retailerAccountId=')) {
+          const u2 = new URL(raw, window.location.origin);
+          const id2 = String(u2.searchParams.get('retailerAccountId') || '').trim();
+          if (id2) return id2;
+        }
+      } catch {}
+      return raw;
+    }
+
+    function normalizeBtcAddressFromScan(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return '';
+      let s = raw;
+      try {
+        if (/^bitcoin:/i.test(s)) {
+          s = s.substring('bitcoin:'.length);
+          const q = s.indexOf('?');
+          if (q >= 0) s = s.substring(0, q);
+        }
+      } catch {}
+      s = String(s || '').trim();
+      // Basic heuristic: bech32 (bc1/tb1) or legacy base58.
+      if (/^(bc1|tb1)[0-9a-z]{20,}$/i.test(s)) return s;
+      if (/^[13mn2][1-9A-HJ-NP-Za-km-z]{20,}$/i.test(s)) return s;
+      return '';
+    }
+
+    function normalizeItemIdFromScan(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return '';
+
+      // Direct item id
+      if (/^item[_-]/i.test(raw)) return raw;
+
+      // URLs with itemId param, or legacy verify?id=...
+      try {
+        if (raw.includes('itemId=') || raw.includes('?id=') || raw.includes('verify?id=')) {
+          const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, window.location.origin);
+          const id = String(u.searchParams.get('itemId') || u.searchParams.get('id') || '').trim();
+          if (id && /^item[_-]/i.test(id)) return id;
+        }
+      } catch {}
+
+      return '';
+    }
+
+    function updateCreateEnabled() {
+      const sid = getSessionId();
+      const itemId = String(document.getElementById('itemId')?.value || '').trim();
+      const retailerAccountId = String(document.getElementById('retailerAccountId')?.value || '').trim() || String(document.getElementById('retailerSelect')?.value || '').trim();
+      const sellerMin = Number(document.getElementById('sellerMinNetSats')?.value || 0);
+      const asking = Number(document.getElementById('askingPriceSats')?.value || 0);
+      const btn = document.getElementById('createBtn');
+      if (btn) btn.disabled = !(sid && itemId && retailerAccountId && sellerMin > 0 && asking > 0);
+    }
+
+    async function loadOwnerItems() {
+      setMsg('globalMsg', '', false);
+      const sel = document.getElementById('itemSelect');
+      if (sel) sel.innerHTML = '<option value="">Loading...</option>';
+
+      try {
+        if (!WalletAuth.requireAuth('/m/consign' + window.location.search)) {
+          return;
+        }
+
+        userWallet = WalletAuth.getWallet();
+        const ownerAddress = String(userWallet?.paymentAddress || userWallet?.address || '').trim();
+        if (!ownerAddress) {
+          throw new Error('Missing wallet address');
+        }
+
+        const r = await fetch(`/api/registry/owner/${encodeURIComponent(ownerAddress)}`, { cache: 'no-store' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(data?.error || `HTTP ${r.status}`);
+        }
+        ownerItemsCache = Array.isArray(data.items) ? data.items : [];
+        renderItemSelect();
+      } catch (e) {
+        ownerItemsCache = [];
+        renderItemSelect();
+        setMsg('globalMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    function renderItemSelect() {
+      const sel = document.getElementById('itemSelect');
+      if (!sel) return;
+
+      const opts = ownerItemsCache.map((it) => {
+        const itemId = String(it?.itemId || '').trim();
+        if (!itemId) return '';
+        const name = String((it?.metadata && (it.metadata.name || it.metadata.itemType)) || it?.itemType || '').trim();
+        const serial = String((it?.metadata && it.metadata.serialNumber) || it?.serialNumber || '').trim();
+        const label = name
+          ? (serial ? `${name} (SN ${serial})` : `${name} (${itemId.substring(0, 10)}…)`)
+          : (serial ? `SN ${serial} (${itemId.substring(0, 10)}…)` : `${itemId.substring(0, 16)}…`);
+        return `<option value="${itemId}">${label}</option>`;
+      }).filter(Boolean);
+
+      sel.innerHTML = '<option value="">Select an item...</option>' + opts.join('');
+
+      const current = String(document.getElementById('itemId')?.value || '').trim();
+      if (current) {
+        try { sel.value = current; } catch {}
+      }
+
+      updateCreateEnabled();
+    }
+
+    async function loadRetailers() {
+      setMsg('retailerMsg', '', false);
+      try {
+        const r = await fetch('/api/retailers', { cache: 'no-store' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to load retailers');
+        }
+        retailersCache = Array.isArray(data.retailers) ? data.retailers : [];
+        renderRetailerSelect();
+      } catch (e) {
+        setMsg('retailerMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    function renderRetailerSelect() {
+      const sel = document.getElementById('retailerSelect');
+      if (!sel) return;
+
+      const opts = retailersCache.map((r) => {
+        const id = String(r.accountId || '');
+        const name = String(r.displayName || r.companyName || r.username || '').trim();
+        const label = name ? `${name} (${id.substring(0, 10)}…)` : `${id.substring(0, 16)}…`;
+        return `<option value="${id}">${label}</option>`;
+      });
+
+      sel.innerHTML = opts.length ? `<option value="">Select...</option>` + opts.join('') : `<option value="">No bonded retailers found</option>`;
+
+      const current = String(document.getElementById('retailerAccountId')?.value || '').trim();
+      if (current) {
+        try { sel.value = current; } catch {}
+      }
+
+      updateRetailerDetails();
+      updateCreateEnabled();
+    }
+
+    function updateRetailerDetails() {
+      const manual = String(document.getElementById('retailerAccountId')?.value || '').trim();
+      const fromSelect = String(document.getElementById('retailerSelect')?.value || '').trim();
+      const retailerId = manual || fromSelect;
+      const r = retailersCache.find((x) => String(x?.accountId || '').trim() === retailerId);
+
+      document.getElementById('retailerWallet').textContent = r && r.walletAddress ? String(r.walletAddress) : '—';
+      document.getElementById('retailerStatus').textContent = r && r.retailerStatus ? String(r.retailerStatus) : (retailerId ? '—' : '—');
+    }
+
+    async function openQrScanner() {
+      setMsg('retailerMsg', '', false);
+      const overlay = document.getElementById('qrScannerOverlay');
+      const reader = document.getElementById('qrReader');
+      if (!overlay || !reader) return;
+      overlay.style.display = 'flex';
+      reader.innerHTML = '';
+
+      const Html5QrcodeCtor = window.Html5Qrcode;
+      if (typeof Html5QrcodeCtor !== 'function') {
+        setMsg('retailerMsg', 'QR scanner not available on this device/browser.', true);
+        overlay.style.display = 'none';
+        return;
+      }
+
+      try {
+        const html5 = new Html5QrcodeCtor('qrReader');
+        qrHtml5 = html5;
+
+        await html5.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          async (decodedText) => {
+            try {
+              const id = normalizeRetailerFromScan(decodedText);
+              if (id && id.startsWith('acc_')) {
+                document.getElementById('retailerAccountId').value = id;
+                closeQrScanner();
+                await loadRetailers();
+                return;
+              }
+
+              const addr = normalizeBtcAddressFromScan(decodedText);
+              if (addr) {
+                const match = retailersCache.find((r) => String(r?.walletAddress || '').trim() === addr);
+                if (match && match.accountId) {
+                  document.getElementById('retailerAccountId').value = String(match.accountId);
+                  closeQrScanner();
+                  await loadRetailers();
+                  return;
+                }
+              }
+
+              // If it wasn't a wallet match, try treating it as a plain retailer account id anyway.
+              if (id) {
+                document.getElementById('retailerAccountId').value = id;
+                closeQrScanner();
+                await loadRetailers();
+              }
+            } catch {}
+          }
+        );
+      } catch (e) {
+        setMsg('retailerMsg', String(e && e.message ? e.message : e), true);
+        overlay.style.display = 'none';
+      }
+    }
+
+    async function closeQrScanner() {
+      const overlay = document.getElementById('qrScannerOverlay');
+      if (overlay) overlay.style.display = 'none';
+      try {
+        if (qrHtml5) {
+          await qrHtml5.stop();
+          await qrHtml5.clear();
+        }
+      } catch {}
+      qrHtml5 = null;
+    }
+
+    async function openItemQrScanner() {
+      setMsg('globalMsg', '', false);
+      const overlay = document.getElementById('itemQrScannerOverlay');
+      const reader = document.getElementById('itemQrReader');
+      if (!overlay || !reader) return;
+      overlay.style.display = 'flex';
+      reader.innerHTML = '';
+
+      const Html5QrcodeCtor = window.Html5Qrcode;
+      if (typeof Html5QrcodeCtor !== 'function') {
+        setMsg('globalMsg', 'QR scanner not available on this device/browser.', true);
+        overlay.style.display = 'none';
+        return;
+      }
+
+      try {
+        const html5 = new Html5QrcodeCtor('itemQrReader');
+        itemQrHtml5 = html5;
+
+        await html5.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          async (decodedText) => {
+            try {
+              const itemId = normalizeItemIdFromScan(decodedText);
+              if (itemId) {
+                document.getElementById('itemId').value = itemId;
+                try {
+                  const sel = document.getElementById('itemSelect');
+                  if (sel) sel.value = itemId;
+                } catch {}
+                await closeItemQrScanner();
+                updateCreateEnabled();
+                return;
+              }
+
+              setMsg('globalMsg', 'Scanned QR does not look like an item id. Try scanning an item QR from /m/verify or /verify?id=...', true);
+            } catch {}
+          }
+        );
+      } catch (e) {
+        setMsg('globalMsg', String(e && e.message ? e.message : e), true);
+        overlay.style.display = 'none';
+      }
+    }
+
+    async function closeItemQrScanner() {
+      const overlay = document.getElementById('itemQrScannerOverlay');
+      if (overlay) overlay.style.display = 'none';
+      try {
+        if (itemQrHtml5) {
+          await itemQrHtml5.stop();
+          await itemQrHtml5.clear();
+        }
+      } catch {}
+      itemQrHtml5 = null;
+    }
+
+    async function createConsignment() {
+      setMsg('createMsg', '', false);
+
+      const sid = getSessionId();
+      if (!sid) {
+        const ret = window.location.pathname + window.location.search;
+        window.location.href = `/m/login?return=${encodeURIComponent(ret)}`;
+        return;
+      }
+
+      const itemId = String(document.getElementById('itemId')?.value || '').trim();
+      const retailerAccountId = String(document.getElementById('retailerAccountId')?.value || '').trim() || String(document.getElementById('retailerSelect')?.value || '').trim();
+      const sellerMinNetSats = Math.floor(Number(document.getElementById('sellerMinNetSats')?.value || 0));
+      const askingPriceSats = Math.floor(Number(document.getElementById('askingPriceSats')?.value || 0));
+
+      if (!itemId || !retailerAccountId || !(sellerMinNetSats > 0) || !(askingPriceSats > 0)) {
+        setMsg('createMsg', 'Missing required fields.', true);
+        return;
+      }
+
+      const btn = document.getElementById('createBtn');
+      const original = btn.textContent;
+
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Creating...';
+
+        const r = await apiFetch('/api/consignments/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            itemId,
+            retailerAccountId,
+            sellerMinNetSats,
+            askingPriceSats,
+            retailerMarkupShareBps: 2500,
+            expiresInMs: 30 * 24 * 60 * 60 * 1000,
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          clearSession();
+          const ret = window.location.pathname + window.location.search;
+          window.location.href = `/m/login?return=${encodeURIComponent(ret)}`;
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to create consignment');
+        }
+
+        document.getElementById('resultCard').style.display = 'block';
+        document.getElementById('consignmentIdOut').textContent = String(data.consignmentId || '');
+        document.getElementById('consignmentStatusOut').textContent = String(data.status || 'pending');
+
+        setMsg('createMsg', `Consignment created. Next: the retailer must confirm it in their Retailer Portal. Consignment ID: ${String(data.consignmentId || '')}`, false);
+      } catch (e) {
+        setMsg('createMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = original;
+        updateCreateEnabled();
+      }
+    }
+
+    async function init() {
+      try { await updateLoggedInAs(); } catch {}
+      const p = getParams();
+      if (p.itemId) {
+        document.getElementById('itemId').value = p.itemId;
+      }
+      if (p.retailerAccountId) {
+        document.getElementById('retailerAccountId').value = p.retailerAccountId;
+      }
+
+      try {
+        const ownerAccountId = String(localStorage.getItem('autho_account_id') || '').trim();
+        document.getElementById('ownerAccount').textContent = ownerAccountId || '—';
+      } catch {}
+
+      if (!WalletAuth.requireAuth('/m/consign' + window.location.search)) {
+        return;
+      }
+
+      userWallet = WalletAuth.getWallet();
+      await loadOwnerItems();
+
+      if (!getSessionId()) {
+        const ret = window.location.pathname + window.location.search;
+        setMsg('globalMsg', 'Sign in with email+password to create consignments.', true);
+        setTimeout(() => {
+          window.location.href = `/m/login?return=${encodeURIComponent(ret)}`;
+        }, 600);
+        return;
+      }
+
+      document.getElementById('retailerSelect').addEventListener('change', () => {
+        const selVal = String(document.getElementById('retailerSelect').value || '').trim();
+        if (selVal) {
+          document.getElementById('retailerAccountId').value = '';
+        }
+        updateRetailerDetails();
+        updateCreateEnabled();
+      });
+
+      document.getElementById('retailerAccountId').addEventListener('input', () => {
+        updateRetailerDetails();
+        updateCreateEnabled();
+      });
+
+      document.getElementById('itemSelect').addEventListener('change', () => {
+        const v = String(document.getElementById('itemSelect')?.value || '').trim();
+        if (v) {
+          document.getElementById('itemId').value = v;
+        }
+        updateCreateEnabled();
+      });
+
+      document.getElementById('itemId').addEventListener('input', updateCreateEnabled);
+      document.getElementById('sellerMinNetSats').addEventListener('input', updateCreateEnabled);
+      document.getElementById('askingPriceSats').addEventListener('input', updateCreateEnabled);
+
+      await loadRetailers();
+      updateCreateEnabled();
+    }
+
+    function goBack() {
+      window.location.href = '/m/items';
+    }
+
+    function goToItems() {
+      window.location.href = '/m/items';
+    }
+
+    init();
+  </script>
+</body>
+</html>

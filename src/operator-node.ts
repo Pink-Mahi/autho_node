@@ -121,6 +121,26 @@ export class OperatorNode extends EventEmitter {
       : path.join(this.config.dataDir, 'ui-cache');
   }
 
+  private getPublicDir(): string {
+    const envDir = String(process.env.PUBLIC_DIR || '').trim();
+    if (envDir) return envDir;
+    const cwdPublic = path.join(process.cwd(), 'public');
+    try {
+      if (fs.existsSync(cwdPublic) && fs.statSync(cwdPublic).isDirectory()) return cwdPublic;
+    } catch {}
+    return this.getUiCacheDir();
+  }
+
+  private getDownloadsDir(): string {
+    const envDir = String(process.env.DOWNLOADS_DIR || '').trim();
+    if (envDir) return envDir;
+    const cwdDownloads = path.join(process.cwd(), 'downloads');
+    try {
+      if (fs.existsSync(cwdDownloads) && fs.statSync(cwdDownloads).isDirectory()) return cwdDownloads;
+    } catch {}
+    return '';
+  }
+
   private getUiSeedHttpBase(): string {
     const raw = String(process.env.UI_SEED_HTTP_URL || '').trim();
     if (raw) return raw.replace(/\/$/, '');
@@ -145,6 +165,9 @@ export class OperatorNode extends EventEmitter {
   }
 
   private async ensureUiCache(): Promise<void> {
+    const embeddedLanding = this.resolvePublicFile('landing.html');
+    if (fs.existsSync(embeddedLanding)) return;
+
     const base = this.getUiSeedHttpBase();
     if (!base) return;
 
@@ -191,6 +214,16 @@ export class OperatorNode extends EventEmitter {
 
   private resolveUiFile(relPath: string): string {
     return path.join(this.getUiCacheDir(), relPath);
+  }
+
+  private resolvePublicFile(relPath: string): string {
+    return path.join(this.getPublicDir(), relPath);
+  }
+
+  private computeNetworkId(): string {
+    const net = this.getBitcoinNetwork();
+    const fee = this.getFeeAddress();
+    return createHash('sha256').update(`${net}:${fee}`).digest('hex');
   }
 
   private setupMiddleware(): void {
@@ -282,67 +315,161 @@ export class OperatorNode extends EventEmitter {
   }
 
   private setupRoutes(): void {
-    const uiDir = this.getUiCacheDir();
-    this.app.use(express.static(uiDir));
+    const publicDir = this.getPublicDir();
+    this.app.use(express.static(publicDir));
+
+    const downloadsDir = this.getDownloadsDir();
+    if (downloadsDir) {
+      this.app.use(
+        '/downloads',
+        express.static(downloadsDir, {
+          setHeaders: (res) => {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+          },
+        })
+      );
+    }
 
     this.app.get('/', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-entry.html');
-      if (fs.existsSync(fp)) {
-        res.sendFile(fp);
-        return;
-      }
+      const fp = this.resolvePublicFile('landing.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      const fallback = this.resolvePublicFile('mobile-entry.html');
+      if (fs.existsSync(fallback)) return res.sendFile(fallback);
       res.json({ success: true, operatorId: this.config.operatorId, message: 'Operator node is running' });
     });
 
+    this.app.get('/join', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('join.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/buy', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('buy.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/setup', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('setup-wizard.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/manufacturer', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('manufacturer-dashboard.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/authenticator', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('authenticator-dashboard.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/retailer', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('retailer-dashboard.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/dashboard', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('dashboard.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/operator/dashboard', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('operator-dashboard.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/operator/apply', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('operator-apply.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
     this.app.get('/m', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-entry.html');
+      const fp = this.resolvePublicFile('mobile-entry.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/login', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-login.html');
+      const fp = this.resolvePublicFile('mobile-login.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/wallet', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-wallet.html');
+      const fp = this.resolvePublicFile('mobile-wallet.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/items', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-items.html');
+      const fp = this.resolvePublicFile('mobile-items.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/offers', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-offers.html');
+      const fp = this.resolvePublicFile('mobile-offers.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/offer', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-offer.html');
+      const fp = this.resolvePublicFile('mobile-offer.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/verify', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-verify.html');
+      const fp = this.resolvePublicFile('mobile-verify.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/consignment', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-consignment.html');
+      const fp = this.resolvePublicFile('mobile-consignment.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/consign', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-consign.html');
+      const fp = this.resolvePublicFile('mobile-consign.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
     this.app.get('/m/history', (req: Request, res: Response) => {
-      const fp = this.resolveUiFile('mobile-history.html');
+      const fp = this.resolvePublicFile('mobile-history.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
+    });
+
+    this.app.get('/verify', (req: Request, res: Response) => {
+      const id = String((req.query as any)?.id || (req.query as any)?.itemId || '').trim();
+      if (id) {
+        res.redirect(`/m/verify?itemId=${encodeURIComponent(id)}`);
+        return;
+      }
+      res.redirect('/m/verify');
+    });
+
+    this.app.get('/consignment', (req: Request, res: Response) => {
+      const consignmentId = String((req.query as any)?.consignmentId || (req.query as any)?.id || '').trim();
+      if (consignmentId) {
+        res.redirect(`/m/consignment?consignmentId=${encodeURIComponent(consignmentId)}`);
+        return;
+      }
+      res.redirect('/m/consignment');
+    });
+
+    this.app.get('/consign', (req: Request, res: Response) => {
+      const itemId = String((req.query as any)?.itemId || (req.query as any)?.item || '').trim();
+      const retailerAccountId = String((req.query as any)?.retailerAccountId || (req.query as any)?.retailer || '').trim();
+      const qs: string[] = [];
+      if (itemId) qs.push(`itemId=${encodeURIComponent(itemId)}`);
+      if (retailerAccountId) qs.push(`retailerAccountId=${encodeURIComponent(retailerAccountId)}`);
+      res.redirect(`/m/consign${qs.length ? `?${qs.join('&')}` : ''}`);
     });
 
     this.app.get('/api/health', (req: Request, res: Response) => {
@@ -950,15 +1077,13 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
-    this.app.all('/dashboard*', (req: Request, res: Response) => {
-      res.status(403).json({ 
-        success: false, 
-        error: 'Admin dashboard is not available on operator nodes. Please use the main node dashboard.' 
-      });
-    });
-
     this.app.use((req: Request, res: Response) => {
-      res.status(404).json({ error: 'Endpoint not found' });
+      const p = String(req.path || '').trim();
+      if (p.startsWith('/api')) {
+        res.status(404).json({ error: 'Endpoint not found' });
+        return;
+      }
+      res.status(404).send('Not Found');
     });
   }
 
@@ -1023,6 +1148,7 @@ export class OperatorNode extends EventEmitter {
         this.mainSeedWs!.send(JSON.stringify({
           type: 'sync_request',
           operatorId: this.config.operatorId,
+          networkId: this.computeNetworkId(),
           lastSequence: this.state.lastSyncedSequence,
           timestamp: Date.now()
         }));
@@ -1084,6 +1210,15 @@ export class OperatorNode extends EventEmitter {
     this.syncInProgress = true;
 
     try {
+      const expectedNet = this.computeNetworkId();
+      const remoteNet = String(message?.networkId || '').trim();
+      if (!remoteNet || remoteNet !== expectedNet) {
+        console.error('[Operator] Network mismatch - refusing to sync');
+        this.isConnectedToMain = false;
+        try { this.mainSeedWs?.close(); } catch {}
+        return;
+      }
+
       console.log(`[Operator] Syncing events from main node...`);
 
       const { events, state } = message;

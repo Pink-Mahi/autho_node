@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apply to be an Operator - Autho</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+      color: #d4af37;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    .card {
+      background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+      border: 2px solid #d4af37;
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(212, 175, 55, 0.15);
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle { color: #999; margin-bottom: 14px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 800px) { .row { grid-template-columns: 1fr; } }
+
+    label { display: block; margin-bottom: 6px; font-weight: 700; color: #d4af37; font-size: 0.9rem; }
+
+    input, textarea {
+      width: 100%;
+      padding: 12px;
+      background: rgba(42, 42, 42, 0.8);
+      border: 1px solid #555;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+
+    textarea { min-height: 110px; resize: vertical; }
+
+    .btn {
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      border: none;
+      border-radius: 10px;
+      color: #0a0a0a;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); }
+
+    .btn-secondary {
+      padding: 12px 16px;
+      background: transparent;
+      border: 1px solid rgba(212, 175, 55, 0.6);
+      border-radius: 10px;
+      color: #d4af37;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .muted { color: #aaa; font-size: 0.9rem; }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      word-break: break-all;
+    }
+
+    .notice {
+      background: rgba(212, 175, 55, 0.08);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 12px;
+      padding: 12px;
+      color: #ccc;
+      margin-top: 12px;
+      line-height: 1.45;
+    }
+
+    .error {
+      background: rgba(255, 68, 68, 0.1);
+      border: 1px solid #ff4444;
+      color: #ff4444;
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .success {
+      background: rgba(68, 255, 68, 0.1);
+      border: 1px solid #44ff44;
+      color: #44ff44;
+      padding: 12px;
+      border-radius: 10px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+    .check-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 12px;
+      background: rgba(212, 175, 55, 0.06);
+      color: #ddd;
+    }
+
+    .check-row input[type="checkbox"] {
+      width: auto;
+      transform: scale(1.15);
+      accent-color: #d4af37;
+    }
+
+    .btn[disabled], .btn-secondary[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Apply to be an Operator</h1>
+      <div class="subtitle">Generate your operator keys locally and submit a request to join the network.</div>
+      <div class="notice">
+        Your <strong>operatorUrl</strong> should be a stable domain (recommended) and must start with <span class="mono">https://</span>.
+        The private key is generated in your browser and is never sent to the server.
+      </div>
+      <div id="err" class="error"></div>
+      <div id="ok" class="success"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Logged-in Account</label>
+          <div id="me" class="mono muted">Loading...</div>
+        </div>
+        <div>
+          <label>Network</label>
+          <div id="network" class="mono muted">mainnet</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Operator URL *</label>
+          <input id="operatorUrl" placeholder="https://autho.example.com" />
+          <div class="muted" style="margin-top:6px;">This is the URL gateways will use to reach your operator node.</div>
+        </div>
+        <div>
+          <label>Operator Payout BTC Address *</label>
+          <input id="btcAddress" placeholder="bc1q..." />
+          <div class="muted" style="margin-top:6px;">This is where your operator fee share will be paid.</div>
+        </div>
+      </div>
+
+      <div style="height:14px;"></div>
+
+      <div class="row">
+        <div>
+          <label>Operator ID *</label>
+          <input id="operatorId" placeholder="operator-..." />
+          <div class="muted" style="margin-top:6px;">Use a unique ID. Example: <span class="mono">operator-yourdomain</span></div>
+        </div>
+        <div>
+          <label>Seed URL</label>
+          <input id="seedUrl" disabled />
+          <div class="muted" style="margin-top:6px;">This node will sync from the main seed.</div>
+        </div>
+      </div>
+
+      <div style="height:14px;"></div>
+
+      <label>Generated Operator Keys (keep private key secret)</label>
+      <div class="row">
+        <div>
+          <label style="margin-top:8px;">Operator Public Key</label>
+          <textarea id="publicKey" placeholder="Public key" class="mono" readonly></textarea>
+        </div>
+        <div>
+          <label style="margin-top:8px;">Operator Private Key (KEEP SECRET)</label>
+          <textarea id="privateKey" placeholder="Private key" class="mono" readonly></textarea>
+        </div>
+      </div>
+
+      <div class="check-row">
+        <input id="savedPrivateKey" type="checkbox" onchange="updateUiState()" />
+        <div>
+          <div style="font-weight:800; color:#d4af37;">I have securely saved the private key</div>
+          <div class="muted" style="margin-top:3px;">You will need this exact private key later to deploy your operator node. If you lose it, you’ll have to re-apply with new keys.</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-secondary" type="button" onclick="generateKeys()">Generate Keys</button>
+        <button id="submitBtn" class="btn" type="button" onclick="submitApplication()" disabled>Submit Application</button>
+        <a class="btn-secondary" href="/operator/dashboard" style="text-decoration:none; display:inline-flex; align-items:center;">Back to Operator Dashboard</a>
+      </div>
+
+      <div class="notice" style="margin-top:14px;">
+        Deployment environment variables (.env format). Works in Coolify or any Docker platform:
+        <textarea id="envBlock" class="mono" readonly style="margin-top:10px; min-height: 190px; white-space:pre;">Loading...</textarea>
+        <div class="actions" style="margin-top:10px;">
+          <button class="btn-secondary" type="button" onclick="copyEnv()">Copy .env</button>
+          <button class="btn-secondary" type="button" onclick="downloadEnv()">Download .env</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/btc.bundle.js"></script>
+  <script>
+    function showErr(msg) {
+      const el = document.getElementById('err');
+      const ok = document.getElementById('ok');
+      ok.style.display = 'none';
+      el.textContent = String(msg || 'Error');
+      el.style.display = 'block';
+    }
+
+    function showOk(msg) {
+      const el = document.getElementById('ok');
+      const err = document.getElementById('err');
+      err.style.display = 'none';
+      el.textContent = String(msg || 'OK');
+      el.style.display = 'block';
+    }
+
+    function getSessionId() {
+      try { return String(localStorage.getItem('autho_session_id') || '').trim(); } catch { return ''; }
+    }
+
+    async function loadMe() {
+      const sessionId = getSessionId();
+      if (!sessionId) {
+        window.location.href = '/customer/login?return=' + encodeURIComponent('/operator/apply');
+        return;
+      }
+
+      const r = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${sessionId}` }, cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.account) {
+        try { localStorage.removeItem('autho_session_id'); } catch {}
+        window.location.href = '/customer/login?return=' + encodeURIComponent('/operator/apply');
+        return;
+      }
+
+      const acct = data.account;
+      document.getElementById('me').textContent = `${String(acct.accountId || '')} (${String(acct.role || '')})`;
+
+      const seed = computeMainSeedUrl();
+      document.getElementById('seedUrl').value = seed;
+
+      if (!document.getElementById('operatorId').value.trim()) {
+        const suffix = String(acct.accountId || '').slice(0, 8) || Math.random().toString(16).slice(2, 10);
+        document.getElementById('operatorId').value = `operator-${suffix}`;
+      }
+
+      updateEnvPreview();
+      updateUiState();
+    }
+
+    function computeMainSeedUrl() {
+      const isSecure = window.location.protocol === 'https:';
+      const wsProto = isSecure ? 'wss:' : 'ws:';
+      const host = String(window.location.host || '').trim();
+      return `${wsProto}//${host}`;
+    }
+
+    function envLine(key, val) {
+      const v = String(val ?? '').trim();
+      return `${key}=${v}`;
+    }
+
+    function buildEnvText() {
+      const operatorId = String(document.getElementById('operatorId').value || '').trim();
+      const publicKey = String(document.getElementById('publicKey').value || '').trim();
+      const privateKey = String(document.getElementById('privateKey').value || '').trim();
+      const btcAddress = String(document.getElementById('btcAddress').value || '').trim();
+      const network = String(document.getElementById('network').textContent || 'mainnet').trim() || 'mainnet';
+      const mainSeedUrl = String(document.getElementById('seedUrl').value || computeMainSeedUrl()).trim();
+
+      const lines = [
+        envLine('OPERATOR_ID', operatorId || 'operator-...'),
+        envLine('OPERATOR_PRIVATE_KEY', privateKey || '...'),
+        envLine('OPERATOR_PUBLIC_KEY', publicKey || '...'),
+        '',
+        envLine('OPERATOR_BTC_ADDRESS', btcAddress || 'bc1q...'),
+        envLine('BITCOIN_NETWORK', network || 'mainnet'),
+        '',
+        envLine('MAIN_SEED_URL', mainSeedUrl || 'wss://autho.pinkmahi.com'),
+        '',
+        envLine('PORT', '3000'),
+        envLine('WS_PORT', '4001'),
+        '',
+        envLine('DATA_DIR', '/data'),
+      ];
+
+      return lines.join('\n');
+    }
+
+    function updateEnvPreview() {
+      const envEl = document.getElementById('envBlock');
+      if (!envEl) return;
+      envEl.value = buildEnvText();
+    }
+
+    async function copyEnv() {
+      try {
+        const text = buildEnvText();
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          showOk('Copied .env block to clipboard.');
+          return;
+        }
+        const ta = document.getElementById('envBlock');
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        showOk('Copied .env block to clipboard.');
+      } catch (e) {
+        showErr(e?.message || String(e));
+      }
+    }
+
+    function downloadEnv() {
+      try {
+        const text = buildEnvText();
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'operator.env';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showOk('Downloaded operator.env. Rename it to .env when you deploy.');
+      } catch (e) {
+        showErr(e?.message || String(e));
+      }
+    }
+
+    function updateUiState() {
+      const saved = Boolean(document.getElementById('savedPrivateKey')?.checked);
+      const publicKey = String(document.getElementById('publicKey').value || '').trim();
+      const privateKey = String(document.getElementById('privateKey').value || '').trim();
+
+      const operatorUrl = String(document.getElementById('operatorUrl').value || '').trim();
+      const btcAddress = String(document.getElementById('btcAddress').value || '').trim();
+      const operatorId = String(document.getElementById('operatorId').value || '').trim();
+
+      const canSubmit = saved && !!publicKey && !!privateKey && !!operatorUrl && !!btcAddress && !!operatorId;
+      const btn = document.getElementById('submitBtn');
+      if (btn) btn.disabled = !canSubmit;
+
+      updateEnvPreview();
+    }
+
+    function generateKeys() {
+      try {
+        if (!window.AuthoBTC || !window.AuthoBTC.generateSecp256k1KeyPair) {
+          showErr('Crypto bundle not loaded. Try refreshing.');
+          return;
+        }
+        const kp = window.AuthoBTC.generateSecp256k1KeyPair();
+        document.getElementById('publicKey').value = kp.publicKeyHex;
+        document.getElementById('privateKey').value = kp.privateKeyHex;
+        showOk('Generated operator keys. Save the private key securely.');
+        updateUiState();
+      } catch (e) {
+        showErr(e?.message || String(e));
+      }
+    }
+
+    async function submitApplication() {
+      try {
+        const sessionId = getSessionId();
+        if (!sessionId) {
+          window.location.href = '/customer/login?return=' + encodeURIComponent('/operator/apply');
+          return;
+        }
+
+        const operatorUrl = String(document.getElementById('operatorUrl').value || '').trim();
+        const btcAddress = String(document.getElementById('btcAddress').value || '').trim();
+        const operatorId = String(document.getElementById('operatorId').value || '').trim();
+        const publicKey = String(document.getElementById('publicKey').value || '').trim();
+        const privateKey = String(document.getElementById('privateKey').value || '').trim();
+        const saved = Boolean(document.getElementById('savedPrivateKey')?.checked);
+
+        if (!operatorUrl || !btcAddress || !operatorId) {
+          showErr('Missing operatorUrl, btcAddress, or operatorId');
+          return;
+        }
+        if (!/^https:\/\//i.test(operatorUrl)) {
+          showErr('operatorUrl must start with https://');
+          return;
+        }
+        if (!publicKey || !privateKey) {
+          showErr('Generate keys first (public/private key).');
+          return;
+        }
+        if (!saved) {
+          showErr('Confirm you saved the private key before submitting.');
+          return;
+        }
+
+        const challRes = await fetch('/api/operators/apply/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+          body: JSON.stringify({})
+        });
+        const chall = await challRes.json().catch(() => ({}));
+        if (!challRes.ok || !chall || chall.success !== true) {
+          throw new Error(chall?.error || 'Failed to create application challenge');
+        }
+
+        const nonce = String(chall.nonce || '');
+        const signature = await window.AuthoBTC.signMessageSha256(nonce, privateKey);
+
+        const res = await fetch('/api/operators/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+          body: JSON.stringify({
+            challengeId: chall.challengeId,
+            operatorId,
+            operatorUrl,
+            btcAddress,
+            publicKey,
+            signature
+          })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data || data.success !== true) {
+          throw new Error(data?.error || 'Application failed');
+        }
+
+        showOk('Application submitted. An admin/operator quorum will review it.');
+      } catch (e) {
+        showErr(e?.message || String(e));
+      }
+    }
+
+    window.addEventListener('load', () => {
+      loadMe().catch((e) => showErr(e?.message || String(e)));
+      for (const id of ['operatorUrl', 'btcAddress', 'operatorId']) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateUiState);
+      }
+    });
+  </script>
+</body>
+</html>

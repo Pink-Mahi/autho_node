@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retailer Portal - Autho</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #d4af37;
+    }
+
+    .container { max-width: 980px; margin: 0 auto; }
+
+    .top-nav {
+      background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+      border: 1px solid #d4af37;
+      padding: 14px 18px;
+      border-radius: 14px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 5px 20px rgba(212, 175, 55, 0.2);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: #999;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+
+    .nav-actions { display: flex; gap: 10px; align-items: center; }
+
+    .btn {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+      color: #0a0a0a;
+      border: 1px solid #f4d03f;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .btn-secondary {
+      background: rgba(212, 175, 55, 0.12);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+    }
+
+    .btn-danger {
+      background: rgba(255, 59, 48, 0.12);
+      color: #ff6b6b;
+      border: 1px solid rgba(255, 59, 48, 0.35);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+      border: 2px solid #d4af37;
+      padding: 22px;
+      border-radius: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 20px 60px rgba(212, 175, 55, 0.15);
+    }
+
+    .hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 26px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hero p { color: #999; font-size: 13px; line-height: 1.5; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    @media (min-width: 880px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+    }
+
+    .row:last-child { border-bottom: none; }
+
+    .k { color: #999; font-size: 12px; }
+    .v { color: #fff; font-size: 12px; max-width: 60%; text-align: right; word-break: break-all; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      gap: 8px;
+    }
+
+    .badge.red {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.10);
+      color: #ff6b6b;
+    }
+
+    .badge.green {
+      border-color: rgba(76, 217, 100, 0.35);
+      background: rgba(76, 217, 100, 0.10);
+      color: #4cd964;
+    }
+
+    .msg {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+      font-size: 13px;
+      display: none;
+      line-height: 1.4;
+    }
+
+    .msg.error {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.10);
+      color: #ff6b6b;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 2000;
+    }
+
+    .modal-content {
+      width: 100%;
+      max-width: 640px;
+      background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+      border: 2px solid #d4af37;
+      border-radius: 18px;
+      padding: 18px;
+      color: #d4af37;
+    }
+
+    .modal-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .form-row { margin-bottom: 12px; }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: #d4af37;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 12px;
+      background: rgba(42, 42, 42, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 10px;
+      color: #fff;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    textarea { min-height: 110px; resize: vertical; }
+
+    .footer {
+      margin-top: 18px;
+      text-align: center;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .footer a { color: #d4af37; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-nav">
+      <div class="brand">
+        <div>
+          <div class="brand-title">🏪 Retailer Portal</div>
+          <div class="brand-sub">Consignments • Bond • Verification</div>
+          <div class="brand-sub" id="loggedInAs" style="text-transform:none;">Logged in as: —</div>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <a class="btn btn-secondary" href="/m">Mobile Home</a>
+        <a class="btn btn-secondary" href="/retailer/login" id="loginLink" style="display:none;">Login</a>
+        <button class="btn btn-danger" id="logoutBtn" onclick="logout()" style="display:none;">Logout</button>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h1>Retailer Dashboard</h1>
+      <p>
+        Use this portal to enable retailer mode, prove your 200,000 sats bond, and apply for a verified retailer badge.
+      </p>
+      <div id="globalMsg" class="msg"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">👤 Account</div>
+        <div class="row"><div class="k">Session</div><div class="v" id="sessionStatus">Checking...</div></div>
+        <div class="row"><div class="k">Account ID</div><div class="v" id="accountId">—</div></div>
+        <div class="row"><div class="k">Role</div><div class="v" id="role">—</div></div>
+        <div class="row"><div class="k">Wallet</div><div class="v" id="wallet">—</div></div>
+        <div class="row"><div class="k">Retailer Status</div><div class="v" id="retailerStatus">—</div></div>
+
+        <div class="actions">
+          <button class="btn" id="becomeRetailerBtn" onclick="becomeRetailer()" disabled>Become a Retailer</button>
+          <button class="btn btn-secondary" onclick="refresh()">Refresh</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🛡️ Bond Proof</div>
+        <div class="row"><div class="k">Min Bond</div><div class="v" id="bondMin">—</div></div>
+        <div class="row"><div class="k">Confirmed</div><div class="v" id="bondConfirmed">—</div></div>
+        <div class="row"><div class="k">UTXOs</div><div class="v" id="bondUtxos">—</div></div>
+        <div class="row"><div class="k">Last Checked</div><div class="v" id="bondLast">—</div></div>
+
+        <div class="actions">
+          <button class="btn" id="bondCheckBtn" onclick="checkBond()" disabled>Check Bond</button>
+          <button class="btn btn-secondary" onclick="openProfileModal()" id="profileBtn" disabled>Edit Profile</button>
+        </div>
+        <div id="bondMsg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">✅ Verified Retailer</div>
+        <div class="row"><div class="k">Badge</div><div class="v" id="verifiedBadge">—</div></div>
+        <div class="row"><div class="k">Verified At</div><div class="v" id="verifiedAt">—</div></div>
+        <div class="row"><div class="k">Application</div><div class="v" id="applicationStatus">—</div></div>
+
+        <div class="actions">
+          <button class="btn" id="applyVerifiedBtn" onclick="openApplyModal()" disabled>Apply for Verification</button>
+          <a class="btn btn-secondary" href="/api/retailers" target="_blank">View Public Retailers</a>
+        </div>
+        <div id="verifyMsg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🧾 Quick Links</div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="/m/items">My Items</a>
+          <a class="btn btn-secondary" href="/m/offers">Offers</a>
+          <a class="btn btn-secondary" href="/m/verify">Scan / Verify</a>
+          <a class="btn btn-secondary" href="/retailer/login">Retailer Login Link</a>
+        </div>
+        <div class="footer">
+          Tip: If you just created your account, you may need to sign in at <a href="/customer/login">/customer/login</a> first.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🏷️ Store QR (Consign)</div>
+        <div class="footer" style="margin-top: 0; text-align: left;">
+          Display this QR in-store so item owners can scan it and start a consignment with you.
+        </div>
+        <div style="display:flex; justify-content:center; margin-top: 12px;">
+          <img id="storeQrImg" alt="Store QR" style="width:250px; height:250px; border-radius: 12px; border: 1px solid rgba(212, 175, 55, 0.35); background: rgba(0,0,0,0.2);" />
+        </div>
+        <div class="row"><div class="k">Link</div><div class="v" id="storeQrLink">—</div></div>
+        <div id="storeQrMsg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🧯 Consignment Management</div>
+        <div class="form-row">
+          <label for="manageConsignmentId">Consignment ID</label>
+          <input id="manageConsignmentId" type="text" placeholder="consignment_..." />
+        </div>
+        <div class="actions">
+          <button class="btn btn-secondary" onclick="loadConsignment()">Load</button>
+          <button class="btn btn-secondary" id="consignmentCancelReqBtn" onclick="requestConsignmentCancel()" disabled>Request Cancel</button>
+          <button class="btn btn-secondary" id="consignmentCancelConfBtn" onclick="confirmConsignmentCancel()" disabled>Confirm Cancel</button>
+        </div>
+        <div id="consignmentManageMsg" class="msg"></div>
+        <div class="row"><div class="k">Status</div><div class="v" id="manageStatus">—</div></div>
+        <div class="row"><div class="k">Item</div><div class="v" id="manageItem">—</div></div>
+        <div class="row"><div class="k">Requested</div><div class="v" id="manageRequested">—</div></div>
+        <div class="row"><div class="k">Confirmed</div><div class="v" id="manageConfirmed">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📦 My Consignments</div>
+        <div class="actions">
+          <button class="btn btn-secondary" onclick="loadMyConsignments()">Refresh</button>
+        </div>
+        <div class="row"><div class="k">Total Earned (Completed)</div><div class="v" id="totalEarned">—</div></div>
+        <div class="row"><div class="k">Confirmed Earned</div><div class="v" id="totalEarnedConfirmed">—</div></div>
+        <div id="myConsignmentsMsg" class="msg"></div>
+        <div id="myConsignmentsList" class="footer" style="margin-top: 10px; text-align: left;">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="profileModal" class="modal" onclick="closeModalIfBackdrop(event, 'profileModal')">
+    <div class="modal-content">
+      <div class="modal-title">Edit Retailer Profile</div>
+      <div class="form-row">
+        <label for="companyName">Company Name</label>
+        <input id="companyName" type="text" placeholder="Acme Retail" />
+      </div>
+      <div class="form-row">
+        <label for="displayName">Display Name</label>
+        <input id="displayName" type="text" placeholder="Acme Storefront" />
+      </div>
+      <div class="form-row">
+        <label for="website">Website</label>
+        <input id="website" type="text" placeholder="https://example.com" />
+      </div>
+      <div class="form-row">
+        <label for="phone">Phone</label>
+        <input id="phone" type="text" placeholder="+1 ..." />
+      </div>
+      <div class="form-row">
+        <label for="address">Address</label>
+        <input id="address" type="text" placeholder="Street, City, Country" />
+      </div>
+      <div class="form-row">
+        <label for="contactEmail">Contact Email</label>
+        <input id="contactEmail" type="email" placeholder="contact@company.com" />
+      </div>
+      <div class="form-row">
+        <label for="notes">Notes</label>
+        <textarea id="notes" placeholder="Anything you'd like reviewers to know"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn" id="saveProfileBtn" onclick="saveProfile()">Save</button>
+        <button class="btn btn-secondary" onclick="closeModal('profileModal')">Cancel</button>
+      </div>
+      <div id="profileMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <div id="applyModal" class="modal" onclick="closeModalIfBackdrop(event, 'applyModal')">
+    <div class="modal-content">
+      <div class="modal-title">Apply for Verified Retailer</div>
+      <div class="footer" style="margin: 0 0 10px 0; text-align: left;">
+        Requires a fresh bond proof. Use “Check Bond” first.
+      </div>
+      <div class="form-row">
+        <label for="applyCompanyName">Company Name</label>
+        <input id="applyCompanyName" type="text" placeholder="Acme Retail" />
+      </div>
+      <div class="form-row">
+        <label for="applyContactEmail">Contact Email</label>
+        <input id="applyContactEmail" type="email" placeholder="contact@company.com" />
+      </div>
+      <div class="form-row">
+        <label for="applyWebsite">Website</label>
+        <input id="applyWebsite" type="text" placeholder="https://example.com" />
+      </div>
+      <div class="form-row">
+        <label for="applyNotes">Notes</label>
+        <textarea id="applyNotes" placeholder="Provide details to help operators verify your business"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn" id="submitApplyBtn" onclick="applyVerified()">Submit Application</button>
+        <button class="btn btn-secondary" onclick="closeModal('applyModal')">Cancel</button>
+      </div>
+      <div id="applyMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <script>
+    function getSessionId() {
+      try {
+        return String(localStorage.getItem('autho_session_id') || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function setMsg(elId, text, isError) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      if (!text) {
+        el.style.display = 'none';
+        el.textContent = '';
+        el.classList.remove('error');
+        return;
+      }
+      el.textContent = String(text);
+      el.style.display = 'block';
+      if (isError) el.classList.add('error');
+      else el.classList.remove('error');
+    }
+
+    function fmtTs(ts) {
+      const n = Number(ts || 0);
+      if (!n) return '—';
+      try {
+        return new Date(n).toLocaleString();
+      } catch {
+        return String(n);
+      }
+    }
+
+    async function apiFetch(path, options) {
+      const sessionId = getSessionId();
+      const headers = Object.assign({}, (options && options.headers) || {});
+      if (sessionId) headers['Authorization'] = `Bearer ${sessionId}`;
+      if (!headers['Content-Type'] && options && options.body) headers['Content-Type'] = 'application/json';
+      return fetch(path, Object.assign({}, options || {}, { headers }));
+    }
+
+    async function refresh() {
+      setMsg('globalMsg', '', false);
+      const sessionId = getSessionId();
+      const loginLink = document.getElementById('loginLink');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const sessionEl = document.getElementById('sessionStatus');
+      const loggedInAsEl = document.getElementById('loggedInAs');
+
+      if (!sessionId) {
+        if (sessionEl) sessionEl.textContent = 'Not logged in';
+        if (loggedInAsEl) loggedInAsEl.textContent = 'Logged in as: —';
+        if (loginLink) loginLink.style.display = 'inline-flex';
+        if (logoutBtn) logoutBtn.style.display = 'none';
+        disableActions(true);
+        try {
+          const listEl = document.getElementById('myConsignmentsList');
+          if (listEl) listEl.innerHTML = '<div class="footer" style="margin-top:0;">Login to view consignments.</div>';
+        } catch {}
+        setMsg('globalMsg', 'Login required to use retailer features. Tap Login in the top right.', true);
+        return;
+      }
+
+      if (sessionEl) sessionEl.textContent = 'Logged in';
+      if (loginLink) loginLink.style.display = 'none';
+      if (logoutBtn) logoutBtn.style.display = 'inline-flex';
+
+      try {
+        const r = await apiFetch('/api/auth/me', { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          disableActions(true);
+          setMsg('globalMsg', data.error || 'Failed to load account', true);
+          return;
+        }
+
+        const a = data.account || {};
+        document.getElementById('accountId').textContent = String(a.accountId || '—');
+        document.getElementById('role').textContent = String(a.role || '—');
+        document.getElementById('wallet').textContent = String(a.walletAddress || '—');
+        if (loggedInAsEl) loggedInAsEl.textContent = `Logged in as: ${formatLoggedInAs(a)}`;
+
+        const role = String(a.role || '');
+        const status = String(a.retailerStatus || 'unverified');
+        document.getElementById('retailerStatus').innerHTML = badgeHtml(status);
+
+        const verified = status === 'verified';
+        document.getElementById('verifiedBadge').innerHTML = badgeHtml(verified ? 'verified' : 'unverified');
+        document.getElementById('verifiedAt').textContent = fmtTs(a.retailerVerifiedAt);
+
+        document.getElementById('bondMin').textContent = a.retailerBondMinSats ? String(a.retailerBondMinSats) + ' sats' : '200000 sats';
+        document.getElementById('bondConfirmed').textContent = a.retailerBondConfirmedSats ? String(a.retailerBondConfirmedSats) + ' sats' : '—';
+        document.getElementById('bondUtxos').textContent = (typeof a.retailerBondUtxoCount === 'number') ? String(a.retailerBondUtxoCount) : '—';
+        document.getElementById('bondLast').textContent = fmtTs(a.retailerBondLastCheckedAt);
+
+        const blocked = status === 'blocked';
+        const isRetailer = role === 'retailer';
+
+        document.getElementById('becomeRetailerBtn').disabled = isRetailer || blocked;
+        document.getElementById('bondCheckBtn').disabled = !isRetailer || blocked;
+        document.getElementById('profileBtn').disabled = !isRetailer || blocked;
+        document.getElementById('applyVerifiedBtn').disabled = !isRetailer || blocked || verified;
+
+        document.getElementById('applicationStatus').textContent = verified ? 'Already verified' : 'Not submitted';
+
+        try {
+          renderStoreQr(a);
+        } catch {}
+
+        try {
+          if (role === 'retailer' && !blocked) {
+            loadMyConsignments().catch(() => {});
+          }
+        } catch {}
+      } catch (e) {
+        disableActions(true);
+        setMsg('globalMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    function renderStoreQr(account) {
+      const role = String(account?.role || '');
+      const accountId = String(account?.accountId || '').trim();
+      const img = document.getElementById('storeQrImg');
+      const linkEl = document.getElementById('storeQrLink');
+      if (!img || !linkEl) return;
+      if (role !== 'retailer' || !accountId) {
+        img.removeAttribute('src');
+        linkEl.textContent = '—';
+        setMsg('storeQrMsg', 'Enable retailer role to use Store QR.', true);
+        return;
+      }
+
+      const deepLink = `/m/consign?retailerAccountId=${encodeURIComponent(accountId)}`;
+      linkEl.textContent = deepLink;
+      img.src = `/api/qr.png?text=${encodeURIComponent(deepLink)}`;
+      setMsg('storeQrMsg', '', false);
+    }
+
+    function disableActions(disabled) {
+      const ids = ['becomeRetailerBtn', 'bondCheckBtn', 'profileBtn', 'applyVerifiedBtn'];
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = Boolean(disabled);
+      });
+    }
+
+    function badgeHtml(text) {
+      const t = String(text || '').toLowerCase();
+      if (t === 'verified') return '<span class="badge green">verified</span>';
+      if (t === 'blocked') return '<span class="badge red">blocked</span>';
+      return '<span class="badge">unverified</span>';
+    }
+
+    function badgeStatusHtml(text) {
+      const t = String(text || '').toLowerCase();
+      if (t === 'active') return '<span class="badge green">active</span>';
+      if (t === 'cancelled' || t === 'expired') return `<span class="badge red">${t}</span>`;
+      if (!t) return '—';
+      return `<span class="badge">${t}</span>`;
+    }
+
+    function escapeHtml(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatLoggedInAs(account) {
+      const email = String(account?.email || '').trim();
+      const username = String(account?.username || '').trim();
+      const accountId = String(account?.accountId || '').trim();
+      const ident = email || username || (accountId ? `${accountId.substring(0, 12)}...` : '—');
+      const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
+      return shortId && ident !== shortId ? `${ident} (${shortId})` : ident;
+    }
+
+    function domSafeId(s) {
+      return String(s || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function shortTxid(t) {
+      const txid = String(t || '').trim();
+      if (!txid) return '';
+      return txid.length > 18 ? `${txid.substring(0, 10)}...${txid.substring(txid.length - 8)}` : txid;
+    }
+
+    function explorerUrl(txid, provider) {
+      const t = String(txid || '').trim();
+      if (!t) return '';
+      const p = String(provider || '').toLowerCase();
+      const isTestnet = p.includes('testnet');
+      return isTestnet
+        ? `https://mempool.space/testnet/tx/${encodeURIComponent(t)}`
+        : `https://mempool.space/tx/${encodeURIComponent(t)}`;
+    }
+
+    window.copyTxid = async (txid) => {
+      const t = String(txid || '').trim();
+      if (!t) return;
+      try {
+        await navigator.clipboard.writeText(t);
+      } catch {
+        alert('Copy failed');
+      }
+    };
+
+    const txStatusCache = new Map();
+
+    async function getTxStatus(txid) {
+      const t = String(txid || '').trim();
+      if (!t) return null;
+      if (txStatusCache.has(t)) return txStatusCache.get(t);
+      const p = (async () => {
+        const r = await apiFetch(`/api/chain/tx/${encodeURIComponent(t)}/status`, { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.ok !== true) {
+          return null;
+        }
+        return data;
+      })();
+      txStatusCache.set(t, p);
+      return p;
+    }
+
+    function txStatusBadgeHtml(status) {
+      const confirmed = Boolean(status && status.confirmed);
+      const confs = Number(status && status.confirmations ? status.confirmations : 0);
+      if (confirmed) return `<span class="badge green">confirmed (${confs})</span>`;
+      return '<span class="badge">unconfirmed</span>';
+    }
+
+    async function updateTxStatusUI(consignmentDomId, txid) {
+      const statusEl = document.getElementById(`txStatus_${consignmentDomId}`);
+      const openEl = document.getElementById(`txOpen_${consignmentDomId}`);
+      if (!statusEl) return;
+
+      try {
+        const s = await getTxStatus(txid);
+        if (!s) {
+          statusEl.innerHTML = '<span class="badge red">unknown</span>';
+          return;
+        }
+        statusEl.innerHTML = txStatusBadgeHtml(s);
+        if (openEl) openEl.href = explorerUrl(txid, s.provider);
+      } catch {
+        statusEl.innerHTML = '<span class="badge red">unknown</span>';
+      }
+    }
+
+    function buyerCheckoutLink(consignmentId) {
+      const id = String(consignmentId || '').trim();
+      return id ? `/consignment?id=${encodeURIComponent(id)}` : '';
+    }
+
+    async function loadMyConsignments() {
+      setMsg('myConsignmentsMsg', '', false);
+      const listEl = document.getElementById('myConsignmentsList');
+      if (listEl) listEl.textContent = 'Loading...';
+
+      try {
+        const r = await apiFetch('/api/consignments/retailer/me', { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to load consignments');
+        }
+
+        const consignments = Array.isArray(data.consignments) ? data.consignments : [];
+        if (!consignments.length) {
+          if (listEl) listEl.innerHTML = '<div class="footer" style="margin-top:0;">No consignments yet.</div>';
+          try {
+            const tEl = document.getElementById('totalEarned');
+            const cEl = document.getElementById('totalEarnedConfirmed');
+            if (tEl) tEl.textContent = '0 sats';
+            if (cEl) cEl.textContent = '0 sats';
+          } catch {}
+          return;
+        }
+
+        try {
+          const completed = consignments.filter((c) => String(c?.status || '').toLowerCase() === 'completed');
+          const totalEarned = completed.reduce((sum, c) => sum + Math.max(0, Number(c?.retailerCommissionSats || 0)), 0);
+          const totalEl = document.getElementById('totalEarned');
+          if (totalEl) totalEl.textContent = `${Number(totalEarned || 0).toLocaleString()} sats`;
+
+          const withTxid = completed.filter((c) => String(c?.txid || '').trim());
+          const statuses = await Promise.all(withTxid.map((c) => getTxStatus(String(c.txid || '').trim())));
+          const confirmedEarned = withTxid.reduce((sum, c, i) => {
+            const s = statuses[i];
+            if (s && s.confirmed) return sum + Math.max(0, Number(c?.retailerCommissionSats || 0));
+            return sum;
+          }, 0);
+          const confEl = document.getElementById('totalEarnedConfirmed');
+          if (confEl) confEl.textContent = `${Number(confirmedEarned || 0).toLocaleString()} sats`;
+        } catch {}
+
+        if (!listEl) return;
+        listEl.innerHTML = consignments.map((c) => {
+          const consignmentId = String(c.consignmentId || '');
+          const consignmentDomId = domSafeId(consignmentId);
+          const status = String(c.status || '');
+          const asking = Number(c.askingPriceSats || 0);
+          const sellerMin = Number(c.sellerMinNetSats || 0);
+          const commission = Number(c.retailerCommissionSats || 0);
+          const txid = String(c.txid || '').trim();
+          const safeTxid = txid ? txid.replace(/[^0-9a-f]/gi, '') : '';
+          const checkoutUrl = buyerCheckoutLink(consignmentId);
+          const qrUrl = checkoutUrl ? `/api/qr.png?text=${encodeURIComponent(checkoutUrl)}` : '';
+
+          const canConfirm = status.toLowerCase() === 'pending';
+          const canPrice = status.toLowerCase() === 'active' && !(c.checkoutLock && Number(c.checkoutLock.lockedUntil || 0) > Date.now());
+
+          return `
+            <div style="margin-top:12px; padding:12px; border-radius:14px; border:1px solid rgba(212,175,55,0.25); background: rgba(0,0,0,0.18);">
+              <div class="row"><div class="k">Consignment</div><div class="v" style="font-family: monospace; font-size: 11px;">${escapeHtml(consignmentId)}</div></div>
+              <div class="row"><div class="k">Status</div><div class="v">${badgeStatusHtml(status)}</div></div>
+              <div class="row"><div class="k">Item</div><div class="v" style="font-family: monospace; font-size: 11px;">${escapeHtml(String(c.itemId || ''))}</div></div>
+              <div class="row"><div class="k">Seller Min</div><div class="v">${Number.isFinite(sellerMin) ? sellerMin.toLocaleString() : '0'} sats</div></div>
+              <div class="row"><div class="k">Asking</div><div class="v">${Number.isFinite(asking) ? asking.toLocaleString() : '0'} sats</div></div>
+              ${String(status || '').toLowerCase() === 'completed' ? `
+                <div class="row"><div class="k">Retailer Earned</div><div class="v">${Number.isFinite(commission) ? commission.toLocaleString() : '0'} sats</div></div>
+                <div class="row"><div class="k">Payment TXID</div><div class="v" style="font-family: monospace; font-size: 11px;">
+                  ${txid ? `${escapeHtml(shortTxid(txid))}<br/>
+                  <a href="#" onclick="copyTxid('${safeTxid}'); return false;" style="color:#d4af37; text-decoration: underline;">Copy</a>
+                  &nbsp;|&nbsp;
+                  <a id="txOpen_${consignmentDomId}" href="${escapeHtml(explorerUrl(txid, ''))}" target="_blank" rel="noreferrer" style="color:#d4af37; text-decoration: underline;">Open</a>` : '—'}
+                </div></div>
+                <div class="row"><div class="k">Received</div><div class="v" id="txStatus_${consignmentDomId}">${txid ? '<span class="badge">checking...</span>' : '—'}</div></div>
+              ` : ''}
+              <div class="row"><div class="k">Expires</div><div class="v">${fmtTs(c.expiresAt)}</div></div>
+
+              ${canConfirm ? `
+                <div class="actions" style="margin-top:10px;">
+                  <button class="btn btn-secondary" onclick="confirmConsignmentRetailer('${escapeHtml(consignmentId)}')">Confirm (Retailer)</button>
+                </div>
+              ` : ''}
+
+              ${canPrice ? `
+                <div style="margin-top:10px;">
+                  <div class="form-row">
+                    <label>Update Asking Price (sats)</label>
+                    <input id="price_${escapeHtml(consignmentId)}" type="number" min="1" step="1" value="${asking}" />
+                  </div>
+                  <div class="actions">
+                    <button class="btn btn-secondary" onclick="updateConsignmentPrice('${escapeHtml(consignmentId)}')">Update Price</button>
+                  </div>
+                </div>
+              ` : ''}
+
+              ${status.toLowerCase() === 'active' ? `
+                <div style="margin-top:10px;">
+                  <div class="row"><div class="k">Buyer Link</div><div class="v"><a href="${escapeHtml(checkoutUrl)}" target="_blank" rel="noreferrer" style="color:#d4af37; text-decoration: underline;">Open</a></div></div>
+                  <div style="display:flex; justify-content:center; margin-top:10px;">
+                    <img alt="Buyer QR" src="${escapeHtml(qrUrl)}" style="width:200px; height:200px; border-radius:12px; border: 1px solid rgba(212,175,55,0.35); background: rgba(0,0,0,0.2);" />
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+
+        try {
+          consignments
+            .filter((c) => String(c?.status || '').toLowerCase() === 'completed')
+            .forEach((c) => {
+              const id = domSafeId(String(c.consignmentId || ''));
+              const txid = String(c.txid || '').trim();
+              if (txid) updateTxStatusUI(id, txid);
+            });
+        } catch {}
+      } catch (e) {
+        setMsg('myConsignmentsMsg', String(e && e.message ? e.message : e), true);
+        if (listEl) listEl.textContent = '—';
+      }
+    }
+
+    async function confirmConsignmentRetailer(consignmentId) {
+      setMsg('myConsignmentsMsg', '', false);
+      const id = String(consignmentId || '').trim();
+      if (!id) return;
+
+      try {
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(id)}/retailer/confirm`, { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Confirm failed');
+        }
+        setMsg('myConsignmentsMsg', 'Consignment confirmed.', false);
+        await loadMyConsignments();
+      } catch (e) {
+        setMsg('myConsignmentsMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    async function updateConsignmentPrice(consignmentId) {
+      setMsg('myConsignmentsMsg', '', false);
+      const id = String(consignmentId || '').trim();
+      if (!id) return;
+      const input = document.getElementById(`price_${id}`);
+      const askingPriceSats = Math.floor(Number(input?.value || 0));
+      if (!(askingPriceSats > 0)) {
+        setMsg('myConsignmentsMsg', 'Invalid asking price.', true);
+        return;
+      }
+
+      try {
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(id)}/price`, {
+          method: 'POST',
+          body: JSON.stringify({ askingPriceSats }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Price update failed');
+        }
+        setMsg('myConsignmentsMsg', 'Price updated.', false);
+        await loadMyConsignments();
+      } catch (e) {
+        setMsg('myConsignmentsMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    async function loadConsignment() {
+      setMsg('consignmentManageMsg', '', false);
+      const id = String(document.getElementById('manageConsignmentId')?.value || '').trim();
+      if (!id) {
+        setMsg('consignmentManageMsg', 'Enter a consignment ID', true);
+        return;
+      }
+
+      try {
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(id)}`, { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to load consignment');
+        }
+
+        const c = data.consignment || {};
+        const status = String(c.status || '');
+        document.getElementById('manageStatus').innerHTML = badgeStatusHtml(status);
+        document.getElementById('manageItem').textContent = String(c.itemId || '—');
+        document.getElementById('manageRequested').textContent = c.cancelRequested ? `${String(c.cancelRequested.requestedByAccountId || '')} @ ${fmtTs(c.cancelRequested.requestedAt)}` : '—';
+        document.getElementById('manageConfirmed').textContent = c.cancelConfirmed ? `${String(c.cancelConfirmed.confirmedByAccountId || '')} @ ${fmtTs(c.cancelConfirmed.confirmedAt)}` : '—';
+
+        const sessionAccountId = String(localStorage.getItem('autho_account_id') || '').trim();
+        const isRetailer = sessionAccountId && sessionAccountId === String(c.retailerAccountId || '').trim();
+        const hasTxid = !!String(c.txid || '').trim();
+        const closed = status === 'completed' || status === 'cancelled' || status === 'expired';
+        const hasReq = !!c.cancelRequested;
+        const hasConf = !!c.cancelConfirmed;
+
+        const canReq = isRetailer && !closed && !hasTxid && !hasReq;
+        const canConf = isRetailer && !closed && !hasTxid && hasReq && !hasConf && String(c.cancelRequested.requestedByAccountId || '') !== sessionAccountId;
+
+        document.getElementById('consignmentCancelReqBtn').disabled = !canReq;
+        document.getElementById('consignmentCancelConfBtn').disabled = !canConf;
+      } catch (e) {
+        setMsg('consignmentManageMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    async function requestConsignmentCancel() {
+      setMsg('consignmentManageMsg', '', false);
+      const id = String(document.getElementById('manageConsignmentId')?.value || '').trim();
+      if (!id) return;
+      const btn = document.getElementById('consignmentCancelReqBtn');
+      const original = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Requesting...';
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(id)}/cancel/request`, { method: 'POST', body: JSON.stringify({}) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Cancel request failed');
+        }
+        setMsg('consignmentManageMsg', 'Cancel requested.', false);
+      } catch (e) {
+        setMsg('consignmentManageMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = original;
+        await loadConsignment();
+      }
+    }
+
+    async function confirmConsignmentCancel() {
+      setMsg('consignmentManageMsg', '', false);
+      const id = String(document.getElementById('manageConsignmentId')?.value || '').trim();
+      if (!id) return;
+      const btn = document.getElementById('consignmentCancelConfBtn');
+      const original = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Confirming...';
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(id)}/cancel/confirm`, { method: 'POST', body: JSON.stringify({}) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Cancel confirm failed');
+        }
+        setMsg('consignmentManageMsg', 'Cancelled.', false);
+      } catch (e) {
+        setMsg('consignmentManageMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = original;
+        await loadConsignment();
+      }
+    }
+
+    async function becomeRetailer() {
+      setMsg('globalMsg', '', false);
+      const btn = document.getElementById('becomeRetailerBtn');
+      if (btn) btn.disabled = true;
+      try {
+        const r = await apiFetch('/api/retailers/me/enable', { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to enable retailer role');
+        }
+        setMsg('globalMsg', 'Retailer role enabled. Next: Check Bond and complete your profile.', false);
+      } catch (e) {
+        setMsg('globalMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        await refresh();
+      }
+    }
+
+    async function checkBond() {
+      setMsg('bondMsg', '', false);
+      const btn = document.getElementById('bondCheckBtn');
+      if (btn) btn.disabled = true;
+      try {
+        const r = await apiFetch('/api/retailers/me/bond/check', { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Bond check failed');
+        }
+        const meets = Boolean(data.meetsMin);
+        setMsg('bondMsg', meets ? 'Bond check passed. You can now apply for verification.' : `Bond check failed. Need at least ${data.bondMinSats} sats confirmed on your retailer wallet address.`, !meets);
+      } catch (e) {
+        setMsg('bondMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        await refresh();
+      }
+    }
+
+    function openProfileModal() {
+      setMsg('profileMsg', '', false);
+      openModal('profileModal');
+    }
+
+    async function saveProfile() {
+      setMsg('profileMsg', '', false);
+      const btn = document.getElementById('saveProfileBtn');
+      if (btn) btn.disabled = true;
+
+      try {
+        const body = {
+          companyName: String(document.getElementById('companyName').value || '').trim() || undefined,
+          displayName: String(document.getElementById('displayName').value || '').trim() || undefined,
+          website: String(document.getElementById('website').value || '').trim() || undefined,
+          phone: String(document.getElementById('phone').value || '').trim() || undefined,
+          address: String(document.getElementById('address').value || '').trim() || undefined,
+          contactEmail: String(document.getElementById('contactEmail').value || '').trim() || undefined,
+          notes: String(document.getElementById('notes').value || '').trim() || undefined,
+        };
+
+        const r = await apiFetch('/api/retailers/me/profile', { method: 'POST', body: JSON.stringify(body) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to update profile');
+        }
+        setMsg('profileMsg', 'Profile updated.', false);
+        setTimeout(() => closeModal('profileModal'), 500);
+      } catch (e) {
+        setMsg('profileMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        if (btn) btn.disabled = false;
+        await refresh();
+      }
+    }
+
+    function openApplyModal() {
+      setMsg('applyMsg', '', false);
+      openModal('applyModal');
+    }
+
+    async function applyVerified() {
+      setMsg('applyMsg', '', false);
+      const btn = document.getElementById('submitApplyBtn');
+      if (btn) btn.disabled = true;
+
+      try {
+        const body = {
+          companyName: String(document.getElementById('applyCompanyName').value || '').trim() || undefined,
+          contactEmail: String(document.getElementById('applyContactEmail').value || '').trim() || undefined,
+          website: String(document.getElementById('applyWebsite').value || '').trim() || undefined,
+          notes: String(document.getElementById('applyNotes').value || '').trim() || undefined,
+        };
+
+        const r = await apiFetch('/api/retailers/me/verification/apply', { method: 'POST', body: JSON.stringify(body) });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to submit application');
+        }
+
+        if (data.alreadyVerified) {
+          setMsg('applyMsg', 'Already verified.', false);
+        } else if (data.alreadySubmitted) {
+          setMsg('applyMsg', `Application already submitted. Application ID: ${data.applicationId}`, false);
+        } else {
+          setMsg('applyMsg', `Application submitted. Application ID: ${data.applicationId}`, false);
+        }
+
+        document.getElementById('applicationStatus').textContent = 'Submitted';
+        closeModal('applyModal');
+      } catch (e) {
+        setMsg('applyMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        if (btn) btn.disabled = false;
+        await refresh();
+      }
+    }
+
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'flex';
+    }
+
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    }
+
+    function closeModalIfBackdrop(ev, id) {
+      if (!ev) return;
+      if (ev.target && ev.target.id === id) closeModal(id);
+    }
+
+    function logout() {
+      try {
+        localStorage.removeItem('autho_session_id');
+        localStorage.removeItem('autho_account_id');
+      } catch {}
+      window.location.href = '/retailer/login';
+    }
+
+    refresh();
+  </script>
+</body>
+</html>
