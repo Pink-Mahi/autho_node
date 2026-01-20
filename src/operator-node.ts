@@ -1202,6 +1202,10 @@ export class OperatorNode extends EventEmitter {
       const remoteNet = String(message?.networkId || '').trim();
       if (!remoteNet || remoteNet !== expectedNet) {
         console.error('[Operator] Network mismatch - refusing to sync');
+        console.error(`[Operator] expectedNetworkId=${expectedNet}`);
+        console.error(`[Operator] receivedNetworkId=${remoteNet || '(missing)'}`);
+        console.error(`[Operator] bitcoinNetwork=${this.getBitcoinNetwork()}`);
+        console.error(`[Operator] feeAddress=${this.getFeeAddress()}`);
         this.isConnectedToMain = false;
         try { this.mainSeedWs?.close(); } catch {}
         return;
