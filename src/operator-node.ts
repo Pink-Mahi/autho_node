@@ -578,6 +578,14 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
+    this.app.get('/api/network/connections', async (req: Request, res: Response) => {
+      await this.proxyToSeed(req, res);
+    });
+
+    this.app.get('/api/operator/earnings', async (req: Request, res: Response) => {
+      await this.proxyToSeed(req, res);
+    });
+
     this.app.get('/seed-manifest.json', async (req: Request, res: Response) => {
       const protocol = String(req.protocol || 'http');
       const host = String(req.get('host') || '').trim();
