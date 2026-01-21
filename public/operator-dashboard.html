@@ -947,7 +947,7 @@
             const el = document.getElementById('appsList');
             el.innerHTML = '<div class="empty-state">Loading applications...</div>';
 
-            const r = await fetch('/api/roles/applications/pending', { headers: getAuthHeaders() });
+            const r = await fetch('/api/roles/applications', { headers: getAuthHeaders() });
             const data = await r.json();
             if (!r.ok || !data || data.success !== true) {
                 showEl('appsError', true, data?.error || 'Failed to load applications');
