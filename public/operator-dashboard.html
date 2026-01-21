@@ -278,6 +278,7 @@
                 <button class="nav-tab" onclick="switchTab('reputation')">⭐ Reputation</button>
                 <button class="nav-tab" onclick="switchTab('security')">🔐 Security</button>
                 <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
+                <button class="nav-tab" onclick="switchTab('network')">🌐 Network Health</button>
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
@@ -405,6 +406,34 @@
                 <button class="btn" type="button" onclick="loadWalletEarnings()">Refresh</button>
             </div>
             <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
+        </div>
+
+        <div class="section" id="network-section">
+            <h2 class="section-title">🌐 Network Health</h2>
+            <div class="error-message" id="networkError"></div>
+            <div class="success-message" id="networkSuccess"></div>
+            
+            <div style="margin-bottom: 30px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px;">Connected Gateways</h3>
+                <div id="gatewayList">
+                    <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                        Loading gateway connections...
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 30px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px;">Main Seed Connection</h3>
+                <div id="mainSeedStatus">
+                    <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                        Loading connection status...
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button class="btn" onclick="loadNetworkHealth()">🔄 Refresh</button>
+            </div>
         </div>
 
         <div class="section" id="status-section">
@@ -1517,6 +1546,83 @@
             }
 
             showEl('networkSuccess', true, 'Network health loaded.');
+        }
+
+        async function loadNetworkHealth() {
+            showEl('networkError', false);
+            showEl('networkSuccess', false);
+            
+            try {
+                const response = await fetch('/api/network/connections', { headers: getAuthHeaders() });
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to load network health');
+                }
+
+                // Display connected gateways
+                const gatewayList = document.getElementById('gatewayList');
+                const gateways = data.gateways?.connected || [];
+                
+                if (gateways.length > 0) {
+                    gatewayList.innerHTML = gateways.map((gw, idx) => {
+                        const uptime = gw.uptimeMs ? Math.floor(gw.uptimeMs / 1000 / 60) : 0;
+                        const healthy = gw.healthy ? '🟢' : '🔴';
+                        return `
+                            <div style="background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px; padding: 15px; margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong style="color: #d4af37;">Gateway ${idx + 1}</strong>
+                                        <div style="color: #999; font-size: 0.85rem; margin-top: 5px;">
+                                            ${healthy} ${gw.connected ? 'Connected' : 'Disconnected'} • Uptime: ${uptime}m
+                                            ${gw.ip ? ` • IP: ${gw.ip}` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    gatewayList.innerHTML = `
+                        <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                            No gateway nodes connected yet.
+                        </div>
+                    `;
+                }
+
+                // Display main seed connection status
+                const mainSeedStatus = document.getElementById('mainSeedStatus');
+                const operators = data.operators?.connected || [];
+                const mainSeed = operators.find(op => op.operator?.operatorUrl?.includes('pinkmahi'));
+                
+                if (mainSeed) {
+                    const uptime = mainSeed.uptimeMs ? Math.floor(mainSeed.uptimeMs / 1000 / 60) : 0;
+                    const healthy = mainSeed.healthy ? '🟢' : '🔴';
+                    mainSeedStatus.innerHTML = `
+                        <div style="background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px; padding: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong style="color: #d4af37;">Main Seed Node</strong>
+                                    <div style="color: #999; font-size: 0.85rem; margin-top: 5px;">
+                                        ${healthy} ${mainSeed.connected ? 'Connected' : 'Disconnected'} • Uptime: ${uptime}m
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    mainSeedStatus.innerHTML = `
+                        <div style="color: #ff3b30; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(255,59,48,0.25); border-radius: 10px;">
+                            ⚠️ Not connected to main seed
+                        </div>
+                    `;
+                }
+
+                showEl('networkSuccess', true, 'Network health loaded successfully');
+            } catch (error) {
+                console.error('Failed to load network health:', error);
+                showEl('networkError', true, error.message);
+            }
         }
 
         async function loadWalletEarnings() {
