@@ -264,6 +264,7 @@
                 </div>
             </div>
         </div>
+
     </div>
 
     <div class="dashboard">
@@ -275,6 +276,8 @@
                 <button class="nav-tab" onclick="switchTab('verifiers')">🏢 Verifiers</button>
                 <button class="nav-tab" onclick="switchTab('actions')">🧾 Verifier Actions</button>
                 <button class="nav-tab" onclick="switchTab('reputation')">⭐ Reputation</button>
+                <button class="nav-tab" onclick="switchTab('security')">🔐 Security</button>
+                <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
@@ -336,6 +339,74 @@
             </div>
         </div>
 
+        <div class="section" id="security-section">
+            <h2 class="section-title">🔐 Account Security</h2>
+            <div class="error-message" id="secError"></div>
+            <div class="success-message" id="secSuccess"></div>
+
+            <div style="display:grid; grid-template-columns: 1fr; gap: 14px;">
+                <div style="background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 14px; padding: 14px;">
+                    <div style="font-weight:800; margin-bottom: 10px;">Email</div>
+                    <div class="muted" id="secEmailCurrent">Loading...</div>
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>Set / Update Email</label>
+                        <input id="secEmail" type="email" placeholder="operator@email.com" />
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="setMyEmail()">Save Email</button>
+                    </div>
+                </div>
+
+                <div style="background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 14px; padding: 14px;">
+                    <div style="font-weight:800; margin-bottom: 10px;">Password</div>
+                    <div class="form-group">
+                        <label>Set / Update Password</label>
+                        <input id="secPassword" type="password" placeholder="••••••••" />
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="setMyPassword()">Save Password</button>
+                    </div>
+                </div>
+
+                <div style="background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 14px; padding: 14px;">
+                    <div style="font-weight:800; margin-bottom: 10px;">Two-Factor Authentication (2FA)</div>
+                    <div class="muted" id="sec2faStatus">Loading...</div>
+
+                    <div id="sec2faSetupPanel" style="display:none; margin-top: 12px;">
+                        <div class="muted" style="margin-bottom: 10px;">Scan the QR code in your authenticator app, then enter a code to confirm.</div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+                            <img id="sec2faQr" alt="2FA QR" style="width: 180px; height: 180px; border-radius: 12px; border: 1px solid rgba(212,175,55,0.25);" />
+                            <div style="flex: 1; min-width: 240px;">
+                                <div class="form-group">
+                                    <label>Verification Code</label>
+                                    <input id="sec2faCode" type="text" placeholder="123456" />
+                                </div>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn" type="button" onclick="verify2FASetup()">Verify & Enable</button>
+                                    <button class="btn btn-secondary" type="button" onclick="cancel2FASetup()">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="sec2faActions" style="margin-top: 12px; display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="start2FASetup()">Enable 2FA</button>
+                        <button class="btn btn-secondary" type="button" onclick="disable2FA()">Disable 2FA</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="wallet-section">
+            <h2 class="section-title">💰 Wallet & Earnings</h2>
+            <div class="error-message" id="walletError"></div>
+            <div class="success-message" id="walletSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadWalletEarnings()">Refresh</button>
+            </div>
+            <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
+        </div>
+
         <div class="section" id="status-section">
             <h2 class="section-title">🛰️ Node Status</h2>
             <div class="error-message" id="statusError"></div>
@@ -378,9 +449,188 @@
                 loadVerifierActions();
             } else if (tab === 'reputation') {
                 loadReputationModeration(true);
+            } else if (tab === 'wallet') {
+                loadWalletEarnings();
             } else if (tab === 'status') {
                 loadNodeStatus();
+            } else if (tab === 'security') {
+                loadSecurity();
             }
+        }
+
+        let __me = null;
+
+        async function loadMe() {
+            const sessionId = getSessionId();
+            if (!sessionId) return null;
+            const r = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${sessionId}` }, cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true || !data.account) return null;
+            __me = data;
+            return data;
+        }
+
+        async function loadSecurity() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            document.getElementById('sec2faSetupPanel').style.display = 'none';
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+
+            const account = me.account || {};
+            const email = String(account.email || '');
+            document.getElementById('secEmailCurrent').textContent = email ? `Current: ${email}` : 'No email set yet.';
+            const totpEnabled = !!(account.totp && account.totp.enabled);
+            document.getElementById('sec2faStatus').textContent = totpEnabled ? '2FA is enabled.' : '2FA is disabled.';
+        }
+
+        async function setMyEmail() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const email = String(document.getElementById('secEmail').value || '').trim();
+            if (!email) {
+                showEl('secError', true, 'Missing email');
+                return;
+            }
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/email/set`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ email })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to set email');
+                return;
+            }
+
+            showEl('secSuccess', true, 'Email saved.');
+            await loadSecurity();
+        }
+
+        async function setMyPassword() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const password = String(document.getElementById('secPassword').value || '').trim();
+            if (!password) {
+                showEl('secError', true, 'Missing password');
+                return;
+            }
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/password/set`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ password })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to set password');
+                return;
+            }
+
+            showEl('secSuccess', true, 'Password saved. You can now sign in with email + password.');
+        }
+
+        async function start2FASetup() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/totp/setup`, {
+                method: 'POST',
+                headers: { ...getAuthHeaders() }
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true || !data.qrCodeUrl) {
+                showEl('secError', true, data?.error || 'Failed to start 2FA setup');
+                return;
+            }
+
+            document.getElementById('sec2faQr').src = String(data.qrCodeUrl);
+            document.getElementById('sec2faSetupPanel').style.display = 'block';
+            showEl('secSuccess', true, '2FA setup started. Scan the QR code and verify.');
+        }
+
+        async function cancel2FASetup() {
+            document.getElementById('sec2faSetupPanel').style.display = 'none';
+        }
+
+        async function verify2FASetup() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const totpCode = String(document.getElementById('sec2faCode').value || '').trim();
+            if (!totpCode) {
+                showEl('secError', true, 'Missing verification code');
+                return;
+            }
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/totp/verify-setup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ totpCode })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to verify 2FA');
+                return;
+            }
+
+            document.getElementById('sec2faSetupPanel').style.display = 'none';
+            showEl('secSuccess', true, '2FA enabled. Next sign-in will require a code.');
+            await loadSecurity();
+        }
+
+        async function disable2FA() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const totpCode = prompt('Enter your current 2FA code to disable 2FA:');
+            if (!totpCode) return;
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/totp/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ totpCode })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to disable 2FA');
+                return;
+            }
+
+            showEl('secSuccess', true, '2FA disabled.');
+            await loadSecurity();
         }
 
         let __operatorStatusCache = null;
@@ -621,7 +871,8 @@
                     document.getElementById('authModal').style.display = 'flex';
                     return;
                 }
-                if (String(data.account.role || '') !== 'operator') {
+                const isOperator = String(data.account.role || '') === 'operator' || data.isOperator === true;
+                if (!isOperator) {
                     localStorage.removeItem('autho_session_id');
                     showEl('authError', true, 'Operator role required for this dashboard.');
                     document.getElementById('authModal').style.display = 'flex';
@@ -1133,6 +1384,87 @@
                 localStorage.removeItem('autho_session_id');
                 window.location.href = '/operator/dashboard';
             }
+        }
+
+        async function loadWalletEarnings() {
+            showEl('walletError', false);
+            showEl('walletSuccess', false);
+            const el = document.getElementById('walletPanel');
+            if (el) el.innerHTML = '<div class="empty-state">Loading wallet info...</div>';
+
+            const r = await fetch('/api/operator/earnings', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('walletError', true, data?.error || 'Failed to load wallet info');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load wallet info.</div>';
+                return;
+            }
+
+            const wallet = data.wallet || {};
+            const earnings = data.earnings || {};
+            const transactions = Array.isArray(earnings.transactions) ? earnings.transactions : [];
+
+            if (el) {
+                el.innerHTML = `
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">💳 Operator Wallet</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Field</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>BTC Address</td><td style="font-family: monospace; word-break: break-all;">${String(wallet.btcAddress || 'N/A')}</td></tr>
+                                <tr><td>Operator ID</td><td style="font-family: monospace;">${String(wallet.operatorId || 'N/A')}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div>
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">💰 Fee Earnings Summary</h3>
+                        <table style="margin-bottom: 20px;">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Total Fees Earned</td><td style="font-weight: 700; color: #4cd964;">${Number(earnings.totalSats || 0).toLocaleString()} sats</td></tr>
+                                <tr><td>Total Transactions</td><td>${Number(earnings.transactionCount || 0)}</td></tr>
+                            </tbody>
+                        </table>
+
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">📋 Recent Fee Transactions</h3>
+                        ${transactions.length === 0 ? '<div class="empty-state">No fee transactions yet.</div>' : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Amount (sats)</th>
+                                    <th>Settlement ID</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${transactions.map((tx) => `
+                                    <tr>
+                                        <td>${fmtTs(tx.timestamp)}</td>
+                                        <td>${String(tx.type || 'Fee')}</td>
+                                        <td style="font-weight: 700; color: #4cd964;">${Number(tx.amountSats || 0).toLocaleString()}</td>
+                                        <td style="font-family: monospace; font-size: 0.85rem;">${String(tx.settlementId || '').substring(0, 16)}...</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        `}
+                    </div>
+                `;
+            }
+
+            showEl('walletSuccess', true, 'Wallet info loaded.');
         }
 
         window.addEventListener('load', async () => {
