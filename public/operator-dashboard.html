@@ -478,14 +478,14 @@
                 loadVerifierActions();
             } else if (tab === 'reputation') {
                 loadReputationModeration(true);
+            } else if (tab === 'security') {
+                loadSecurity();
             } else if (tab === 'wallet') {
                 loadWalletEarnings();
             } else if (tab === 'network') {
                 loadNetworkHealth();
             } else if (tab === 'status') {
                 loadNodeStatus();
-            } else if (tab === 'security') {
-                loadSecurity();
             }
         }
 
@@ -1592,19 +1592,19 @@
 
                 // Display main seed connection status
                 const mainSeedStatus = document.getElementById('mainSeedStatus');
-                const operators = data.operators?.connected || [];
-                const mainSeed = operators.find(op => op.operator?.operatorUrl?.includes('pinkmahi'));
                 
-                if (mainSeed) {
-                    const uptime = mainSeed.uptimeMs ? Math.floor(mainSeed.uptimeMs / 1000 / 60) : 0;
-                    const healthy = mainSeed.healthy ? '🟢' : '🔴';
+                // Check if this operator node is connected to main seed
+                const isConnectedToMainSeed = data.mainSeedConnected !== undefined ? data.mainSeedConnected : false;
+                const mainSeedUptime = data.mainSeedUptimeMs ? Math.floor(data.mainSeedUptimeMs / 1000 / 60) : 0;
+                
+                if (isConnectedToMainSeed) {
                     mainSeedStatus.innerHTML = `
                         <div style="background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px; padding: 15px;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <div>
                                     <strong style="color: #d4af37;">Main Seed Node</strong>
                                     <div style="color: #999; font-size: 0.85rem; margin-top: 5px;">
-                                        ${healthy} ${mainSeed.connected ? 'Connected' : 'Disconnected'} • Uptime: ${uptime}m
+                                        🟢 Connected • Uptime: ${mainSeedUptime}m
                                     </div>
                                 </div>
                             </div>

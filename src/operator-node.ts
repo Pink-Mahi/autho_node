@@ -70,33 +70,19 @@ export class OperatorNode extends EventEmitter {
     return this.getUiSeedHttpBase();
   }
 
-  private async proxyToSeed(req: Request, res: Response, pathAndQuery?: string): Promise<void> {
+  private async proxyToSeedInternal(req: Request, pathAndQuery?: string): Promise<any> {
     const base = this.getSeedHttpBase();
     if (!base) {
-      res.status(502).json({ success: false, error: 'No seed HTTP base configured' });
-      return;
+      throw new Error('No seed HTTP base configured');
     }
 
-    const urlPath = typeof pathAndQuery === 'string'
-      ? pathAndQuery
-      : String(req.originalUrl || req.url || '').trim();
-    const target = `${base}${urlPath.startsWith('/') ? '' : '/'}${urlPath}`;
+    const targetPath = pathAndQuery || req.originalUrl;
+    const targetUrl = `${base}${targetPath}`;
 
-    try {
-      const headers: Record<string, string> = {};
-      const contentType = String(req.headers['content-type'] || '').trim();
-      if (contentType) headers['content-type'] = contentType;
-      const auth = String(req.headers['authorization'] || '').trim();
-      if (auth) headers['authorization'] = auth;
-
-      let body: any = undefined;
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        const asAny = req as any;
-        if (asAny?.body && typeof asAny.body === 'object' && Object.keys(asAny.body).length > 0) {
-          body = JSON.stringify(asAny.body);
-          headers['content-type'] = headers['content-type'] || 'application/json';
-        } else if (typeof asAny?.body === 'string' && asAny.body.trim()) {
-          body = asAny.body;
+    const headers: Record<string, string> = {};
+    const authHeader = req.get('Authorization');
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
         }
       }
 
@@ -580,7 +566,27 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.app.get('/api/network/connections', async (req: Request, res: Response) => {
-      await this.proxyToSeed(req, res);
+      try {
+        // Get data from main seed
+        const seedResponse = await this.proxyToSeedInternal(req);
+        
+        // Add operator's own connection status to main seed
+        const enhancedData = {
+          ...seedResponse,
+          mainSeedConnected: this.isConnectedToMain,
+          mainSeedUptimeMs: this.isConnectedToMain && this.mainSeedWs ? Date.now() - (this.state.lastSyncedAt || Date.now()) : 0
+        };
+        
+        res.json(enhancedData);
+      } catch (error: any) {
+        console.error('Failed to get network connections:', error);
+        res.status(500).json({ 
+          success: false, 
+          error: error.message,
+          mainSeedConnected: this.isConnectedToMain,
+          mainSeedUptimeMs: 0
+        });
+      }
     });
 
     this.app.get('/api/operator/earnings', async (req: Request, res: Response) => {
