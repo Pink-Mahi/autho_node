@@ -41,6 +41,7 @@ export class OperatorNode extends EventEmitter {
   private isConnectedToMain: boolean = false;
   private reconnectTimer?: NodeJS.Timeout;
   private syncInProgress: boolean = false;
+  private gatewayConnections: Map<WebSocket, { connectedAt: number; lastSeen: number; ip?: string }> = new Map();
 
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
 
@@ -1105,10 +1106,104 @@ export class OperatorNode extends EventEmitter {
       console.log(`[Operator] Health: http://localhost:${this.config.port}/api/health`);
     });
 
+    this.setupWebSocketServer();
     await this.connectToMainSeed();
 
     console.log('\n[Operator] Node is running!');
+    console.log('[Operator] WebSocket server ready for gateway connections');
     console.log('[Operator] Press Ctrl+C to stop\n');
+  }
+
+  private setupWebSocketServer(): void {
+    if (!this.httpServer) return;
+
+    this.wss = new WebSocket.Server({ server: this.httpServer });
+
+    this.wss.on('connection', (ws: WebSocket, req) => {
+      const clientIp = req.socket.remoteAddress;
+      const now = Date.now();
+
+      console.log(`[Operator] Gateway connected from ${clientIp}`);
+
+      this.gatewayConnections.set(ws, {
+        connectedAt: now,
+        lastSeen: now,
+        ip: clientIp,
+      });
+
+      ws.on('message', (data: Buffer) => {
+        try {
+          const message = JSON.parse(data.toString());
+          this.handleGatewayMessage(ws, message);
+        } catch (error) {
+          console.error('[Operator] Invalid message from gateway:', error);
+        }
+      });
+
+      ws.on('close', () => {
+        console.log(`[Operator] Gateway disconnected from ${clientIp}`);
+        this.gatewayConnections.delete(ws);
+      });
+
+      ws.on('error', (error) => {
+        console.error('[Operator] Gateway WebSocket error:', error);
+        this.gatewayConnections.delete(ws);
+      });
+    });
+
+    console.log(`[Operator] WebSocket server listening on port ${this.config.port}`);
+  }
+
+  private handleGatewayMessage(ws: WebSocket, message: any): void {
+    const conn = this.gatewayConnections.get(ws);
+    if (conn) {
+      conn.lastSeen = Date.now();
+    }
+
+    switch (message.type) {
+      case 'sync_request':
+        console.log('[Operator] Gateway requesting sync');
+        this.sendSyncResponse(ws);
+        break;
+
+      case 'ping':
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        break;
+
+      default:
+        console.log(`[Operator] Unknown message type from gateway: ${message.type}`);
+    }
+  }
+
+  private sendSyncResponse(ws: WebSocket): void {
+    if (ws.readyState !== WebSocket.OPEN) return;
+
+    const syncData = {
+      events: this.state.events,
+      accounts: Array.from(this.state.accounts.entries()),
+      items: Array.from(this.state.items.entries()),
+      settlements: Array.from(this.state.settlements.entries()),
+      consignments: Array.from(this.state.consignments.entries()),
+      operators: Array.from(this.state.operators.entries()),
+      lastSyncedSequence: this.state.lastSyncedSequence,
+      lastSyncedAt: this.state.lastSyncedAt,
+    };
+
+    ws.send(JSON.stringify({
+      type: 'sync_response',
+      data: syncData,
+      timestamp: Date.now(),
+    }));
+
+    console.log('[Operator] Sent sync data to gateway');
+  }
+
+  private broadcastToGateways(message: any): void {
+    this.gatewayConnections.forEach((conn, ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+      }
+    });
   }
 
   async stop(): Promise<void> {
@@ -1195,9 +1290,11 @@ export class OperatorNode extends EventEmitter {
     switch (message.type) {
       case 'sync_data':
         await this.handleSyncData(message);
+        this.broadcastToGateways({ type: 'registry_update', data: this.state, timestamp: Date.now() });
         break;
       case 'new_event':
         await this.handleNewEvent(message.event);
+        this.broadcastToGateways({ type: 'registry_update', data: this.state, timestamp: Date.now() });
         break;
       case 'ping':
         this.mainSeedWs?.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
