@@ -436,6 +436,12 @@ export class OperatorNode extends EventEmitter {
       res.status(404).send('Not Found');
     });
 
+    this.app.get('/operator', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('operator-portal.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
     this.app.get('/operator/dashboard', (req: Request, res: Response) => {
       const fp = this.resolvePublicFile('operator-dashboard.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
