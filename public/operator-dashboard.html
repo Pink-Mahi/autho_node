@@ -451,6 +451,8 @@
                 loadReputationModeration(true);
             } else if (tab === 'wallet') {
                 loadWalletEarnings();
+            } else if (tab === 'network') {
+                loadNetworkHealth();
             } else if (tab === 'status') {
                 loadNodeStatus();
             } else if (tab === 'security') {
@@ -1384,6 +1386,137 @@
                 localStorage.removeItem('autho_session_id');
                 window.location.href = '/operator/dashboard';
             }
+        }
+
+        async function loadNetworkHealth() {
+            showEl('networkError', false);
+            showEl('networkSuccess', false);
+            const el = document.getElementById('networkPanel');
+            if (el) el.innerHTML = '<div class="empty-state">Loading network health...</div>';
+
+            const r = await fetch('/api/network/connections', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('networkError', true, data?.error || 'Failed to load network health');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load network health.</div>';
+                return;
+            }
+
+            const network = data.network || {};
+            const operators = data.operators || {};
+            const gateways = data.gateways || {};
+            const connectedOps = Array.isArray(operators.connected) ? operators.connected : [];
+            const connectedGws = Array.isArray(gateways.connected) ? gateways.connected : [];
+
+            function formatUptime(ms) {
+                const seconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const hours = Math.floor(minutes / 60);
+                const days = Math.floor(hours / 24);
+                if (days > 0) return `${days}d ${hours % 24}h`;
+                if (hours > 0) return `${hours}h ${minutes % 60}m`;
+                if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+                return `${seconds}s`;
+            }
+
+            function formatTimeSince(ms) {
+                const seconds = Math.floor(ms / 1000);
+                if (seconds < 60) return `${seconds}s ago`;
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return `${minutes}m ago`;
+                const hours = Math.floor(minutes / 60);
+                return `${hours}h ago`;
+            }
+
+            if (el) {
+                el.innerHTML = `
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">📊 Network Overview</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Current Sequence</td><td style="font-family: monospace; font-weight: 700;">#${Number(network.currentSequence || 0)}</td></tr>
+                                <tr><td>Current Hash</td><td style="font-family: monospace; font-size: 0.85rem;">${String(network.currentHash || 'N/A')}</td></tr>
+                                <tr><td>Active Operators</td><td><span style="color: #4cd964; font-weight: 700;">${Number(operators.online || 0)}</span> / ${Number(operators.total || 0)}</td></tr>
+                                <tr><td>Offline Operators</td><td><span style="color: #ff9f0a; font-weight: 700;">${Number(operators.offline || 0)}</span></td></tr>
+                                <tr><td>Connected Gateways</td><td style="font-weight: 700;">${Number(gateways.total || 0)}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">🖥️ Connected Operators (${connectedOps.length})</h3>
+                        ${connectedOps.length === 0 ? '<div class="empty-state">No operators currently connected.</div>' : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Operator ID</th>
+                                    <th>Status</th>
+                                    <th>Uptime</th>
+                                    <th>Last Seen</th>
+                                    <th>BTC Address</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${connectedOps.map((op) => {
+                                    const healthy = op.healthy;
+                                    const statusColor = healthy ? '#4cd964' : '#ff9f0a';
+                                    const statusText = healthy ? 'HEALTHY' : 'STALE';
+                                    const opData = op.operator || {};
+                                    return `
+                                        <tr>
+                                            <td style="font-family: monospace; font-size: 0.85rem;">${String(op.operatorId || 'Unknown')}</td>
+                                            <td><span style="color: ${statusColor}; font-weight: 700;">${statusText}</span></td>
+                                            <td>${formatUptime(op.uptimeMs || 0)}</td>
+                                            <td>${formatTimeSince(op.timeSinceLastSeenMs || 0)}</td>
+                                            <td style="font-family: monospace; font-size: 0.85rem;">${String(opData.btcAddress || 'N/A').substring(0, 16)}...</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        `}
+                    </div>
+
+                    <div>
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">🏪 Connected Gateways (${connectedGws.length})</h3>
+                        ${connectedGws.length === 0 ? '<div class="empty-state">No gateways currently connected.</div>' : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Gateway ID</th>
+                                    <th>Status</th>
+                                    <th>Uptime</th>
+                                    <th>Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${connectedGws.map((gw) => {
+                                    const healthy = gw.healthy;
+                                    const statusColor = healthy ? '#4cd964' : '#ff9f0a';
+                                    const statusText = healthy ? 'HEALTHY' : 'STALE';
+                                    return `
+                                        <tr>
+                                            <td style="font-family: monospace;">${String(gw.id || 'Unknown')}</td>
+                                            <td><span style="color: ${statusColor}; font-weight: 700;">${statusText}</span></td>
+                                            <td>${formatUptime(gw.uptimeMs || 0)}</td>
+                                            <td>${formatTimeSince(gw.timeSinceLastSeenMs || 0)}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        `}
+                    </div>
+                `;
+            }
+
+            showEl('networkSuccess', true, 'Network health loaded.');
         }
 
         async function loadWalletEarnings() {
