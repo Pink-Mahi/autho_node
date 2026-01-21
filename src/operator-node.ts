@@ -601,7 +601,7 @@ export class OperatorNode extends EventEmitter {
 
         // Enhance with operator's own main seed connection status
         const enhancedData = {
-          ...data,
+          ...(typeof data === 'object' && data !== null ? data : {}),
           mainSeedConnected: this.isConnectedToMain,
           mainSeedUptimeMs: this.isConnectedToMain && this.state.lastSyncedAt ? Date.now() - this.state.lastSyncedAt : 0
         };
