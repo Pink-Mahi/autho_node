@@ -93,6 +93,22 @@ export class OperatorNode extends EventEmitter {
     this.state.lastSyncedAt = Date.now();
   }
 
+  private getGatewaySyncData(): any {
+    return {
+      events: this.state.events,
+      accounts: Array.from(this.state.accounts.entries()),
+      items: Array.from(this.state.items.entries()),
+      settlements: Array.from(this.state.settlements.entries()),
+      consignments: Array.from(this.state.consignments.entries()),
+      operators: Array.from(this.state.operators.entries()),
+      lastSyncedSequence: this.state.lastSyncedSequence,
+      lastSyncedAt: this.state.lastSyncedAt,
+      lastSyncedHash: this.state.lastSyncedHash,
+      sequenceNumber: this.state.lastSyncedSequence,
+      lastEventHash: this.state.lastSyncedHash,
+    };
+  }
+
   private getOperatorId(): string {
     return String(this.config.operatorId || '').trim();
   }
@@ -721,6 +737,33 @@ export class OperatorNode extends EventEmitter {
         description: this.config.operatorDescription,
         connectedToNetwork: this.isConnectedToMain
       });
+    });
+
+    this.app.get('/api/registry/head', async (req: Request, res: Response) => {
+      try {
+        const state = await this.canonicalStateBuilder.buildState();
+        const operators = Array.from((state as any).operators?.values?.() || []) as any[];
+
+        const now = Date.now();
+        const ACTIVE_WINDOW_MS = 36 * 60 * 60 * 1000;
+        const activeOperators = operators.filter((o: any) => {
+          if (!o || String(o.status || '') !== 'active') return false;
+          const last = Number(o.lastHeartbeatAt || o.lastActiveAt || 0);
+          if (!last) return false;
+          return (now - last) <= ACTIVE_WINDOW_MS;
+        });
+
+        res.json({
+          success: true,
+          lastEventSequence: (state as any).lastEventSequence,
+          lastEventHash: (state as any).lastEventHash,
+          activeOperatorCount: activeOperators.length,
+          activeOperatorIds: activeOperators.map((o: any) => String(o.operatorId || '')).filter(Boolean),
+          timestamp: Date.now(),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
     this.app.get('/api/operators/candidates', async (req: Request, res: Response) => {
@@ -1625,16 +1668,7 @@ export class OperatorNode extends EventEmitter {
   private sendSyncResponse(ws: WebSocket): void {
     if (ws.readyState !== WebSocket.OPEN) return;
 
-    const syncData = {
-      events: this.state.events,
-      accounts: Array.from(this.state.accounts.entries()),
-      items: Array.from(this.state.items.entries()),
-      settlements: Array.from(this.state.settlements.entries()),
-      consignments: Array.from(this.state.consignments.entries()),
-      operators: Array.from(this.state.operators.entries()),
-      lastSyncedSequence: this.state.lastSyncedSequence,
-      lastSyncedAt: this.state.lastSyncedAt,
-    };
+    const syncData = this.getGatewaySyncData();
 
     ws.send(JSON.stringify({
       type: 'sync_response',
@@ -1753,11 +1787,11 @@ export class OperatorNode extends EventEmitter {
     switch (message.type) {
       case 'sync_data':
         await this.handleSyncData(message);
-        this.broadcastToGateways({ type: 'registry_update', data: this.state, timestamp: Date.now() });
+        this.broadcastToGateways({ type: 'registry_update', data: this.getGatewaySyncData(), timestamp: Date.now() });
         break;
       case 'new_event':
         await this.handleNewEvent(message.event);
-        this.broadcastToGateways({ type: 'registry_update', data: this.state, timestamp: Date.now() });
+        this.broadcastToGateways({ type: 'registry_update', data: this.getGatewaySyncData(), timestamp: Date.now() });
         break;
       case 'registry_update':
         try {

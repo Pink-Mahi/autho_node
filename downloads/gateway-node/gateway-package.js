@@ -71,6 +71,7 @@ class GatewayNode {
     this.operatorUrls = this.getOperatorUrls();
     this.uiCacheDir = path.join(CONFIG.dataDir, 'ui-cache');
     this.operatorHeadCache = new Map();
+    this.quorumHeadCache = null;
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -143,32 +144,123 @@ class GatewayNode {
       sequenceNumber: Number.isFinite(Number(data?.sequenceNumber))
         ? Number(data?.sequenceNumber)
         : (Number.isFinite(Number(data?.lastEventSequence)) ? Number(data?.lastEventSequence) : 0),
+      activeOperatorCount: Number.isFinite(Number(data?.activeOperatorCount)) ? Number(data?.activeOperatorCount) : 0,
+      activeOperatorIds: Array.isArray(data?.activeOperatorIds) ? data.activeOperatorIds.map((x) => String(x)).filter(Boolean) : [],
       timestamp: Date.now()
     };
     this.operatorHeadCache.set(operatorUrl, head);
     return head;
   }
 
-  async assertSyncedForWrite(operatorUrl) {
-    const head = await this.ensureOperatorHead(operatorUrl);
-    const localHash = this.registryData?.lastEventHash || '';
+  computeRequiredQuorum(activeCount) {
+    const n = Number(activeCount || 0);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (n === 1) return 1;
+    if (n === 2) return 2;
+    return Math.ceil((2 * n) / 3);
+  }
 
-    if (!head.lastEventHash) {
-      return;
+  async ensureQuorumHead() {
+    const cached = this.quorumHeadCache;
+    if (cached && (Date.now() - cached.timestamp) < 2000) {
+      return cached;
     }
 
-    if (!localHash || localHash !== head.lastEventHash) {
-      const err = new Error('Gateway not synced to operator head');
+    const operatorUrls = Array.from(new Set(this.operatorUrls || [])).filter(Boolean);
+    const results = await Promise.all(operatorUrls.map(async (operatorUrl) => {
+      try {
+        const head = await this.ensureOperatorHead(operatorUrl);
+        return { operatorUrl, head };
+      } catch (e) {
+        return { operatorUrl, error: e?.message || String(e) };
+      }
+    }));
+
+    const groups = new Map();
+    for (const r of results) {
+      if (!r || r.error) continue;
+      const h = r.head;
+      if (!h || !h.lastEventHash) continue;
+      const key = `${h.sequenceNumber}:${h.lastEventHash}`;
+      if (!groups.has(key)) {
+        groups.set(key, { key, head: h, members: [] });
+      }
+      groups.get(key).members.push({ operatorUrl: r.operatorUrl, head: h });
+    }
+
+    let best = null;
+    for (const g of groups.values()) {
+      if (!best || g.members.length > best.members.length) best = g;
+    }
+
+    if (!best) {
+      const out = { ok: false, error: 'No operator heads available', timestamp: Date.now(), operatorUrls, failures: results.filter((r) => r && r.error) };
+      this.quorumHeadCache = out;
+      return out;
+    }
+
+    const activeCount = Number(best.head?.activeOperatorCount || (best.head?.activeOperatorIds ? best.head.activeOperatorIds.length : 0) || 0);
+    const required = this.computeRequiredQuorum(activeCount);
+    const ok = required > 0 && best.members.length >= required;
+
+    const out = {
+      ok,
+      timestamp: Date.now(),
+      required,
+      activeCount,
+      head: {
+        lastEventHash: best.head.lastEventHash,
+        sequenceNumber: best.head.sequenceNumber,
+      },
+      responders: best.members.map((m) => m.operatorUrl),
+      operatorUrls,
+    };
+
+    this.quorumHeadCache = out;
+    return out;
+  }
+
+  async assertSyncedForQuorum(operatorUrl, isWrite) {
+    const quorum = await this.ensureQuorumHead();
+    if (!quorum.ok) {
+      const err = new Error('Gateway cannot reach 2/3 quorum of active operators');
+      err.statusCode = 503;
+      err.details = quorum;
+      throw err;
+    }
+
+    const localHash = this.registryData?.lastEventHash || '';
+    const localSeq = Number(this.registryData?.sequenceNumber || this.registryData?.lastSyncedSequence || 0);
+
+    if (!localHash || localHash !== quorum.head.lastEventHash || localSeq !== quorum.head.sequenceNumber) {
+      const err = new Error('Gateway not synced to quorum head');
       err.statusCode = 409;
       err.details = {
-        operatorUrl,
-        operatorLastEventHash: head.lastEventHash,
-        operatorSequenceNumber: head.sequenceNumber,
+        quorum,
         gatewayLastEventHash: localHash,
-        gatewaySequenceNumber: this.registryData?.sequenceNumber || 0
+        gatewaySequenceNumber: localSeq,
       };
       throw err;
     }
+
+    if (isWrite && operatorUrl) {
+      const head = await this.ensureOperatorHead(operatorUrl);
+      if (head?.lastEventHash && head.lastEventHash !== quorum.head.lastEventHash) {
+        const err = new Error('Operator not on quorum head');
+        err.statusCode = 409;
+        err.details = {
+          operatorUrl,
+          operatorLastEventHash: head.lastEventHash,
+          operatorSequenceNumber: head.sequenceNumber,
+          quorum,
+        };
+        throw err;
+      }
+    }
+  }
+
+  async assertSyncedForWrite(operatorUrl) {
+    await this.assertSyncedForQuorum(operatorUrl, true);
   }
 
   buildForwardHeaders(req, operatorUrl) {
@@ -212,6 +304,17 @@ class GatewayNode {
   async proxyApi(req, res) {
     const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     const errors = [];
+
+    try {
+      await this.assertSyncedForQuorum('', isWrite);
+    } catch (e) {
+      const statusCode = e?.statusCode;
+      res.status(statusCode || 503).json({
+        error: e?.message || String(e),
+        details: e?.details,
+      });
+      return;
+    }
 
     for (const operatorUrl of this.operatorUrls) {
       try {
@@ -414,43 +517,70 @@ class GatewayNode {
         return res.json(cached);
       }
 
-      const state = {
-        sequenceNumber: this.registryData.sequenceNumber || 0,
-        lastEventHash: this.registryData.lastEventHash || '',
-        timestamp: Date.now(),
-        items: this.registryData.items || {},
-        settlements: this.registryData.settlements || {},
-        operators: this.registryData.operators || {},
-        accounts: this.registryData.accounts || {},
-        gatewayNode: {
-          version: '1.0.0',
-          platform: os.platform(),
-          hardcodedSeeds: CONFIG.seedNodes,
-          note: 'This is a gateway node with hardcoded seed configuration'
-        }
-      };
+      Promise.resolve(this.assertSyncedForQuorum('', false)).then(() => {
+        const state = {
+          sequenceNumber: this.registryData.sequenceNumber || 0,
+          lastEventHash: this.registryData.lastEventHash || '',
+          timestamp: Date.now(),
+          items: this.registryData.items || {},
+          settlements: this.registryData.settlements || {},
+          operators: this.registryData.operators || {},
+          accounts: this.registryData.accounts || {},
+          gatewayNode: {
+            version: '1.0.0',
+            platform: os.platform(),
+            hardcodedSeeds: CONFIG.seedNodes,
+            note: 'This is a gateway node with hardcoded seed configuration'
+          }
+        };
 
-      this.setCache(cacheKey, state);
-      res.json(state);
+        this.setCache(cacheKey, state);
+        res.json(state);
+      }).catch((e) => {
+        const statusCode = e?.statusCode;
+        res.status(statusCode || 503).json({
+          error: e?.message || String(e),
+          details: e?.details
+        });
+      });
+
+      return;
     });
 
     // Item lookup
     this.app.get('/api/registry/items/:itemId', (req, res) => {
       const { itemId } = req.params;
-      const item = this.registryData.items?.[itemId];
-      
-      if (!item) {
-        return res.status(404).json({ error: 'Item not found' });
-      }
+      Promise.resolve(this.assertSyncedForQuorum('', false)).then(() => {
+        const item = this.registryData.items?.[itemId];
 
-      res.json(item);
+        if (!item) {
+          res.status(404).json({ error: 'Item not found' });
+          return;
+        }
+
+        res.json(item);
+      }).catch((e) => {
+        const statusCode = e?.statusCode;
+        res.status(statusCode || 503).json({
+          error: e?.message || String(e),
+          details: e?.details
+        });
+      });
     });
 
     // Owner items
     this.app.get('/api/registry/owners/:address/items', (req, res) => {
       const { address } = req.params;
-      const items = Object.values(this.registryData.items || {}).filter(item => item.currentOwner === address);
-      res.json(items);
+      Promise.resolve(this.assertSyncedForQuorum('', false)).then(() => {
+        const items = Object.values(this.registryData.items || {}).filter(item => item.currentOwner === address);
+        res.json(items);
+      }).catch((e) => {
+        const statusCode = e?.statusCode;
+        res.status(statusCode || 503).json({
+          error: e?.message || String(e),
+          details: e?.details
+        });
+      });
     });
 
     // Network endpoints
