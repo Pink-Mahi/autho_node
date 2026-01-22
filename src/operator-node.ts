@@ -5,6 +5,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { createHash, pbkdf2Sync, timingSafeEqual, randomBytes } from 'crypto';
+import { HeartbeatManager } from './consensus/heartbeat-manager';
+import { StateVerifier, LedgerState } from './consensus/state-verifier';
 
 interface OperatorConfig {
   operatorId: string;
@@ -42,6 +44,8 @@ export class OperatorNode extends EventEmitter {
   private reconnectTimer?: NodeJS.Timeout;
   private syncInProgress: boolean = false;
   private gatewayConnections: Map<WebSocket, { connectedAt: number; lastSeen: number; ip?: string }> = new Map();
+  private heartbeatManager?: HeartbeatManager;
+  private lastMainNodeHeartbeat: number = Date.now();
 
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
 
@@ -1275,6 +1279,7 @@ export class OperatorNode extends EventEmitter {
       this.mainSeedWs.on('open', () => {
         console.log('[Operator] Connected to Autho Network');
         this.isConnectedToMain = true;
+        this.lastMainNodeHeartbeat = Date.now();
 
         // Send sync request
         this.mainSeedWs!.send(JSON.stringify({
@@ -1284,11 +1289,26 @@ export class OperatorNode extends EventEmitter {
           lastSequence: this.state.lastSyncedSequence,
           timestamp: Date.now()
         }));
+        
+        // Start consensus verification
+        this.startConsensusVerification();
       });
 
       this.mainSeedWs.on('message', async (data: WebSocket.Data) => {
         try {
           const message = JSON.parse(data.toString());
+          
+          // Handle consensus verification messages
+          if (message.type === 'state_verification') {
+            this.handleStateVerification(message);
+            return;
+          }
+          
+          if (message.type === 'verification_response') {
+            this.handleVerificationResponse(message);
+            return;
+          }
+          
           await this.handleMainSeedMessage(message);
         } catch (error: any) {
           console.error('[Operator] Error handling message:', error.message);
@@ -1467,5 +1487,102 @@ export class OperatorNode extends EventEmitter {
 
   private randomHex(bytes: number): string {
     return randomBytes(bytes).toString('hex');
+  }
+
+  // Consensus Integration Methods
+  private startConsensusVerification(): void {
+    if (this.heartbeatManager) return;
+
+    this.heartbeatManager = new HeartbeatManager({
+      intervalMs: 60000,
+      consensusThreshold: 0.6667,
+      maxDivergenceTime: 300000
+    });
+
+    this.heartbeatManager.on('consensus_achieved', (result: any) => {
+      console.log(`[Consensus] ✅ ${result.agreementPercentage.toFixed(1)}% agreement`);
+    });
+
+    this.heartbeatManager.on('out_of_consensus', async (data: any) => {
+      console.log(`[Consensus] ⚠️ Out of consensus - requesting sync`);
+      if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+        this.mainSeedWs.send(JSON.stringify({
+          type: 'sync_request',
+          operatorId: this.config.operatorId,
+          networkId: this.computeNetworkId(),
+          timestamp: Date.now(),
+          reason: 'out_of_consensus'
+        }));
+      }
+    });
+
+    this.heartbeatManager.start(
+      this.config.operatorId,
+      async () => await this.getCurrentLedgerState(),
+      (message: any) => this.sendVerificationToMainSeed(message)
+    );
+
+    console.log('[Consensus] Started verification (60s interval)');
+  }
+
+  private async getCurrentLedgerState(): Promise<LedgerState> {
+    return {
+      sequenceNumber: this.state.lastSyncedSequence,
+      lastEventHash: '',
+      itemsCount: this.state.items.size,
+      settlementsCount: this.state.settlements.size,
+      accountsCount: this.state.accounts.size,
+      operatorsCount: this.state.operators.size,
+      timestamp: Date.now()
+    };
+  }
+
+  private handleStateVerification(message: any): void {
+    if (message.nodeId === 'main-node') {
+      this.lastMainNodeHeartbeat = Date.now();
+    }
+
+    if (!this.heartbeatManager) return;
+
+    const response = this.heartbeatManager.handleVerificationMessage(message);
+    if (response && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+      this.mainSeedWs.send(JSON.stringify(response));
+    }
+  }
+
+  private handleVerificationResponse(message: any): void {
+    if (this.heartbeatManager) {
+      this.heartbeatManager.handleVerificationMessage({
+        type: 'state_verification',
+        stateHash: message.stateHash,
+        sequenceNumber: message.sequenceNumber,
+        timestamp: message.timestamp,
+        nodeId: message.nodeId
+      });
+    }
+  }
+
+  private sendVerificationToMainSeed(message: any): void {
+    if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+      this.mainSeedWs.send(JSON.stringify(message));
+    }
+  }
+
+  getConsensusStatus(): any {
+    if (!this.heartbeatManager) {
+      return { enabled: false, consensusAchieved: false };
+    }
+
+    const result = this.heartbeatManager.getConsensusStatus();
+    const timeSinceLast = this.heartbeatManager.getTimeSinceLastVerification();
+
+    return {
+      enabled: true,
+      lastVerification: Date.now() - timeSinceLast,
+      consensusAchieved: result?.isConsensus || false,
+      agreementPercentage: result?.agreementPercentage || 0,
+      totalNodes: result?.totalNodes || 0,
+      mainNodeAlive: Date.now() - this.lastMainNodeHeartbeat < 180000
+    };
   }
 }
