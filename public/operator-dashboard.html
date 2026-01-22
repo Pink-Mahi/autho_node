@@ -278,6 +278,7 @@
                 <button class="nav-tab" onclick="switchTab('reputation')">⭐ Reputation</button>
                 <button class="nav-tab" onclick="switchTab('security')">🔐 Security</button>
                 <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
+                <button class="nav-tab" onclick="switchTab('network')">🛰️ Network Health</button>
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
@@ -405,6 +406,16 @@
                 <button class="btn" type="button" onclick="loadWalletEarnings()">Refresh</button>
             </div>
             <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
+        </div>
+
+        <div class="section" id="network-section">
+            <h2 class="section-title">🛰️ Network Health</h2>
+            <div class="error-message" id="networkError"></div>
+            <div class="success-message" id="networkSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadNetworkHealth()">Refresh</button>
+            </div>
+            <div id="networkPanel" class="empty-state">Open this tab to load network health.</div>
         </div>
 
         <div class="section" id="status-section">
