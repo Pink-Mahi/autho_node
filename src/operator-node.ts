@@ -31,6 +31,7 @@ interface SyncedState {
   operators: Map<string, any>;
   lastSyncedSequence: number;
   lastSyncedAt: number;
+  lastSyncedHash: string;
 }
 
 export class OperatorNode extends EventEmitter {
@@ -61,7 +62,8 @@ export class OperatorNode extends EventEmitter {
       consignments: new Map(),
       operators: new Map(),
       lastSyncedSequence: 0,
-      lastSyncedAt: 0
+      lastSyncedAt: 0,
+      lastSyncedHash: ''
     };
 
     this.setupMiddleware();
@@ -1424,6 +1426,9 @@ export class OperatorNode extends EventEmitter {
 
       // Update state maps
       if (state) {
+        if (typeof state.lastEventHash === 'string' && state.lastEventHash.trim()) {
+          this.state.lastSyncedHash = String(state.lastEventHash).trim();
+        }
         if (state.accounts) {
           this.state.accounts = new Map(Object.entries(state.accounts));
         }
@@ -1475,6 +1480,7 @@ export class OperatorNode extends EventEmitter {
         this.state.operators = new Map(Object.entries(parsed.operators || {}));
         this.state.lastSyncedSequence = parsed.lastSyncedSequence || 0;
         this.state.lastSyncedAt = parsed.lastSyncedAt || 0;
+        this.state.lastSyncedHash = String(parsed.lastSyncedHash || '');
         console.log(`[Operator] Loaded persisted state: ${this.state.events.length} events`);
       } catch (error: any) {
         console.error('[Operator] Failed to load persisted state:', error.message);
@@ -1493,7 +1499,8 @@ export class OperatorNode extends EventEmitter {
         consignments: Object.fromEntries(this.state.consignments),
         operators: Object.fromEntries(this.state.operators),
         lastSyncedSequence: this.state.lastSyncedSequence,
-        lastSyncedAt: this.state.lastSyncedAt
+        lastSyncedAt: this.state.lastSyncedAt,
+        lastSyncedHash: this.state.lastSyncedHash
       };
       fs.writeFileSync(statePath, JSON.stringify(data, null, 2));
     } catch (error: any) {
@@ -1563,7 +1570,7 @@ export class OperatorNode extends EventEmitter {
   private async getCurrentLedgerState(): Promise<LedgerState> {
     return {
       sequenceNumber: this.state.lastSyncedSequence,
-      lastEventHash: '',
+      lastEventHash: this.state.lastSyncedHash,
       itemsCount: this.state.items.size,
       settlementsCount: this.state.settlements.size,
       accountsCount: this.state.accounts.size,

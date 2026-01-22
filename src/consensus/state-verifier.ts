@@ -43,8 +43,7 @@ export class StateVerifier {
       items: state.itemsCount,
       settlements: state.settlementsCount,
       accounts: state.accountsCount,
-      operators: state.operatorsCount,
-      ts: state.timestamp
+      operators: state.operatorsCount
     };
 
     // Sort keys for deterministic output
