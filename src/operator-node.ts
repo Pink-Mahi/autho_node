@@ -583,6 +583,11 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
+    this.app.get('/api/consensus/status', (req: Request, res: Response) => {
+      const status = this.getConsensusStatus();
+      res.json(status);
+    });
+
     this.app.get('/api/network/connections', async (req: Request, res: Response) => {
       try {
         // Proxy to main seed to get network data
