@@ -7,6 +7,8 @@ import { EventEmitter } from 'events';
 import { createHash, pbkdf2Sync, timingSafeEqual, randomBytes } from 'crypto';
 import { HeartbeatManager } from './consensus/heartbeat-manager';
 import { StateVerifier, LedgerState } from './consensus/state-verifier';
+import { EventStore, EventType, QuorumSignature } from './event-store';
+import { StateBuilder } from './event-store';
 
 interface OperatorConfig {
   operatorId: string;
@@ -40,6 +42,8 @@ export class OperatorNode extends EventEmitter {
   private httpServer?: http.Server;
   private wss?: WebSocket.Server;
   private mainSeedWs?: WebSocket;
+  private canonicalEventStore: EventStore;
+  private canonicalStateBuilder: StateBuilder;
   private state: SyncedState;
   private isConnectedToMain: boolean = false;
   private reconnectTimer?: NodeJS.Timeout;
@@ -47,6 +51,7 @@ export class OperatorNode extends EventEmitter {
   private gatewayConnections: Map<WebSocket, { connectedAt: number; lastSeen: number; ip?: string }> = new Map();
   private heartbeatManager?: HeartbeatManager;
   private lastMainNodeHeartbeat: number = Date.now();
+  private operatorHeartbeatTimer: any;
 
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
 
@@ -54,6 +59,10 @@ export class OperatorNode extends EventEmitter {
     super();
     this.config = config;
     this.app = express();
+
+    this.canonicalEventStore = new EventStore(this.config.dataDir);
+    this.canonicalStateBuilder = new StateBuilder(this.canonicalEventStore);
+
     this.state = {
       events: [],
       accounts: new Map(),
@@ -68,6 +77,146 @@ export class OperatorNode extends EventEmitter {
 
     this.setupMiddleware();
     this.setupRoutes();
+
+    this.startOperatorHeartbeat();
+  }
+
+  private async rebuildLocalStateFromCanonical(): Promise<void> {
+    const state = await this.canonicalStateBuilder.buildState();
+    this.state.items = state.items;
+    this.state.settlements = state.settlements;
+    this.state.consignments = (state as any).consignments || new Map();
+    this.state.operators = state.operators;
+    this.state.accounts = state.accounts;
+    this.state.lastSyncedSequence = Number((state as any).lastEventSequence || 0);
+    this.state.lastSyncedHash = String((state as any).lastEventHash || '');
+    this.state.lastSyncedAt = Date.now();
+  }
+
+  private getOperatorId(): string {
+    return String(this.config.operatorId || '').trim();
+  }
+
+  private async requireOperatorSession(req: Request, res: Response): Promise<{ accountId: string } | null> {
+    const sess = this.requireSession(req, res);
+    if (!sess) return null;
+    const state = await this.canonicalStateBuilder.buildState();
+    const accountId = String(sess.accountId || '').trim();
+    if (!accountId) {
+      res.status(401).json({ success: false, error: 'Invalid session' });
+      return null;
+    }
+
+    const ops = Array.from((state as any)?.operators?.values?.() || []) as any[];
+    const isActiveOperator = ops.some((o: any) =>
+      o && String(o.status || '') === 'active' &&
+      (String(o.publicKey || '') === accountId || String(o.sponsorId || '') === accountId)
+    );
+
+    if (!isActiveOperator) {
+      res.status(403).json({ success: false, error: 'Operator role required' });
+      return null;
+    }
+
+    return { accountId };
+  }
+
+  private async submitCanonicalEventToSeed(payload: any, signatures: QuorumSignature[]): Promise<{ ok: boolean; error?: string }>{
+    try {
+      const ws = this.mainSeedWs;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, error: 'Not connected to main seed' };
+      }
+
+      const requestId = `append_${Date.now()}_${randomBytes(8).toString('hex')}`;
+
+      const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        const timeout = setTimeout(() => {
+          try {
+            ws.off?.('message', onMessage as any);
+          } catch {}
+          resolve({ ok: false, error: 'Timeout waiting for seed ack' });
+        }, 15000);
+
+        const onMessage = (raw: WebSocket.Data) => {
+          try {
+            const msg = JSON.parse(raw.toString());
+            if (!msg || msg.type !== 'append_event_ack') return;
+            if (String(msg.requestId || '') !== requestId) return;
+            clearTimeout(timeout);
+            try {
+              ws.off?.('message', onMessage as any);
+            } catch {}
+            resolve({ ok: Boolean(msg.ok), error: msg.error ? String(msg.error) : undefined });
+          } catch {
+          }
+        };
+
+        try {
+          ws.on?.('message', onMessage as any);
+        } catch {}
+
+        ws.send(JSON.stringify({
+          type: 'append_event',
+          requestId,
+          payload,
+          signatures,
+          operatorId: this.getOperatorId(),
+          timestamp: Date.now(),
+        }));
+      });
+
+      return result;
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  private startOperatorHeartbeat(): void {
+    try {
+      if (this.operatorHeartbeatTimer) {
+        clearInterval(this.operatorHeartbeatTimer);
+      }
+    } catch {}
+
+    const tick = async () => {
+      try {
+        const opId = this.getOperatorId();
+        if (!opId) return;
+
+        const state = await this.canonicalStateBuilder.buildState();
+        const op: any = (state as any).operators?.get?.(opId);
+        if (!op || String(op.status || '') !== 'active') return;
+
+        const now = Date.now();
+        const last = Number(op.lastHeartbeatAt || op.lastActiveAt || 0);
+        const HEARTBEAT_PERIOD_MS = 24 * 60 * 60 * 1000;
+        if (last && (now - last) < HEARTBEAT_PERIOD_MS) return;
+
+        const nonce = randomBytes(32).toString('hex');
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: opId,
+            publicKey: String(this.config.publicKey || ''),
+            signature: createHash('sha256').update(`OPERATOR_HEARTBEAT:${opId}:${now}`).digest('hex'),
+          },
+        ];
+
+        await this.submitCanonicalEventToSeed(
+          {
+            type: EventType.OPERATOR_HEARTBEAT,
+            timestamp: now,
+            nonce,
+            operatorId: opId,
+          },
+          signatures
+        );
+      } catch {
+      }
+    };
+
+    void tick();
+    this.operatorHeartbeatTimer = setInterval(() => void tick(), 60 * 60 * 1000);
   }
 
   private getSeedHttpBase(): string {
@@ -572,6 +721,228 @@ export class OperatorNode extends EventEmitter {
         description: this.config.operatorDescription,
         connectedToNetwork: this.isConnectedToMain
       });
+    });
+
+    this.app.get('/api/operators/candidates', async (req: Request, res: Response) => {
+      try {
+        const sess = await this.requireOperatorSession(req, res);
+        if (!sess) return;
+
+        const state = await this.canonicalStateBuilder.buildState();
+        const status = String((req.query as any)?.status || 'open');
+        const items = Array.from((state as any).operators?.values?.() || [])
+          .filter((o: any) => o && String(o.status || '') === 'candidate')
+          .map((c: any) => ({
+            operatorId: String(c.operatorId || ''),
+            btcAddress: String(c.btcAddress || ''),
+            publicKey: String(c.publicKey || ''),
+            operatorUrl: String(c.operatorUrl || ''),
+            sponsorId: String(c.sponsorId || ''),
+            candidateRequestedAt: Number(c.candidateRequestedAt || 0),
+            eligibleVotingAt: Number(c.eligibleVotingAt || 0),
+            eligibleVoterCount: Number(c.eligibleVoterCount || (Array.isArray(c.eligibleVoterIds) ? c.eligibleVoterIds.length : 0) || 0),
+            requiredYesVotes: Number(c.requiredYesVotes || 0),
+            voteCount: c.voteCount || { approve: 0, reject: 0 },
+          }));
+
+        const now = Date.now();
+        const filtered = items.filter((c: any) => {
+          if (status === 'open') return now < Number(c.eligibleVotingAt || 0);
+          if (status === 'voting') return now >= Number(c.eligibleVotingAt || 0);
+          return true;
+        });
+
+        res.json({ success: true, candidates: filtered });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.post('/api/operators/candidates/:candidateId/vote', async (req: Request, res: Response) => {
+      try {
+        const sess = await this.requireOperatorSession(req, res);
+        if (!sess) return;
+
+        const voterId = this.getOperatorId();
+        if (!voterId) {
+          res.status(500).json({ success: false, error: 'OPERATOR_ID is not configured on this node' });
+          return;
+        }
+
+        const candidateId = String(req.params.candidateId || '').trim();
+        const v = String((req.body as any)?.vote || '').trim();
+        const reason = (req.body as any)?.reason ? String((req.body as any).reason) : undefined;
+        if (v !== 'approve' && v !== 'reject') {
+          res.status(400).json({ success: false, error: 'vote must be approve or reject' });
+          return;
+        }
+
+        const state = await this.canonicalStateBuilder.buildState();
+        const c: any = (state as any).operators?.get?.(candidateId);
+        if (!c || String(c.status || '') !== 'candidate') {
+          res.status(404).json({ success: false, error: 'Candidate not found' });
+          return;
+        }
+
+        const myOp: any = (state as any).operators?.get?.(voterId);
+        if (!myOp || String(myOp.status || '') !== 'active') {
+          res.status(403).json({ success: false, error: 'This node is not an active operator' });
+          return;
+        }
+
+        const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+        if (eligibleVotingAt && Date.now() < eligibleVotingAt) {
+          res.status(400).json({ success: false, error: 'Voting not yet enabled (founder window still open)' });
+          return;
+        }
+
+        const eligibleVoterIds = Array.isArray(c.eligibleVoterIds) ? (c.eligibleVoterIds as any[]).map((x) => String(x)) : [];
+        if (eligibleVoterIds.length > 0 && !eligibleVoterIds.includes(voterId)) {
+          res.status(403).json({ success: false, error: 'Not eligible to vote on this candidate' });
+          return;
+        }
+
+        if (c.votes && c.votes.has && c.votes.has(voterId)) {
+          res.status(400).json({ success: false, error: 'Already voted' });
+          return;
+        }
+
+        const nonce = randomBytes(32).toString('hex');
+        const now = Date.now();
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: voterId,
+            publicKey: String(this.config.publicKey || ''),
+            signature: createHash('sha256')
+              .update(`OPERATOR_CANDIDATE_VOTE:${candidateId}:${voterId}:${now}`)
+              .digest('hex'),
+          },
+        ];
+
+        const r = await this.submitCanonicalEventToSeed(
+          {
+            type: EventType.OPERATOR_CANDIDATE_VOTE,
+            timestamp: now,
+            nonce,
+            candidateId,
+            voterId,
+            vote: v,
+            reason,
+          },
+          signatures
+        );
+
+        if (!r.ok) {
+          res.status(502).json({ success: false, error: r.error || 'Failed to submit vote to seed' });
+          return;
+        }
+
+        res.json({ success: true, candidateId, voterId, vote: v });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.post('/api/operators/candidates/:candidateId/finalize', async (req: Request, res: Response) => {
+      try {
+        const sess = await this.requireOperatorSession(req, res);
+        if (!sess) return;
+
+        const callerId = this.getOperatorId();
+        if (!callerId) {
+          res.status(500).json({ success: false, error: 'OPERATOR_ID is not configured on this node' });
+          return;
+        }
+
+        const candidateId = String(req.params.candidateId || '').trim();
+        const state = await this.canonicalStateBuilder.buildState();
+        const c: any = (state as any).operators?.get?.(candidateId);
+        if (!c || String(c.status || '') !== 'candidate') {
+          res.status(404).json({ success: false, error: 'Candidate not found' });
+          return;
+        }
+
+        const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+        if (eligibleVotingAt && Date.now() < eligibleVotingAt) {
+          res.status(400).json({ success: false, error: 'Finalize not yet enabled (founder window still open)' });
+          return;
+        }
+
+        const eligibleVoterIds = Array.isArray(c.eligibleVoterIds) ? (c.eligibleVoterIds as any[]).map((x) => String(x)) : [];
+        const eligibleVoterCount = Number(c.eligibleVoterCount || (eligibleVoterIds.length || 0) || 0);
+        const requiredYesVotes = Number(c.requiredYesVotes || 0) || (eligibleVoterCount > 0 ? Math.ceil((2 / 3) * eligibleVoterCount) : 0);
+
+        const votesArr = Array.from((c.votes?.values?.() || []) as any[]);
+        const countedVotes = eligibleVoterIds.length > 0
+          ? votesArr.filter((v: any) => eligibleVoterIds.includes(String(v.voterId)))
+          : votesArr;
+
+        const approveVotes = countedVotes.filter((v: any) => String(v.vote) === 'approve').length;
+        const rejectVotes = countedVotes.filter((v: any) => String(v.vote) === 'reject').length;
+
+        let decision: 'approve' | 'reject' | null = null;
+        if (requiredYesVotes > 0 && approveVotes >= requiredYesVotes) decision = 'approve';
+        if (requiredYesVotes > 0 && rejectVotes >= requiredYesVotes) decision = 'reject';
+
+        if (!decision) {
+          res.status(409).json({
+            success: false,
+            error: 'Not enough votes to finalize',
+            approveVotes,
+            rejectVotes,
+            eligibleVoterCount,
+            requiredYesVotes,
+          });
+          return;
+        }
+
+        const now = Date.now();
+        const nonce = randomBytes(32).toString('hex');
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: callerId,
+            publicKey: String(this.config.publicKey || ''),
+            signature: createHash('sha256')
+              .update(`OPERATOR_CANDIDATE_FINALIZED:${candidateId}:${decision}:${now}`)
+              .digest('hex'),
+          },
+        ];
+
+        const payload = decision === 'approve'
+          ? {
+              type: EventType.OPERATOR_ADMITTED,
+              timestamp: now,
+              nonce,
+              operatorId: String(c.operatorId),
+              btcAddress: String(c.btcAddress),
+              publicKey: String(c.publicKey),
+            }
+          : {
+              type: EventType.OPERATOR_REJECTED,
+              timestamp: now,
+              nonce,
+              operatorId: String(c.operatorId),
+              reason: 'operator_vote',
+            };
+
+        const r = await this.submitCanonicalEventToSeed(payload, signatures);
+        if (!r.ok) {
+          res.status(502).json({ success: false, error: r.error || 'Failed to submit finalize to seed' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          candidateId,
+          decision,
+          approveVotes,
+          rejectVotes,
+          eligibleVoterCount,
+          requiredYesVotes,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
     this.app.get('/api/network/status', (req: Request, res: Response) => {
@@ -1388,6 +1759,21 @@ export class OperatorNode extends EventEmitter {
         await this.handleNewEvent(message.event);
         this.broadcastToGateways({ type: 'registry_update', data: this.state, timestamp: Date.now() });
         break;
+      case 'registry_update':
+        try {
+          const remoteSeq = Number(message?.data?.sequenceNumber || 0);
+          if (remoteSeq && remoteSeq > this.state.lastSyncedSequence) {
+            this.mainSeedWs?.send(JSON.stringify({
+              type: 'sync_request',
+              operatorId: this.config.operatorId,
+              networkId: this.computeNetworkId(),
+              lastSequence: this.state.lastSyncedSequence,
+              timestamp: Date.now(),
+              reason: 'registry_update',
+            }));
+          }
+        } catch {}
+        break;
       case 'ping':
         this.mainSeedWs?.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
         break;
@@ -1416,38 +1802,21 @@ export class OperatorNode extends EventEmitter {
 
       console.log(`[Operator] Syncing events from main node...`);
 
-      const { events, state } = message;
+      const { events } = message;
 
-      // Update events
-      if (Array.isArray(events)) {
-        this.state.events = events;
-        console.log(`[Operator] Synced ${events.length} events`);
-      }
+      if (Array.isArray(events) && events.length > 0) {
+        const storeState = this.canonicalEventStore.getState();
+        const currentSeq = Number(storeState.sequenceNumber || 0);
 
-      // Update state maps
-      if (state) {
-        if (typeof state.lastEventHash === 'string' && state.lastEventHash.trim()) {
-          this.state.lastSyncedHash = String(state.lastEventHash).trim();
-        }
-        if (state.accounts) {
-          this.state.accounts = new Map(Object.entries(state.accounts));
-        }
-        if (state.items) {
-          this.state.items = new Map(Object.entries(state.items));
-        }
-        if (state.settlements) {
-          this.state.settlements = new Map(Object.entries(state.settlements));
-        }
-        if (state.consignments) {
-          this.state.consignments = new Map(Object.entries(state.consignments));
-        }
-        if (state.operators) {
-          this.state.operators = new Map(Object.entries(state.operators));
+        const ordered = [...events].sort((a: any, b: any) => Number(a.sequenceNumber || 0) - Number(b.sequenceNumber || 0));
+        for (const ev of ordered) {
+          const seq = Number(ev?.sequenceNumber || 0);
+          if (!seq || seq <= currentSeq) continue;
+          await this.canonicalEventStore.appendExistingEvent(ev);
         }
       }
 
-      this.state.lastSyncedSequence = events.length > 0 ? events[events.length - 1].sequenceNumber : 0;
-      this.state.lastSyncedAt = Date.now();
+      await this.rebuildLocalStateFromCanonical();
 
       console.log(`[Operator] Sync complete. Accounts: ${this.state.accounts.size}, Items: ${this.state.items.size}`);
 
@@ -1460,10 +1829,15 @@ export class OperatorNode extends EventEmitter {
   }
 
   private async handleNewEvent(event: any): Promise<void> {
-    console.log(`[Operator] New event: ${event.payload?.type}`);
-    this.state.events.push(event);
-    // State updates would be applied here
-    await this.persistState();
+    try {
+      if (event && event.eventHash && event.sequenceNumber) {
+        await this.canonicalEventStore.appendExistingEvent(event);
+      }
+      await this.rebuildLocalStateFromCanonical();
+      await this.persistState();
+    } catch (e: any) {
+      console.error('[Operator] Failed to apply new event:', e?.message || String(e));
+    }
   }
 
   private async loadPersistedState(): Promise<void> {
