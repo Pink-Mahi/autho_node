@@ -278,7 +278,6 @@
                 <button class="nav-tab" onclick="switchTab('reputation')">⭐ Reputation</button>
                 <button class="nav-tab" onclick="switchTab('security')">🔐 Security</button>
                 <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
-                <button class="nav-tab" onclick="switchTab('network')">🌐 Network Health</button>
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
@@ -408,34 +407,6 @@
             <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
         </div>
 
-        <div class="section" id="network-section">
-            <h2 class="section-title">🌐 Network Health</h2>
-            <div class="error-message" id="networkError"></div>
-            <div class="success-message" id="networkSuccess"></div>
-            
-            <div style="margin-bottom: 30px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px;">Connected Gateways</h3>
-                <div id="gatewayList">
-                    <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
-                        Loading gateway connections...
-                    </div>
-                </div>
-            </div>
-
-            <div style="margin-bottom: 30px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px;">Main Seed Connection</h3>
-                <div id="mainSeedStatus">
-                    <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
-                        Loading connection status...
-                    </div>
-                </div>
-            </div>
-
-            <div style="margin-top: 20px;">
-                <button class="btn" onclick="loadNetworkHealth()">🔄 Refresh</button>
-            </div>
-        </div>
-
         <div class="section" id="status-section">
             <h2 class="section-title">🛰️ Node Status</h2>
             <div class="error-message" id="statusError"></div>
@@ -478,14 +449,14 @@
                 loadVerifierActions();
             } else if (tab === 'reputation') {
                 loadReputationModeration(true);
-            } else if (tab === 'security') {
-                loadSecurity();
             } else if (tab === 'wallet') {
                 loadWalletEarnings();
             } else if (tab === 'network') {
                 loadNetworkHealth();
             } else if (tab === 'status') {
                 loadNodeStatus();
+            } else if (tab === 'security') {
+                loadSecurity();
             }
         }
 
@@ -938,6 +909,12 @@
                 return;
             }
 
+            const cr = await fetch('/api/consensus/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const consensusResp = await cr.json().catch(() => ({}));
+            const consensus = (cr.ok && consensusResp && consensusResp.success === true)
+                ? consensusResp
+                : { enabled: false };
+
             __operatorStatusCache = data;
             if (silent) return;
 
@@ -948,6 +925,20 @@
             const statusStyle = status === 'ACTIVE'
                 ? 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;'
                 : 'background: rgba(255,159,10,0.12); border-color: rgba(255,159,10,0.35); color:#ff9f0a;';
+
+            function fmtAgo(ts) {
+                const t = Number(ts || 0);
+                if (!t) return '';
+                const diff = Date.now() - t;
+                const s = Math.floor(diff / 1000);
+                if (s < 60) return `${s}s ago`;
+                const m = Math.floor(s / 60);
+                if (m < 60) return `${m}m ago`;
+                const h = Math.floor(m / 60);
+                if (h < 24) return `${h}h ago`;
+                const d = Math.floor(h / 24);
+                return `${d}d ago`;
+            }
 
             if (el) {
                 el.innerHTML = `
@@ -970,6 +961,37 @@
                             <tr><td>Registry Head</td><td style="font-family: monospace;">#${Number(reg.lastEventSequence || 0)} ${String(reg.lastEventHash || '').substring(0, 18)}...</td></tr>
                         </tbody>
                     </table>
+
+                    <div style="margin-top: 18px;">
+                        <div style="font-weight: 800; margin-bottom: 10px;">🔐 Consensus Verification</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Status</td>
+                                    <td>
+                                        ${consensus.enabled ?
+                                            (consensus.consensusAchieved ?
+                                                '<span style="color: #4cd964; font-weight: 700;">✅ CONSENSUS</span>' :
+                                                '<span style="color: #ff9f0a; font-weight: 700;">⚠️ OUT OF SYNC</span>') :
+                                            '<span style="color: #999; font-weight: 700;">⏸️ DISABLED</span>'}
+                                    </td>
+                                </tr>
+                                ${consensus.enabled ? `
+                                <tr><td>Agreement</td><td style="font-weight: 700; color: ${Number(consensus.agreementPercentage || 0) >= 66.67 ? '#4cd964' : '#ff9f0a'};">${Number(consensus.agreementPercentage || 0).toFixed(1)}%</td></tr>
+                                <tr><td>Participating Nodes</td><td>${Number(consensus.totalNodes || 0)}</td></tr>
+                                <tr><td>Last Verification</td><td>${fmtAgo(consensus.lastVerification || 0)}</td></tr>
+                                <tr><td>Main Node</td><td>${consensus.mainNodeAlive ? '<span style="color: #4cd964; font-weight: 700;">🟢 ALIVE</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DOWN</span>'}</td></tr>
+                                <tr><td>Leader Mode</td><td>${consensus.isActingAsLeader ? '<span style="color: #d4af37; font-weight: 700;">🎖️ YES</span>' : 'NO'}</td></tr>
+                                ` : ''}
+                            </tbody>
+                        </table>
+                    </div>
                 `;
             }
 
@@ -1431,6 +1453,10 @@
                 return;
             }
 
+            // Fetch consensus status
+            const consensusR = await fetch('/api/consensus/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const consensus = await consensusR.json().catch(() => ({ enabled: false }));
+
             const network = data.network || {};
             const operators = data.operators || {};
             const gateways = data.gateways || {};
@@ -1474,6 +1500,36 @@
                                 <tr><td>Active Operators</td><td><span style="color: #4cd964; font-weight: 700;">${Number(operators.online || 0)}</span> / ${Number(operators.total || 0)}</td></tr>
                                 <tr><td>Offline Operators</td><td><span style="color: #ff9f0a; font-weight: 700;">${Number(operators.offline || 0)}</span></td></tr>
                                 <tr><td>Connected Gateways</td><td style="font-weight: 700;">${Number(gateways.total || 0)}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">🔐 Consensus Verification</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Status</td>
+                                    <td>
+                                        ${consensus.enabled ? 
+                                            (consensus.consensusAchieved ? 
+                                                '<span style="color: #4cd964; font-weight: 700;">✅ CONSENSUS</span>' : 
+                                                '<span style="color: #ff9f0a; font-weight: 700;">⚠️ OUT OF SYNC</span>') :
+                                            '<span style="color: #999; font-weight: 700;">⏸️ DISABLED</span>'}
+                                    </td>
+                                </tr>
+                                ${consensus.enabled ? `
+                                <tr><td>Agreement</td><td style="font-weight: 700; color: ${consensus.agreementPercentage >= 66.67 ? '#4cd964' : '#ff9f0a'};">${Number(consensus.agreementPercentage || 0).toFixed(1)}%</td></tr>
+                                <tr><td>Participating Nodes</td><td>${Number(consensus.totalNodes || 0)}</td></tr>
+                                <tr><td>Last Verification</td><td>${formatTimeSince(Date.now() - (consensus.lastVerification || Date.now()))}</td></tr>
+                                <tr><td>Main Node</td><td>${consensus.mainNodeAlive ? '<span style="color: #4cd964; font-weight: 700;">🟢 ALIVE</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DOWN</span>'}</td></tr>
+                                ` : ''}
                             </tbody>
                         </table>
                     </div>
@@ -1546,83 +1602,6 @@
             }
 
             showEl('networkSuccess', true, 'Network health loaded.');
-        }
-
-        async function loadNetworkHealth() {
-            showEl('networkError', false);
-            showEl('networkSuccess', false);
-            
-            try {
-                const response = await fetch('/api/network/connections', { headers: getAuthHeaders() });
-                const data = await response.json();
-
-                if (!response.ok || !data.success) {
-                    throw new Error(data.error || 'Failed to load network health');
-                }
-
-                // Display connected gateways
-                const gatewayList = document.getElementById('gatewayList');
-                const gateways = data.gateways?.connected || [];
-                
-                if (gateways.length > 0) {
-                    gatewayList.innerHTML = gateways.map((gw, idx) => {
-                        const uptime = gw.uptimeMs ? Math.floor(gw.uptimeMs / 1000 / 60) : 0;
-                        const healthy = gw.healthy ? '🟢' : '🔴';
-                        return `
-                            <div style="background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px; padding: 15px; margin-bottom: 10px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <strong style="color: #d4af37;">Gateway ${idx + 1}</strong>
-                                        <div style="color: #999; font-size: 0.85rem; margin-top: 5px;">
-                                            ${healthy} ${gw.connected ? 'Connected' : 'Disconnected'} • Uptime: ${uptime}m
-                                            ${gw.ip ? ` • IP: ${gw.ip}` : ''}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                } else {
-                    gatewayList.innerHTML = `
-                        <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
-                            No gateway nodes connected yet.
-                        </div>
-                    `;
-                }
-
-                // Display main seed connection status
-                const mainSeedStatus = document.getElementById('mainSeedStatus');
-                
-                // Check if this operator node is connected to main seed
-                const isConnectedToMainSeed = data.mainSeedConnected !== undefined ? data.mainSeedConnected : false;
-                const mainSeedUptime = data.mainSeedUptimeMs ? Math.floor(data.mainSeedUptimeMs / 1000 / 60) : 0;
-                
-                if (isConnectedToMainSeed) {
-                    mainSeedStatus.innerHTML = `
-                        <div style="background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px; padding: 15px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <strong style="color: #d4af37;">Main Seed Node</strong>
-                                    <div style="color: #999; font-size: 0.85rem; margin-top: 5px;">
-                                        🟢 Connected • Uptime: ${mainSeedUptime}m
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    mainSeedStatus.innerHTML = `
-                        <div style="color: #ff3b30; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(255,59,48,0.25); border-radius: 10px;">
-                            ⚠️ Not connected to main seed
-                        </div>
-                    `;
-                }
-
-                showEl('networkSuccess', true, 'Network health loaded successfully');
-            } catch (error) {
-                console.error('Failed to load network health:', error);
-                showEl('networkError', true, error.message);
-            }
         }
 
         async function loadWalletEarnings() {

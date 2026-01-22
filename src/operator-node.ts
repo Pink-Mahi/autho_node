@@ -585,7 +585,11 @@ export class OperatorNode extends EventEmitter {
 
     this.app.get('/api/consensus/status', (req: Request, res: Response) => {
       const status = this.getConsensusStatus();
-      res.json(status);
+      res.json({ success: true, ...status });
+    });
+
+    this.app.get('/api/operator/status', async (req: Request, res: Response) => {
+      await this.proxyToSeed(req, res);
     });
 
     this.app.get('/api/network/health', (req: Request, res: Response) => {
