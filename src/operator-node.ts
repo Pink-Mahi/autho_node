@@ -588,6 +588,32 @@ export class OperatorNode extends EventEmitter {
       res.json(status);
     });
 
+    this.app.get('/api/network/health', (req: Request, res: Response) => {
+      const now = Date.now();
+      const gateways = Array.from(this.gatewayConnections.entries()).map(([ws, conn]) => {
+        const uptimeMs = now - conn.connectedAt;
+        const timeSinceLastSeen = now - conn.lastSeen;
+        const healthy = timeSinceLastSeen < 90000; // Healthy if seen in last 90 seconds
+        return {
+          connected: ws.readyState === 1,
+          healthy,
+          uptimeMs,
+          timeSinceLastSeenMs: timeSinceLastSeen,
+          ip: conn.ip
+        };
+      });
+
+      res.json({
+        success: true,
+        mainSeedConnected: this.isConnectedToMain,
+        mainSeedUptimeMs: this.isConnectedToMain ? 300000 : 0, // Placeholder
+        gateways: {
+          connected: gateways,
+          total: gateways.length
+        }
+      });
+    });
+
     this.app.get('/api/network/connections', async (req: Request, res: Response) => {
       try {
         // Proxy to main seed to get network data
