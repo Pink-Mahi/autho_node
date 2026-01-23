@@ -114,6 +114,18 @@ Once running, your gateway node provides these HTTP endpoints:
 - `GET /api/network/stats` - Network statistics
 - `GET /api/network/peers` - Connected peers
 
+## 🧾 Release Notes
+
+### 1.0.1
+
+- Adds gateway proxy endpoints for Bitcoin anchoring and time source:
+  - `GET /api/anchors/time`
+  - `GET /api/anchors/checkpoints`
+  - `GET /api/anchors/commits`
+  - `GET /api/anchors/checkpoints/:checkpointRoot/verify`
+  - `GET /api/anchors/checkpoints/:checkpointRoot/commitment`
+- Optional gateway-side PoW solving when operators require it (disabled by default)
+
 ## 🏪 Retail Store Setup
 
 ### **For Retail Stores**

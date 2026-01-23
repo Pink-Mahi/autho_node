@@ -9,6 +9,7 @@
 
 const express = require('express');
 const WebSocket = require('ws');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -80,6 +81,51 @@ class GatewayNode {
     
     this.setupMiddleware();
     this.setupRoutes();
+  }
+
+  sha256Hex(s) {
+    return crypto.createHash('sha256').update(String(s || ''), 'utf8').digest('hex');
+  }
+
+  async getPowChallenge(operatorUrl, resource) {
+    const url = `${operatorUrl}/api/pow/challenge?resource=${encodeURIComponent(resource)}`;
+    const resp = await fetch(url, { method: 'GET' });
+    const text = await resp.text();
+    if (!resp.ok) throw new Error(`PoW challenge failed: ${resp.status}`);
+    const json = JSON.parse(text);
+    if (!json || json.enabled !== true) return null;
+    if (!json.challengeId || !json.salt || !json.difficulty) return null;
+    return json;
+  }
+
+  solvePow(params) {
+    const maxMs = (() => {
+      const n = Number(process.env.AUTHO_GATEWAY_POW_MAX_MS);
+      return Number.isFinite(n) && n > 0 ? Math.min(30_000, Math.floor(n)) : 1500;
+    })();
+
+    const maxIters = (() => {
+      const n = Number(process.env.AUTHO_GATEWAY_POW_MAX_ITERS);
+      return Number.isFinite(n) && n > 0 ? Math.min(50_000_000, Math.floor(n)) : 5_000_000;
+    })();
+
+    const start = Date.now();
+    const salt = String(params.salt || '');
+    const resource = String(params.resource || '');
+    const difficulty = Math.max(4, Math.min(32, Math.floor(Number(params.difficulty || 0))));
+    const leadingNibbles = Math.floor(difficulty / 4);
+
+    let i = 0;
+    while (i < maxIters) {
+      if ((Date.now() - start) > maxMs) return null;
+      const nonce = `${crypto.randomBytes(8).toString('hex')}${i.toString(16)}`;
+      const digest = this.sha256Hex(`${salt}:${resource}:${nonce}`);
+      if (digest.startsWith('0'.repeat(leadingNibbles))) {
+        return nonce;
+      }
+      i++;
+    }
+    return null;
   }
 
   getOperatorUrls() {
@@ -366,11 +412,53 @@ class GatewayNode {
       }
     }
 
-    const resp = await fetch(targetUrl, init);
-    const buf = Buffer.from(await resp.arrayBuffer());
-    const contentType = resp.headers.get('content-type');
+    const doSolvePow = String(process.env.AUTHO_GATEWAY_POW_SOLVE || '').trim() === '1';
+    const hasPowHeaders = Boolean(
+      init.headers['x-autho-pow-challenge'] ||
+      init.headers['x-autho-pow-nonce'] ||
+      init.headers['x-autho-pow-resource']
+    );
 
-    return { resp, buf, contentType };
+    const resp1 = await fetch(targetUrl, init);
+    const buf1 = Buffer.from(await resp1.arrayBuffer());
+    const contentType1 = resp1.headers.get('content-type');
+
+    if (doSolvePow && !hasPowHeaders && resp1.status === 402) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(buf1.toString('utf8'));
+      } catch {}
+
+      const errCode = parsed && typeof parsed.error === 'string' ? parsed.error : '';
+      if (errCode === 'pow_required' || errCode === 'pow_invalid') {
+        try {
+          const pathOnly = String(req.path || req.originalUrl || '').split('?')[0];
+          const resource = `${String(req.method || 'GET').toUpperCase()}:${pathOnly}`;
+          const challenge = await this.getPowChallenge(operatorUrl, resource);
+          if (challenge) {
+            const nonce = this.solvePow(challenge);
+            if (nonce) {
+              const init2 = {
+                ...init,
+                headers: {
+                  ...init.headers,
+                  'x-autho-pow-challenge': String(challenge.challengeId),
+                  'x-autho-pow-resource': String(challenge.resource || resource),
+                  'x-autho-pow-nonce': String(nonce),
+                },
+              };
+
+              const resp2 = await fetch(targetUrl, init2);
+              const buf2 = Buffer.from(await resp2.arrayBuffer());
+              const contentType2 = resp2.headers.get('content-type');
+              return { resp: resp2, buf: buf2, contentType: contentType2 };
+            }
+          }
+        } catch {}
+      }
+    }
+
+    return { resp: resp1, buf: buf1, contentType: contentType1 };
   }
 
   async proxyApi(req, res) {
@@ -553,7 +641,7 @@ class GatewayNode {
       res.json({
         status: 'healthy',
         timestamp: Date.now(),
-        version: '1.0.0',
+        version: '1.0.1',
         uptime: process.uptime(),
         connectedPeers: this.peers.size,
         isConnectedToSeed: this.isConnectedToSeed,
@@ -581,6 +669,42 @@ class GatewayNode {
       res.json(stats);
     });
 
+    // Bitcoin anchoring / time-source endpoints (explicitly exposed for gateway clients)
+    this.app.get('/api/anchors/time', (req, res) => {
+      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
+        console.error('❌ Gateway proxy error:', e);
+        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
+      });
+    });
+
+    this.app.get('/api/anchors/checkpoints', (req, res) => {
+      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
+        console.error('❌ Gateway proxy error:', e);
+        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
+      });
+    });
+
+    this.app.get('/api/anchors/commits', (req, res) => {
+      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
+        console.error('❌ Gateway proxy error:', e);
+        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
+      });
+    });
+
+    this.app.get('/api/anchors/checkpoints/:checkpointRoot/verify', (req, res) => {
+      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
+        console.error('❌ Gateway proxy error:', e);
+        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
+      });
+    });
+
+    this.app.get('/api/anchors/checkpoints/:checkpointRoot/commitment', (req, res) => {
+      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
+        console.error('❌ Gateway proxy error:', e);
+        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
+      });
+    });
+
     // Registry endpoints
     this.app.get('/api/registry/state', (req, res) => {
       const cacheKey = 'registry_state';
@@ -599,7 +723,7 @@ class GatewayNode {
           operators: this.registryData.operators || {},
           accounts: this.registryData.accounts || {},
           gatewayNode: {
-            version: '1.0.0',
+            version: '1.0.1',
             platform: os.platform(),
             hardcodedSeeds: CONFIG.seedNodes,
             note: 'This is a gateway node with hardcoded seed configuration'
