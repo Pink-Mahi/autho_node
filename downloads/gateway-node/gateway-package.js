@@ -74,6 +74,9 @@ class GatewayNode {
     this.uiCacheDir = path.join(CONFIG.dataDir, 'ui-cache');
     this.operatorHeadCache = new Map();
     this.quorumHeadCache = null;
+    this.operatorConnections = new Map();
+    this.discoveredOperators = [];
+    this.lastOperatorDiscovery = 0;
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -199,6 +202,28 @@ class GatewayNode {
     return head;
   }
 
+  getCandidateOperatorUrls() {
+    const out = [];
+    const seen = new Set();
+
+    for (const u of (this.operatorUrls || [])) {
+      if (!u) continue;
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+    }
+
+    for (const op of (this.discoveredOperators || [])) {
+      const u = this.normalizeOperatorUrl(op?.operatorUrl || op?.url || op?.httpUrl || '');
+      if (!u) continue;
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+    }
+
+    return out;
+  }
+
   computeRequiredQuorum(activeCount) {
     const n = Number(activeCount || 0);
     if (!Number.isFinite(n) || n <= 0) return 0;
@@ -213,7 +238,7 @@ class GatewayNode {
       return cached;
     }
 
-    const operatorUrls = Array.from(new Set(this.operatorUrls || [])).filter(Boolean);
+    const operatorUrls = this.getCandidateOperatorUrls();
     const results = await Promise.all(operatorUrls.map(async (operatorUrl) => {
       try {
         const head = await this.ensureOperatorHead(operatorUrl);
@@ -744,10 +769,130 @@ class GatewayNode {
     }
   }
 
+  seedToWsUrl(seed) {
+    const [host, port] = String(seed).split(':');
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocal ? 'ws' : 'wss';
+    return isLocal
+      ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
+      : `${protocol}://${host}`;
+  }
+
+  seedToHttpUrl(seed) {
+    const [host, port] = String(seed).split(':');
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocal ? 'http' : 'https';
+    return isLocal
+      ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
+      : `${protocol}://${host}`;
+  }
+
+  async discoverOperators() {
+    const now = Date.now();
+    if (now - this.lastOperatorDiscovery < 300000 && this.discoveredOperators.length > 0) {
+      return this.discoveredOperators;
+    }
+
+    const seeds = this.getSeedNodes();
+    for (const seed of seeds) {
+      try {
+        const httpUrl = this.seedToHttpUrl(seed);
+        const resp = await fetch(`${httpUrl}/api/network/operators`, { method: 'GET' });
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        if (data && data.success && Array.isArray(data.operators)) {
+          this.discoveredOperators = data.operators;
+          this.lastOperatorDiscovery = now;
+          return this.discoveredOperators;
+        }
+      } catch {}
+    }
+
+    return [];
+  }
+
+  async connectToOperators() {
+    await this.discoverOperators();
+
+    const operators = this.discoveredOperators.length > 0
+      ? this.discoveredOperators
+      : this.getSeedNodes().map((seed, idx) => ({
+          operatorId: `seed-${idx}`,
+          wsUrl: this.seedToWsUrl(seed),
+        }));
+
+    for (const op of operators) {
+      if (!op || !op.wsUrl) continue;
+      const operatorId = String(op.operatorId || op.wsUrl);
+      if (this.operatorConnections.has(operatorId)) {
+        const existing = this.operatorConnections.get(operatorId);
+        if (existing && existing.ws && existing.ws.readyState === WebSocket.OPEN) {
+          continue;
+        }
+      }
+      this.connectToOperator({ operatorId, wsUrl: op.wsUrl });
+    }
+  }
+
+  connectToOperator(operator) {
+    const operatorId = String(operator?.operatorId || '').trim();
+    const wsUrl = String(operator?.wsUrl || '').trim();
+    if (!operatorId || !wsUrl) return;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      const connectionInfo = {
+        ws,
+        operatorId,
+        wsUrl,
+        connectedAt: null,
+        lastSeen: null,
+      };
+
+      ws.on('open', () => {
+        connectionInfo.connectedAt = Date.now();
+        connectionInfo.lastSeen = Date.now();
+        this.isConnectedToSeed = true;
+
+        ws.send(JSON.stringify({
+          type: 'sync_request',
+          nodeId: 'gateway-package',
+          platform: os.platform(),
+          timestamp: Date.now()
+        }));
+      });
+
+      ws.on('message', (data) => {
+        try {
+          connectionInfo.lastSeen = Date.now();
+          const message = JSON.parse(data.toString());
+          this.handleSeedMessage(operatorId, message);
+        } catch {}
+      });
+
+      ws.on('close', () => {
+        this.operatorConnections.delete(operatorId);
+
+        const hasActiveConnection = Array.from(this.operatorConnections.values())
+          .some(conn => conn && conn.ws && conn.ws.readyState === WebSocket.OPEN);
+
+        if (!hasActiveConnection) {
+          this.isConnectedToSeed = false;
+        }
+
+        setTimeout(() => {
+          this.connectToOperator({ operatorId, wsUrl });
+        }, 10000);
+      });
+
+      ws.on('error', () => {});
+
+      this.operatorConnections.set(operatorId, connectionInfo);
+    } catch {}
+  }
+
   connectToSeeds() {
     const seeds = this.getSeedNodes();
-    console.log('🌐 Connecting to seed nodes...');
-    console.log(`   Seeds: ${seeds.join(', ')}`);
 
     const attempt = async () => {
       const current = this.seedWs;
@@ -759,15 +904,7 @@ class GatewayNode {
       this.isConnectedToSeed = false;
 
       for (const seed of seeds) {
-        const [host, port] = String(seed).split(':');
-        console.log(`📡 Attempting to connect to seed: ${seed}`);
-
-        const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
-        const protocol = isLocal ? 'ws' : 'wss';
-        const wsUrl = isLocal
-          ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
-          : `${protocol}://${host}`;
-
+        const wsUrl = this.seedToWsUrl(seed);
         try {
           const ws = await new Promise((resolve, reject) => {
             const sock = new WebSocket(wsUrl);
@@ -792,20 +929,15 @@ class GatewayNode {
           this.connectedSeed = seed;
           this.isConnectedToSeed = true;
 
-          console.log(`✅ Connected to seed: ${seed}`);
-
           ws.on('message', (data) => {
             try {
               const message = JSON.parse(data.toString());
               this.handleSeedMessage(seed, message);
-            } catch (error) {
-              console.error(`❌ Invalid message from seed ${seed}:`, error);
-            }
+            } catch {}
           });
 
           ws.on('close', () => {
             if (this.connectedSeed === seed) {
-              console.log(`❌ Disconnected from seed: ${seed}`);
               this.isConnectedToSeed = false;
               this.connectedSeed = null;
               this.seedWs = null;
@@ -815,9 +947,7 @@ class GatewayNode {
             }
           });
 
-          ws.on('error', (error) => {
-            console.error(`❌ WebSocket error for seed ${seed}:`, error);
-          });
+          ws.on('error', () => {});
 
           ws.send(JSON.stringify({
             type: 'sync_request',
@@ -827,12 +957,9 @@ class GatewayNode {
           }));
 
           return;
-        } catch (error) {
-          console.error(`❌ Failed to connect to seed ${seed}:`, error && error.message ? error.message : error);
-        }
+        } catch {}
       }
 
-      console.error('❌ Unable to connect to any seed. Retrying in 10 seconds...');
       setTimeout(() => {
         attempt().catch(() => {});
       }, 10000);
@@ -944,8 +1071,14 @@ class GatewayNode {
     // Setup WebSocket
     this.setupWebSocket();
 
-    // Connect to seed nodes
+    await this.connectToOperators();
     this.connectToSeeds();
+
+    setInterval(async () => {
+      try {
+        await this.connectToOperators();
+      } catch {}
+    }, 300000);
 
     // Periodic data save
     setInterval(() => {
