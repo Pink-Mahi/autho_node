@@ -21,9 +21,9 @@ const UI_CACHE_TTL_MS = (() => {
 // HARD-CODED CONFIGURATION - USERS CANNOT MODIFY
 const CONFIG = {
   // Seed nodes - hardcoded to prevent modification
-  seedNodes: ['autho.pinkmahi.com:3000'],
+  seedNodes: ['autho.pinkmahi.com:3000', 'autho.cartpathcleaning.com'],
 
-  operatorUrls: ['http://autho.pinkmahi.com:3000', 'https://autho.pinkmahi.com'],
+  operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'http://autho.pinkmahi.com:3000'],
   
   // Network settings
   port: 3001,
@@ -68,6 +68,8 @@ class GatewayNode {
     this.rateLimitMap = new Map();
     this.registryData = {};
     this.isConnectedToSeed = false;
+    this.seedWs = null;
+    this.connectedSeed = null;
     this.operatorUrls = this.getOperatorUrls();
     this.uiCacheDir = path.join(CONFIG.dataDir, 'ui-cache');
     this.operatorHeadCache = new Map();
@@ -98,6 +100,51 @@ class GatewayNode {
         return null;
       }
     }
+  }
+
+  normalizeSeed(seed) {
+    const s = String(seed || '').trim();
+    if (!s) return null;
+
+    try {
+      const u = new URL(s);
+      const isLocal = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+      if (u.port) return `${u.hostname}:${u.port}`;
+      if (isLocal) return u.hostname;
+      return u.hostname;
+    } catch {
+      const cleaned = s.replace(/^wss?:\/\//i, '').replace(/^https?:\/\//i, '');
+      return cleaned.length ? cleaned : null;
+    }
+  }
+
+  getSeedNodes() {
+    const raw = process.env.GATEWAY_SEEDS || process.env.AUTHO_GATEWAY_SEEDS;
+    const requested = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const fromEnv = requested.map(s => this.normalizeSeed(s)).filter(Boolean);
+
+    const fromConfig = (CONFIG.seedNodes || []).map(s => this.normalizeSeed(s)).filter(Boolean);
+    const fromOperators = (this.operatorUrls || [])
+      .map((u) => {
+        try {
+          return this.normalizeSeed(u);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    const out = [];
+    const seen = new Set();
+    for (const s of [...fromEnv, ...fromConfig, ...fromOperators]) {
+      if (!s) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+    }
+
+    return out.length ? out : fromConfig;
   }
 
   getUiCacheFilePath(requestPath) {
@@ -311,7 +358,7 @@ class GatewayNode {
       const statusCode = e?.statusCode;
       res.status(statusCode || 503).json({
         error: e?.message || String(e),
-        details: e?.details,
+        details: e?.details
       });
       return;
     }
@@ -698,63 +745,100 @@ class GatewayNode {
   }
 
   connectToSeeds() {
-    console.log('🌐 Connecting to hardcoded seed nodes...');
-    
-    CONFIG.seedNodes.forEach(seed => {
-      const [host, port] = seed.split(':');
-      console.log(`📡 Attempting to connect to seed: ${host}:${port}`);
-      
-      try {
-        // Connect to the same port as HTTP (operator node uses single port for both)
-        // Use wss:// for secure connections (Coolify uses HTTPS)
+    const seeds = this.getSeedNodes();
+    console.log('🌐 Connecting to seed nodes...');
+    console.log(`   Seeds: ${seeds.join(', ')}`);
+
+    const attempt = async () => {
+      const current = this.seedWs;
+      if (current) {
+        try { current.terminate(); } catch {}
+        this.seedWs = null;
+      }
+      this.connectedSeed = null;
+      this.isConnectedToSeed = false;
+
+      for (const seed of seeds) {
+        const [host, port] = String(seed).split(':');
+        console.log(`📡 Attempting to connect to seed: ${seed}`);
+
         const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
         const protocol = isLocal ? 'ws' : 'wss';
-
-        // Production is behind HTTPS reverse proxy, so always connect via wss://<host> (443)
-        // even if the seed string includes :3000.
         const wsUrl = isLocal
           ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
           : `${protocol}://${host}`;
-        const ws = new WebSocket(wsUrl);
-        
-        ws.on('open', () => {
-          console.log(`✅ Connected to seed: ${seed}`);
+
+        try {
+          const ws = await new Promise((resolve, reject) => {
+            const sock = new WebSocket(wsUrl);
+            const timer = setTimeout(() => {
+              try { sock.terminate(); } catch {}
+              reject(new Error('connect timeout'));
+            }, 6000);
+
+            sock.once('open', () => {
+              clearTimeout(timer);
+              resolve(sock);
+            });
+
+            sock.once('error', (e) => {
+              clearTimeout(timer);
+              try { sock.terminate(); } catch {}
+              reject(e);
+            });
+          });
+
+          this.seedWs = ws;
+          this.connectedSeed = seed;
           this.isConnectedToSeed = true;
-          
+
+          console.log(`✅ Connected to seed: ${seed}`);
+
+          ws.on('message', (data) => {
+            try {
+              const message = JSON.parse(data.toString());
+              this.handleSeedMessage(seed, message);
+            } catch (error) {
+              console.error(`❌ Invalid message from seed ${seed}:`, error);
+            }
+          });
+
+          ws.on('close', () => {
+            if (this.connectedSeed === seed) {
+              console.log(`❌ Disconnected from seed: ${seed}`);
+              this.isConnectedToSeed = false;
+              this.connectedSeed = null;
+              this.seedWs = null;
+              setTimeout(() => {
+                attempt().catch(() => {});
+              }, 5000);
+            }
+          });
+
+          ws.on('error', (error) => {
+            console.error(`❌ WebSocket error for seed ${seed}:`, error);
+          });
+
           ws.send(JSON.stringify({
             type: 'sync_request',
             nodeId: 'gateway-package',
             platform: os.platform(),
             timestamp: Date.now()
           }));
-        });
 
-        ws.on('message', (data) => {
-          try {
-            const message = JSON.parse(data.toString());
-            this.handleSeedMessage(seed, message);
-          } catch (error) {
-            console.error(`❌ Invalid message from seed ${seed}:`, error);
-          }
-        });
-
-        ws.on('close', () => {
-          console.log(`❌ Disconnected from seed: ${seed}`);
-          this.isConnectedToSeed = false;
-          
-          setTimeout(() => {
-            this.connectToSeeds();
-          }, 5000);
-        });
-
-        ws.on('error', (error) => {
-          console.error(`❌ WebSocket error for seed ${seed}:`, error);
-        });
-
-      } catch (error) {
-        console.error(`❌ Failed to connect to seed ${seed}:`, error);
+          return;
+        } catch (error) {
+          console.error(`❌ Failed to connect to seed ${seed}:`, error && error.message ? error.message : error);
+        }
       }
-    });
+
+      console.error('❌ Unable to connect to any seed. Retrying in 10 seconds...');
+      setTimeout(() => {
+        attempt().catch(() => {});
+      }, 10000);
+    };
+
+    attempt().catch(() => {});
   }
 
   handleSeedMessage(seed, message) {
