@@ -612,13 +612,35 @@
 
       <button class="btn secondary" onclick="copyReceiveAddress()">Copy Receive Address</button>
 
+      <div class="info-card">
+        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Public Pay Handle (Optional)</div>
+        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">Create a public handle like <span style="font-family:'Courier New', monospace;">name@autho</span> so others can pay you without scanning a QR code.</div>
+        <input id="payHandleInput" type="text" class="input" placeholder="name@autho" />
+        <button class="btn secondary" onclick="savePayHandle()" style="margin-top: 10px;">Save Pay Handle</button>
+        <div id="payHandleStatus" style="margin-top:10px; font-size: 13px; color:#999;"></div>
+      </div>
+
+      <div class="info-card">
+        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Request Payment Link</div>
+        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">Generate a shareable link that pre-fills an amount and memo in the wallet.</div>
+        <input id="invoiceAmountUsd" type="number" inputmode="decimal" class="input" placeholder="Amount (USD) e.g. 105.87 (optional)" />
+        <input id="invoiceAmountSats" type="number" inputmode="numeric" class="input" placeholder="Amount (sats) e.g. 25000 (optional)" style="margin-top: 10px;" />
+        <input id="invoiceMemo" type="text" class="input" placeholder="Memo (optional) e.g. You owe me" style="margin-top: 10px;" />
+        <button class="btn secondary" onclick="generatePaymentLink()" style="margin-top: 10px;">Create Payment Link</button>
+        <div class="wallet-card-value" id="paymentLinkOut" style="margin-top:10px; display:none;"></div>
+        <button class="btn secondary" onclick="copyPaymentLink()" id="copyPaymentLinkBtn" style="margin-top: 10px; display:none;">Copy Payment Link</button>
+      </div>
+
       <div class="wallet-card">
         <div class="wallet-card-title">Send BTC</div>
         <div style="margin-top:10px;">
-          <input id="sendToAddress" type="text" placeholder="Recipient address" style="width:100%; padding:12px; border-radius:12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;" />
+          <input id="sendToAddress" type="text" placeholder="Recipient address or name@autho" style="width:100%; padding:12px; border-radius:12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;" />
         </div>
         <div style="margin-top:10px;">
           <button class="btn secondary" onclick="openQrScanner()">Scan QR Code</button>
+        </div>
+        <div style="margin-top:10px;">
+          <input id="sendMemo" type="text" placeholder="Memo (optional)" style="width:100%; padding:12px; border-radius:12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;" />
         </div>
         <div style="margin-top:10px;">
           <input id="sendAmountUsd" type="number" inputmode="decimal" placeholder="Amount (USD)" style="width:100%; padding:12px; border-radius:12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff;" />
@@ -782,8 +804,182 @@
         loadWalletInfo();
         initWalletExtras();
         showScreen('walletInfoScreen');
+        try { applyIncomingPaymentRequest(); } catch {}
+        try { loadMyPayHandle(); } catch {}
       }
     });
+
+    function isBtcAddress(s) {
+      const v = String(s || '').trim();
+      return /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(v);
+    }
+
+    async function resolvePayHandle(handle) {
+      const h = String(handle || '').trim();
+      if (!h) throw new Error('Missing handle');
+      const r = await fetch(`/api/pay/resolve?handle=${encodeURIComponent(h)}`, { cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || data.success !== true) {
+        throw new Error(data?.error || 'Failed to resolve handle');
+      }
+      const addr = String(data.walletAddress || '').trim();
+      if (!addr) throw new Error('No wallet address found for handle');
+      return addr;
+    }
+
+    async function loadMe() {
+      const sid = getSessionId();
+      if (!sid) return null;
+      const r = await fetch('/api/auth/me', { method: 'GET', headers: { 'Authorization': `Bearer ${sid}` }, cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || data.success !== true) return null;
+      return data;
+    }
+
+    async function loadMyPayHandle() {
+      const statusEl = document.getElementById('payHandleStatus');
+      const inputEl = document.getElementById('payHandleInput');
+      if (!inputEl) return;
+      const me = await loadMe();
+      if (!me || !me.account) {
+        if (statusEl) statusEl.textContent = 'Sign in to set a pay handle.';
+        return;
+      }
+      const handle = String(me.account.payHandle || '').trim();
+      if (handle) {
+        inputEl.value = handle;
+        if (statusEl) statusEl.textContent = `Current: ${handle}`;
+      } else {
+        if (statusEl) statusEl.textContent = 'Not set.';
+      }
+    }
+
+    window.savePayHandle = async () => {
+      const statusEl = document.getElementById('payHandleStatus');
+      const inputEl = document.getElementById('payHandleInput');
+      if (!inputEl) return;
+
+      try {
+        const me = await loadMe();
+        if (!me || !me.account) {
+          if (statusEl) statusEl.textContent = 'You must be signed in.';
+          return;
+        }
+        const sid = getSessionId();
+        const accountId = String(me.account.accountId || '').trim();
+        if (!accountId || !sid) {
+          if (statusEl) statusEl.textContent = 'Missing session.';
+          return;
+        }
+        const payHandle = String(inputEl.value || '').trim();
+        if (statusEl) statusEl.textContent = 'Saving...';
+        const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/pay-handle/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sid}` },
+          body: JSON.stringify({ payHandle })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data?.error || 'Failed to save handle');
+        }
+        const saved = String(data.payHandle || '').trim();
+        if (statusEl) statusEl.textContent = saved ? `Saved: ${saved}` : 'Cleared.';
+      } catch (e) {
+        if (statusEl) statusEl.textContent = `Error: ${e?.message || String(e)}`;
+      }
+    };
+
+    function buildPaymentLink(params) {
+      const base = `${location.origin}/m/wallet`;
+      const qp = new URLSearchParams();
+      if (params.payHandle) qp.set('payHandle', String(params.payHandle));
+      if (params.payTo) qp.set('payTo', String(params.payTo));
+      if (params.amountUsd) qp.set('amountUsd', String(params.amountUsd));
+      if (params.amountSats) qp.set('amountSats', String(params.amountSats));
+      if (params.memo) qp.set('memo', String(params.memo));
+      return `${base}?${qp.toString()}`;
+    }
+
+    window.generatePaymentLink = async () => {
+      const outEl = document.getElementById('paymentLinkOut');
+      const btnEl = document.getElementById('copyPaymentLinkBtn');
+      const usdEl = document.getElementById('invoiceAmountUsd');
+      const satsEl = document.getElementById('invoiceAmountSats');
+      const memoEl = document.getElementById('invoiceMemo');
+
+      let amountUsd = String(usdEl?.value || '').trim();
+      let amountSats = String(satsEl?.value || '').trim();
+      const memo = String(memoEl?.value || '').trim();
+
+      if (amountUsd && !Number.isFinite(Number(amountUsd))) amountUsd = '';
+      if (amountSats && !Number.isFinite(Number(amountSats))) amountSats = '';
+
+      const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+      const receiveAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+      if (!receiveAddress) {
+        alert('No wallet address');
+        return;
+      }
+
+      let payHandle = '';
+      try {
+        const me = await loadMe();
+        payHandle = String(me?.account?.payHandle || '').trim();
+      } catch {}
+
+      const link = buildPaymentLink({
+        payHandle: payHandle || undefined,
+        payTo: payHandle ? undefined : receiveAddress,
+        amountUsd: amountUsd || undefined,
+        amountSats: amountSats || undefined,
+        memo: memo || undefined,
+      });
+
+      try { localStorage.setItem('autho_last_payment_link', link); } catch {}
+      if (outEl) {
+        outEl.style.display = 'block';
+        outEl.textContent = link;
+      }
+      if (btnEl) btnEl.style.display = 'block';
+    };
+
+    window.copyPaymentLink = async () => {
+      const outEl = document.getElementById('paymentLinkOut');
+      const link = String(outEl?.textContent || '').trim() || String(localStorage.getItem('autho_last_payment_link') || '').trim();
+      if (!link) return;
+      try {
+        await navigator.clipboard.writeText(link);
+        alert('Payment link copied');
+      } catch {
+        alert('Copy failed');
+      }
+    };
+
+    async function applyIncomingPaymentRequest() {
+      const params = new URLSearchParams(location.search || '');
+      const payHandle = String(params.get('payHandle') || '').trim();
+      const payTo = String(params.get('payTo') || '').trim();
+      const amountUsd = String(params.get('amountUsd') || '').trim();
+      const amountSats = String(params.get('amountSats') || '').trim();
+      const memo = String(params.get('memo') || '').trim();
+
+      if (!payHandle && !payTo) return;
+
+      const toEl = document.getElementById('sendToAddress');
+      const usdEl = document.getElementById('sendAmountUsd');
+      const satsEl = document.getElementById('sendAmountSats');
+      const memoEl = document.getElementById('sendMemo');
+
+      if (toEl) toEl.value = payHandle || payTo;
+      if (memoEl && memo) memoEl.value = memo;
+      if (usdEl && amountUsd) {
+        usdEl.value = amountUsd;
+        try { await window.updateSatsFromUsd(); } catch {}
+      } else if (satsEl && amountSats) {
+        satsEl.value = amountSats;
+        try { await window.updateUsdFromSats(); } catch {}
+      }
+    }
 
     function loadWalletInfo() {
       const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
@@ -1591,7 +1787,21 @@
       };
 
       try {
-        const toAddress = String(document.getElementById('sendToAddress').value || '').trim();
+        const toAddressRaw = String(document.getElementById('sendToAddress').value || '').trim();
+        if (!toAddressRaw) {
+          alert('Enter recipient address');
+          return;
+        }
+
+        let toAddress = toAddressRaw;
+        if (toAddressRaw.includes('@') && !isBtcAddress(toAddressRaw)) {
+          setStatus('Resolving pay handle...');
+          toAddress = await resolvePayHandle(toAddressRaw);
+          try {
+            document.getElementById('sendToAddress').value = toAddress;
+          } catch {}
+        }
+
         let amountSatsInput = 0;
         try {
           amountSatsInput = parseSatsFromInput(document.getElementById('sendAmountSats').value || '');
@@ -1600,11 +1810,6 @@
         } catch {}
         const amountUsdInput = Number(document.getElementById('sendAmountUsd')?.value || 0);
         const feeSpeed = walletFeePriority;
-
-        if (!toAddress) {
-          alert('Enter recipient address');
-          return;
-        }
 
         let amountSats = 0;
         if (Number.isFinite(amountSatsInput) && amountSatsInput > 0) {
