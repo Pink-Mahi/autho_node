@@ -901,6 +901,67 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // Operator discovery endpoint for gateway nodes
+    this.app.get('/api/network/operators', async (req: Request, res: Response) => {
+      try {
+        const state = await this.canonicalStateBuilder.buildState();
+        const operators = Array.from((state as any).operators?.values?.() || []) as any[];
+        const now = Date.now();
+        const activeWindowMs = 36 * 60 * 60 * 1000;
+
+        const activeOperators = operators.filter((o: any) => {
+          if (!o || String(o.status || '') !== 'active') return false;
+          const lastHeartbeatAt = Number(o.lastHeartbeatAt || 0);
+          const lastActiveAt = Number(o.lastActiveAt || 0);
+          const admittedAt = Number(o.admittedAt || 0);
+          const lastSeenAt = Math.max(lastHeartbeatAt, lastActiveAt, admittedAt);
+          if (!Number.isFinite(lastSeenAt) || lastSeenAt <= 0) return false;
+          return (now - lastSeenAt) <= activeWindowMs;
+        });
+
+        const operatorList = activeOperators
+          .map((op: any) => {
+            const operatorUrl = String(op.operatorUrl || '').trim();
+            let wsUrl = '';
+
+            if (operatorUrl) {
+              if (operatorUrl.startsWith('https://')) {
+                wsUrl = operatorUrl.replace('https://', 'wss://');
+              } else if (operatorUrl.startsWith('http://')) {
+                wsUrl = operatorUrl.replace('http://', 'ws://');
+              } else if (operatorUrl.includes('localhost') || operatorUrl.includes('127.0.0.1')) {
+                wsUrl = `ws://${operatorUrl}`;
+              } else {
+                wsUrl = `wss://${operatorUrl}`;
+              }
+            }
+
+            return {
+              operatorId: String(op.operatorId || ''),
+              operatorUrl,
+              wsUrl,
+              btcAddress: String(op.btcAddress || ''),
+              status: 'active',
+              admittedAt: op.admittedAt,
+              lastHeartbeatAt: op.lastHeartbeatAt,
+              lastActiveAt: op.lastActiveAt,
+            };
+          })
+          .filter((op: any) => op && op.wsUrl);
+
+        res.json({
+          success: true,
+          timestamp: Date.now(),
+          network: this.config.network,
+          currentSequence: (state as any).lastEventSequence,
+          activeWindowMs,
+          operators: operatorList,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/operators/candidates', async (req: Request, res: Response) => {
       try {
         const sess = await this.requireOperatorSession(req, res);

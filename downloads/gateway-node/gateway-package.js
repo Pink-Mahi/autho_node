@@ -151,6 +151,16 @@ class GatewayNode {
     }
   }
 
+  isTorEnabled() {
+    const v = String(process.env.AUTHO_TOR_MODE || '').trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  }
+
+  isOnionUrl(url) {
+    const s = String(url || '').trim().toLowerCase();
+    return /\.onion(\/|:|$)/i.test(s);
+  }
+
   normalizeSeed(seed) {
     const s = String(seed || '').trim();
     if (!s) return null;
@@ -254,6 +264,7 @@ class GatewayNode {
 
     for (const u of (this.operatorUrls || [])) {
       if (!u) continue;
+      if (!this.isTorEnabled() && this.isOnionUrl(u)) continue;
       if (seen.has(u)) continue;
       seen.add(u);
       out.push(u);
@@ -262,6 +273,7 @@ class GatewayNode {
     for (const op of (this.discoveredOperators || [])) {
       const u = this.normalizeOperatorUrl(op?.operatorUrl || op?.url || op?.httpUrl || '');
       if (!u) continue;
+      if (!this.isTorEnabled() && this.isOnionUrl(u)) continue;
       if (seen.has(u)) continue;
       seen.add(u);
       out.push(u);
@@ -907,7 +919,8 @@ class GatewayNode {
   seedToHttpUrl(seed) {
     const [host, port] = String(seed).split(':');
     const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
-    const protocol = isLocal ? 'http' : 'https';
+    const isOnion = host.toLowerCase().endsWith('.onion');
+    const protocol = (isLocal || isOnion) ? 'http' : 'https';
     return isLocal
       ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
       : `${protocol}://${host}`;
@@ -949,6 +962,7 @@ class GatewayNode {
 
     for (const op of operators) {
       if (!op || !op.wsUrl) continue;
+      if (!this.isTorEnabled() && this.isOnionUrl(op.wsUrl)) continue;
       const operatorId = String(op.operatorId || op.wsUrl);
       if (this.operatorConnections.has(operatorId)) {
         const existing = this.operatorConnections.get(operatorId);
