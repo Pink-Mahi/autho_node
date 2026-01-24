@@ -653,6 +653,141 @@ export class OperatorNode extends EventEmitter {
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
+    const renderPayPage = async (req: Request, res: Response, handleInput: string) => {
+      try {
+        const handleRaw = String(handleInput || '').trim().toLowerCase();
+        if (!handleRaw) {
+          res.status(400).send('Missing handle');
+          return;
+        }
+
+        const handle = handleRaw.includes('@') ? handleRaw : `${handleRaw}@autho`;
+        if (!handle.endsWith('@autho')) {
+          res.status(400).send('Invalid handle');
+          return;
+        }
+
+        const base = this.getSeedHttpBase();
+        if (!base) {
+          res.status(502).send('No seed HTTP base configured');
+          return;
+        }
+
+        const memo = String((req.query as any)?.memo || '').trim();
+        const memoEsc = memo
+          ? memo.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[c])
+          : '';
+        const amountSatsStr = String((req.query as any)?.amountSats || '').trim();
+        const amountSats = amountSatsStr ? Math.floor(Number(amountSatsStr)) : 0;
+
+        const r = await fetch(`${base}/api/pay/resolve?handle=${encodeURIComponent(handle)}`, { method: 'GET' });
+        const data: any = await r.json().catch(() => null);
+        if (!r.ok || !data || data.success !== true) {
+          res.status(r.status || 404).send(String(data?.error || 'Pay handle not found'));
+          return;
+        }
+
+        const resolvedAddress = String(data.walletAddress || '').trim();
+        const resolvedAccountId = String(data.accountId || '').trim();
+        if (!resolvedAddress) {
+          res.status(404).send('Pay handle not found');
+          return;
+        }
+        if (!resolvedAddress.match(/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/)) {
+          res.status(400).send('Resolved address is invalid');
+          return;
+        }
+
+        const params: string[] = [];
+        if (amountSats > 0 && Number.isFinite(amountSats)) {
+          params.push(`amount=${encodeURIComponent((amountSats / 1e8).toFixed(8).replace(/0+$/, '').replace(/\.$/, ''))}`);
+        }
+        if (memo) {
+          params.push(`message=${encodeURIComponent(memo)}`);
+        }
+        const bip21 = `bitcoin:${resolvedAddress}${params.length ? `?${params.join('&')}` : ''}`;
+        const qrUrl = `/api/qr.png?text=${encodeURIComponent(bip21)}`;
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pay ${handle}</title>
+  <style>
+    body { background:#0a0a0a; color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 24px; }
+    .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 16px; margin-top: 12px; }
+    .title { font-weight: 700; font-size: 20px; }
+    .muted { color: rgba(255,255,255,0.75); font-size: 13px; line-height: 1.5; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .row { margin-top: 10px; }
+    input { width:100%; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color:#fff; }
+    button, a.btn { display:inline-block; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(212,175,55,0.18); color:#fff; text-decoration:none; font-weight: 600; }
+    .btn.secondary { background: rgba(255,255,255,0.08); }
+    .grid { display:flex; gap:10px; flex-wrap: wrap; }
+    img { width: 250px; height: 250px; background:#fff; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Pay <span class="mono">${handle}</span></div>
+    <div class="muted">This page resolves the Autho pay handle to a Bitcoin address. You can pay using any external wallet (Cash App, etc.).</div>
+
+    <div class="card">
+      <div class="muted">Bitcoin address</div>
+      <div class="row"><input id="addr" class="mono" readonly value="${resolvedAddress}" /></div>
+      <div class="row grid">
+        <button class="btn secondary" onclick="copyAddr()">Copy Address</button>
+        <a class="btn" href="${bip21}">Open in Wallet</a>
+      </div>
+      ${memo ? `<div class="row muted">Memo: ${memoEsc}</div>` : ''}
+      ${(amountSats > 0 && Number.isFinite(amountSats)) ? `<div class="row muted">Amount: ${amountSats} sats</div>` : ''}
+      ${resolvedAccountId ? `<div class="row muted">Account: <span class="mono">${resolvedAccountId}</span></div>` : ''}
+    </div>
+
+    <div class="card" style="display:flex; justify-content:center;">
+      <img alt="Bitcoin payment QR" src="${qrUrl}" />
+    </div>
+  </div>
+
+  <script>
+    function copyAddr() {
+      const el = document.getElementById('addr');
+      const v = el ? String(el.value || '').trim() : '';
+      if (!v) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(v).then(() => alert('Address copied')).catch(() => alert('Copy failed'));
+        return;
+      }
+      try {
+        el.focus();
+        el.select();
+        document.execCommand('copy');
+        alert('Address copied');
+      } catch {
+        alert('Copy failed');
+      }
+    }
+  </script>
+</body>
+</html>`);
+      } catch (e: any) {
+        res.status(500).send(e?.message || 'Internal error');
+      }
+    };
+
+    this.app.get('/pay', async (req: Request, res: Response) => {
+      const handle = String((req.query as any)?.handle || '').trim();
+      await renderPayPage(req, res, handle);
+    });
+
+    this.app.get('/pay/:handle', async (req: Request, res: Response) => {
+      const handle = String((req.params as any)?.handle || '').trim();
+      await renderPayPage(req, res, handle);
+    });
+
     this.app.get('/m/items', (req: Request, res: Response) => {
       const fp = this.resolvePublicFile('mobile-items.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
