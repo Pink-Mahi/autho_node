@@ -317,15 +317,17 @@ class GatewayNode {
       return out;
     }
 
-    const activeCount = Number(best.head?.activeOperatorCount || (best.head?.activeOperatorIds ? best.head.activeOperatorIds.length : 0) || 0);
+    const reportedActiveCount = Number(best.head?.activeOperatorCount || (best.head?.activeOperatorIds ? best.head.activeOperatorIds.length : 0) || 0);
+    const activeCount = reportedActiveCount > 0 ? reportedActiveCount : best.members.length;
     const required = this.computeRequiredQuorum(activeCount);
-    const ok = required > 0 && best.members.length >= required;
+    const ok = best.members.length >= required;
 
     const out = {
       ok,
       timestamp: Date.now(),
       required,
       activeCount,
+      reportedActiveCount,
       head: {
         lastEventHash: best.head.lastEventHash,
         sequenceNumber: best.head.sequenceNumber,
@@ -641,7 +643,7 @@ class GatewayNode {
       res.json({
         status: 'healthy',
         timestamp: Date.now(),
-        version: '1.0.1',
+        version: '1.0.4',
         uptime: process.uptime(),
         connectedPeers: this.peers.size,
         isConnectedToSeed: this.isConnectedToSeed,
@@ -723,7 +725,7 @@ class GatewayNode {
           operators: this.registryData.operators || {},
           accounts: this.registryData.accounts || {},
           gatewayNode: {
-            version: '1.0.1',
+            version: '1.0.4',
             platform: os.platform(),
             hardcodedSeeds: CONFIG.seedNodes,
             note: 'This is a gateway node with hardcoded seed configuration'
@@ -1101,7 +1103,12 @@ class GatewayNode {
       
       case 'registry_update':
         console.log(`📥 Received registry update from seed: ${seed}`);
-        this.registryData = message.data || {};
+        if (message.data && message.data.sequenceNumber && message.data.lastEventHash) {
+          this.registryData = {
+            sequenceNumber: message.data.sequenceNumber,
+            lastEventHash: message.data.lastEventHash,
+          };
+        }
         this.broadcastToPeers(message);
         break;
       
