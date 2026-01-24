@@ -280,6 +280,7 @@
                 <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
                 <button class="nav-tab" onclick="switchTab('network')">🛰️ Network Health</button>
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
+                <button class="nav-tab" onclick="switchTab('anchoring')">⚓ Bitcoin Anchoring</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
         </div>
@@ -317,6 +318,95 @@
                 </select>
             </div>
             <div id="actionsList" class="empty-state">Open this tab to load actions.</div>
+        </div>
+
+        <div class="section" id="anchoring-section">
+            <h2 class="section-title">⚓ Bitcoin Anchoring</h2>
+            <p class="muted" style="margin-bottom: 20px;">
+                Anchor checkpoints to Bitcoin blockchain for immutable proof of ledger state.
+                <strong>Operators who anchor more frequently receive higher weight in fee distribution!</strong>
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">Total Checkpoints</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #d4af37;" id="totalCheckpoints">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">Anchored</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #4cd964;" id="anchoredCount">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">Unanchored</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #ff6b6b;" id="unanchoredCount">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">My Anchors</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #d4af37;" id="myAnchorCount">-</div>
+                </div>
+            </div>
+
+            <div style="background: rgba(52, 199, 89, 0.08); border: 1px solid rgba(52, 199, 89, 0.25); padding: 18px; border-radius: 12px; margin-bottom: 25px;">
+                <h3 style="color: #4cd964; margin-bottom: 12px; font-size: 1.1rem;">💰 Fee Distribution Incentive</h3>
+                <p class="muted" style="margin-bottom: 12px;">
+                    Operators receive 40% of the 1% title-update fee. Your share is weighted by your anchor contributions:
+                </p>
+                <div style="font-size: 1.2rem; color: #4cd964; font-weight: 700; margin-top: 10px;">
+                    Your Weight: <span id="myWeight">0%</span>
+                </div>
+                <p class="muted" style="margin-top: 8px; font-size: 0.85rem;">
+                    More anchors = Higher weight = More fees earned!
+                </p>
+            </div>
+
+            <div class="error-message" id="anchoringError"></div>
+            <div class="success-message" id="anchoringSuccess"></div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                    <h3 style="margin-bottom: 15px; color: #d4af37;">📋 Unanchored Checkpoints</h3>
+                    <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                        <button class="btn btn-secondary" onclick="loadUnanchoredCheckpoints()">Refresh</button>
+                    </div>
+                    <div id="unanchoredList" class="empty-state">Loading...</div>
+                </div>
+
+                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                    <h3 style="margin-bottom: 15px; color: #d4af37;">⚓ Commit Bitcoin Anchor</h3>
+                    <form id="anchorForm" onsubmit="submitAnchor(event)">
+                        <div class="form-group">
+                            <label>Checkpoint</label>
+                            <select id="checkpointSelect" required style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                                <option value="">Select checkpoint...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Bitcoin Transaction ID</label>
+                            <input type="text" id="txidInput" required placeholder="Enter Bitcoin txid" />
+                        </div>
+                        <div class="form-group">
+                            <label>Block Height</label>
+                            <input type="number" id="blockHeightInput" required placeholder="Enter block height" />
+                        </div>
+                        <button type="submit" class="btn" style="width: 100%;">Commit Anchor</button>
+                    </form>
+                    <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                        💡 <strong>How to anchor:</strong><br>
+                        1. Select a checkpoint<br>
+                        2. Create Bitcoin tx with OP_RETURN containing checkpoint hash<br>
+                        3. Wait for confirmation<br>
+                        4. Enter txid and block height above
+                    </p>
+                </div>
+            </div>
+
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📊 Operator Anchor Statistics</h3>
+                <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" onclick="loadAnchorStats()">Refresh Stats</button>
+                </div>
+                <div id="anchorStatsList" class="empty-state">Loading...</div>
+            </div>
         </div>
 
         <div class="section" id="reputation-section">
@@ -468,6 +558,9 @@
                 loadNodeStatus();
             } else if (tab === 'security') {
                 loadSecurity();
+            } else if (tab === 'anchoring') {
+                loadUnanchoredCheckpoints();
+                loadAnchorStats();
             }
         }
 
@@ -1696,6 +1789,166 @@
             }
 
             showEl('walletSuccess', true, 'Wallet info loaded.');
+        }
+
+        async function loadUnanchoredCheckpoints() {
+            showEl('anchoringError', false);
+            showEl('anchoringSuccess', false);
+            const el = document.getElementById('unanchoredList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
+
+            const r = await fetch('/api/operator/anchors/unanchored', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('anchoringError', true, data?.error || 'Failed to load checkpoints');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load checkpoints.</div>';
+                return;
+            }
+
+            const unanchored = Array.isArray(data.unanchored) ? data.unanchored : [];
+
+            // Update stats
+            document.getElementById('totalCheckpoints').textContent = Number(data.total || 0);
+            document.getElementById('anchoredCount').textContent = Number(data.anchored || 0);
+            document.getElementById('unanchoredCount').textContent = unanchored.length;
+
+            // Populate checkpoint dropdown
+            const select = document.getElementById('checkpointSelect');
+            if (select) {
+                select.innerHTML = '<option value="">Select checkpoint...</option>' +
+                    unanchored.map(cp => {
+                        const root = String(cp.checkpointRoot || '');
+                        const date = new Date(cp.hourStartMs || cp.createdAt).toLocaleString();
+                        return `<option value="${root}" data-hour="${cp.hourStartMs}">${root.substring(0, 16)}... (${date})</option>`;
+                    }).join('');
+            }
+
+            // Display list
+            if (el) {
+                if (unanchored.length === 0) {
+                    el.innerHTML = '<div class="empty-state">✅ All checkpoints are anchored!</div>';
+                } else {
+                    el.innerHTML = `
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            ${unanchored.map(cp => {
+                                const root = String(cp.checkpointRoot || '');
+                                const date = new Date(cp.hourStartMs || cp.createdAt).toLocaleString();
+                                return `
+                                    <div style="padding: 10px; margin-bottom: 8px; background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.15); border-radius: 8px;">
+                                        <div style="font-family: monospace; font-size: 0.85rem; color: #d4af37; margin-bottom: 4px;">${root.substring(0, 32)}...</div>
+                                        <div style="font-size: 0.8rem; color: #999;">${date} • Seq: ${Number(cp.headSequence || 0)}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        async function submitAnchor(event) {
+            event.preventDefault();
+            showEl('anchoringError', false);
+            showEl('anchoringSuccess', false);
+
+            const checkpointRoot = document.getElementById('checkpointSelect').value;
+            const txid = document.getElementById('txidInput').value.trim();
+            const blockHeight = parseInt(document.getElementById('blockHeightInput').value);
+
+            if (!checkpointRoot || !txid || !blockHeight) {
+                showEl('anchoringError', true, 'All fields are required');
+                return;
+            }
+
+            const r = await fetch('/api/operator/anchors/commit', {
+                method: 'POST',
+                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ checkpointRoot, txid, blockHeight })
+            });
+
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('anchoringError', true, data?.error || 'Failed to commit anchor');
+                return;
+            }
+
+            showEl('anchoringSuccess', true, '✅ Bitcoin anchor committed successfully!');
+
+            // Clear form
+            document.getElementById('anchorForm').reset();
+
+            // Reload data
+            await loadUnanchoredCheckpoints();
+            await loadAnchorStats();
+        }
+
+        async function loadAnchorStats() {
+            const el = document.getElementById('anchorStatsList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
+
+            const r = await fetch('/api/operator/anchors/stats', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load stats.</div>';
+                return;
+            }
+
+            const operators = Array.isArray(data.operators) ? data.operators : [];
+            const myOperatorId = String(data.myOperatorId || '');
+            const myAnchorCount = Number(data.myAnchorCount || 0);
+
+            // Update my stats
+            document.getElementById('myAnchorCount').textContent = myAnchorCount;
+
+            // Calculate my weight
+            const myOp = operators.find(op => op.operatorId === myOperatorId);
+            const myWeight = myOp ? (myOp.weight * 100).toFixed(1) : '0.0';
+            document.getElementById('myWeight').textContent = myWeight + '%';
+
+            // Display operator stats
+            if (el) {
+                if (operators.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No anchor statistics yet.</div>';
+                } else {
+                    // Sort by anchor count descending
+                    operators.sort((a, b) => (b.anchorCount || 0) - (a.anchorCount || 0));
+
+                    el.innerHTML = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Operator</th>
+                                    <th>Anchors</th>
+                                    <th>Weight</th>
+                                    <th>Fee Share</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${operators.map(op => {
+                                    const isMe = op.operatorId === myOperatorId;
+                                    const weight = (op.weight * 100).toFixed(1);
+                                    const feeShare = (op.weight * 40).toFixed(1);
+                                    return `
+                                        <tr style="${isMe ? 'background: rgba(212, 175, 55, 0.1);' : ''}">
+                                            <td style="font-family: monospace; font-size: 0.85rem;">
+                                                ${String(op.operatorId || '').substring(0, 16)}...
+                                                ${isMe ? ' <span style="color: #4cd964; font-weight: 700;">(YOU)</span>' : ''}
+                                            </td>
+                                            <td style="font-weight: 700; color: #d4af37;">${Number(op.anchorCount || 0)}</td>
+                                            <td style="font-weight: 700; color: #4cd964;">${weight}%</td>
+                                            <td style="font-weight: 700; color: #4cd964;">${feeShare}% of total</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                            💡 <strong>How it works:</strong> Operators receive 40% of the 1% title-update fee.
+                            Your share is weighted by your anchor contributions. More anchors = more fees!
+                        </p>
+                    `;
+                }
+            }
         }
 
         window.addEventListener('load', async () => {
