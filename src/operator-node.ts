@@ -553,6 +553,7 @@ export class OperatorNode extends EventEmitter {
 
       const sendText = (body: string, contentType: string) => {
         res.setHeader('Content-Type', contentType);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -599,6 +600,7 @@ export class OperatorNode extends EventEmitter {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         res.sendFile(filePath);
         return;
       }
