@@ -39,11 +39,7 @@ export class StateVerifier {
     // Create canonical representation
     const canonical = {
       seq: state.sequenceNumber,
-      hash: state.lastEventHash,
-      items: state.itemsCount,
-      settlements: state.settlementsCount,
-      accounts: state.accountsCount,
-      operators: state.operatorsCount
+      hash: state.lastEventHash
     };
 
     // Sort keys for deterministic output
