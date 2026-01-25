@@ -362,7 +362,12 @@ class GatewayNode {
     }
 
     const localHash = this.registryData?.lastEventHash || '';
-    const localSeq = Number(this.registryData?.sequenceNumber || this.registryData?.lastSyncedSequence || 0);
+    const localSeq = Number(
+      this.registryData?.sequenceNumber ||
+      this.registryData?.lastEventSequence ||
+      this.registryData?.lastSyncedSequence ||
+      0
+    );
 
     if (!localHash || localHash !== quorum.head.lastEventHash || localSeq !== quorum.head.sequenceNumber) {
       const err = new Error('Gateway not synced to quorum head');
@@ -479,15 +484,20 @@ class GatewayNode {
     const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
     const errors = [];
 
-    try {
-      await this.assertSyncedForQuorum('', isWrite);
-    } catch (e) {
-      const statusCode = e?.statusCode;
-      res.status(statusCode || 503).json({
-        error: e?.message || String(e),
-        details: e?.details
-      });
-      return;
+    const originalUrl = String(req.originalUrl || '');
+    const isAuthEndpoint = originalUrl.startsWith('/api/auth/');
+
+    if (!isAuthEndpoint) {
+      try {
+        await this.assertSyncedForQuorum('', isWrite);
+      } catch (e) {
+        const statusCode = e?.statusCode;
+        res.status(statusCode || 503).json({
+          error: e?.message || String(e),
+          details: e?.details
+        });
+        return;
+      }
     }
 
     for (const operatorUrl of this.operatorUrls) {
@@ -499,7 +509,6 @@ class GatewayNode {
         const { resp, buf, contentType } = await this.forwardApiRequest(operatorUrl, req);
 
         const ct = (contentType || '').toLowerCase();
-        const originalUrl = String(req.originalUrl || '');
         if (originalUrl.startsWith('/api/') && ct.includes('text/html')) {
           errors.push({ operatorUrl, status: resp.status, error: 'Unexpected HTML response for API request' });
           continue;
@@ -729,7 +738,7 @@ class GatewayNode {
 
       Promise.resolve(this.assertSyncedForQuorum('', false)).then(() => {
         const state = {
-          sequenceNumber: this.registryData.sequenceNumber || 0,
+          sequenceNumber: this.registryData.sequenceNumber || this.registryData.lastEventSequence || 0,
           lastEventHash: this.registryData.lastEventHash || '',
           timestamp: Date.now(),
           items: this.registryData.items || {},
