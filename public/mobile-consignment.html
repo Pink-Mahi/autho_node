@@ -327,7 +327,8 @@
         const r = await apiFetch('/api/auth/me', { method: 'GET' });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || !data || data.success !== true) {
-          el.textContent = 'Logged in as: (unknown)';
+          clearSession();
+          el.textContent = 'Logged in as: (not signed in)';
           return;
         }
         const a = data.account || {};
@@ -338,7 +339,8 @@
         const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
         el.textContent = `Logged in as: ${shortId && ident !== shortId ? `${ident} (${shortId})` : ident}`;
       } catch {
-        el.textContent = 'Logged in as: (unknown)';
+        clearSession();
+        el.textContent = 'Logged in as: (not signed in)';
       }
     }
 

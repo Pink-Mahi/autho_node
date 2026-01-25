@@ -618,6 +618,11 @@
       }
     }
 
+    function clearSession() {
+      try { localStorage.removeItem('autho_session_id'); } catch {}
+      try { localStorage.removeItem('autho_account_id'); } catch {}
+    }
+
     async function updateLoggedInAs() {
       const el = document.getElementById('loggedInAs');
       if (!el) return;
@@ -630,7 +635,8 @@
         const r = await fetch('/api/auth/me', { method: 'GET', headers: { 'Authorization': `Bearer ${sid}` } });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || !data || data.success !== true) {
-          el.textContent = 'Logged in as: (unknown)';
+          clearSession();
+          el.textContent = 'Logged in as: (not signed in)';
           return;
         }
         const a = data.account || {};
@@ -641,7 +647,8 @@
         const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
         el.textContent = `Logged in as: ${shortId && ident !== shortId ? `${ident} (${shortId})` : ident}`;
       } catch {
-        el.textContent = 'Logged in as: (unknown)';
+        clearSession();
+        el.textContent = 'Logged in as: (not signed in)';
       }
     }
 

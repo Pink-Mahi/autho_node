@@ -878,6 +878,12 @@
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sid}` },
           body: JSON.stringify({ payHandle })
         });
+        if (r.status === 401) {
+          clearSession();
+          const returnUrl = '/m/wallet';
+          window.location.href = `/customer/login?return=${encodeURIComponent(returnUrl)}`;
+          return;
+        }
         const data = await r.json().catch(() => ({}));
         if (!r.ok || !data || data.success !== true) {
           throw new Error(data?.error || 'Failed to save handle');
@@ -1083,6 +1089,11 @@
       }
     }
 
+    function clearSession() {
+      try { localStorage.removeItem('autho_session_id'); } catch {}
+      try { localStorage.removeItem('autho_account_id'); } catch {}
+    }
+
     async function updateLoggedInAs() {
       const el = document.getElementById('loggedInAs');
       if (!el) return;
@@ -1095,7 +1106,8 @@
         const r = await fetch('/api/auth/me', { method: 'GET', headers: { 'Authorization': `Bearer ${sid}` } });
         const data = await r.json().catch(() => ({}));
         if (!r.ok || !data || data.success !== true) {
-          el.textContent = 'Logged in as: (unknown)';
+          clearSession();
+          el.textContent = 'Logged in as: (not signed in)';
           return;
         }
         const a = data.account || {};
