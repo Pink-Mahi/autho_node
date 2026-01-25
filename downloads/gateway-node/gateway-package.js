@@ -502,7 +502,7 @@ class GatewayNode {
 
     for (const operatorUrl of this.operatorUrls) {
       try {
-        if (isWrite) {
+        if (isWrite && !isAuthEndpoint) {
           await this.assertSyncedForWrite(operatorUrl);
         }
 
@@ -664,7 +664,7 @@ class GatewayNode {
       res.json({
         status: 'healthy',
         timestamp: Date.now(),
-        version: '1.0.4',
+        version: '1.0.6',
         uptime: process.uptime(),
         connectedPeers: this.peers.size,
         isConnectedToSeed: this.isConnectedToSeed,
@@ -746,7 +746,7 @@ class GatewayNode {
           operators: this.registryData.operators || {},
           accounts: this.registryData.accounts || {},
           gatewayNode: {
-            version: '1.0.4',
+            version: '1.0.6',
             platform: os.platform(),
             hardcodedSeeds: CONFIG.seedNodes,
             note: 'This is a gateway node with hardcoded seed configuration'
