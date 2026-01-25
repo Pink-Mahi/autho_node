@@ -316,7 +316,7 @@
         envLine('OPERATOR_BTC_ADDRESS', btcAddress || 'bc1q...'),
         envLine('BITCOIN_NETWORK', network || 'mainnet'),
         '',
-        envLine('MAIN_SEED_URL', mainSeedUrl || 'wss://autho.pinkmahi.com'),
+        envLine('MAIN_SEED_URL', mainSeedUrl || computeMainSeedUrl()),
         '',
         envLine('PORT', '3000'),
         envLine('WS_PORT', '4001'),

@@ -406,8 +406,7 @@
                         gatewayEndpoint: data.gatewayEndpoint,
                         dnsSeed: "seeds.autho.network",
                         manifestUrls: [
-                            "https://autho.pinkmahi.com/seed-manifest.json",
-                            "https://autho.network/seed-manifest.json"
+                            `${window.location.origin}/seed-manifest.json`
                         ]
                     }, null, 2);
                     document.getElementById('manualConfig').textContent = manualConfig;

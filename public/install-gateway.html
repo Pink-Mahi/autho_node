@@ -269,7 +269,7 @@
                     <h3>Copy and paste this command:</h3>
                     <div class="command-box">
                         <button class="copy-btn" onclick="copyCommand('linux-cmd')">Copy</button>
-                        <div class="command" id="linux-cmd">curl -fsSL https://autho.pinkmahi.com/downloads/gateway-node/quick-install.sh | bash</div>
+                        <div class="command" id="linux-cmd">curl -fsSL __AUTHO_ORIGIN__/downloads/gateway-node/quick-install.sh | bash</div>
                     </div>
                 </div>
 
@@ -308,7 +308,7 @@
                     <h3>Copy and paste this command:</h3>
                     <div class="command-box">
                         <button class="copy-btn" onclick="copyCommand('macos-cmd')">Copy</button>
-                        <div class="command" id="macos-cmd">curl -fsSL https://autho.pinkmahi.com/downloads/gateway-node/quick-install.sh | bash</div>
+                        <div class="command" id="macos-cmd">curl -fsSL __AUTHO_ORIGIN__/downloads/gateway-node/quick-install.sh | bash</div>
                     </div>
                 </div>
 
@@ -357,7 +357,7 @@
                     <h3>Copy and paste this command:</h3>
                     <div class="command-box">
                         <button class="copy-btn" onclick="copyCommand('windows-cmd')">Copy</button>
-                        <div class="command" id="windows-cmd">irm https://autho.pinkmahi.com/downloads/gateway-node/quick-install.ps1 | iex</div>
+                        <div class="command" id="windows-cmd">irm __AUTHO_ORIGIN__/downloads/gateway-node/quick-install.ps1 | iex</div>
                     </div>
                 </div>
 
@@ -387,7 +387,7 @@
                 <div class="feature">
                     <div class="feature-icon">🔒</div>
                     <h4>Hardcoded Seeds</h4>
-                    <p>Pre-configured to connect to autho.pinkmahi.com</p>
+                    <p>Pre-configured to connect to this operator and discover others</p>
                 </div>
                 <div class="feature">
                     <div class="feature-icon">📊</div>
@@ -427,7 +427,6 @@
             <p>If you encounter any issues:</p>
             <ul style="line-height: 2; margin-top: 15px;">
                 <li>📖 Check the <a href="/downloads/gateway-node/README.md" style="color: #d4af37;">README</a></li>
-                <li>💬 Contact support: <a href="mailto:support@autho.pinkmahi.com" style="color: #d4af37;">support@autho.pinkmahi.com</a></li>
                 <li>🏠 Return to <a href="/" style="color: #d4af37;">home page</a></li>
             </ul>
         </div>
@@ -463,6 +462,13 @@
 
         // Auto-detect platform and show appropriate tab
         window.addEventListener('DOMContentLoaded', () => {
+            const origin = window.location.origin;
+            ['linux-cmd', 'macos-cmd', 'windows-cmd'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = String(el.textContent || '').replace(/__AUTHO_ORIGIN__/g, origin);
+            });
+
             const platform = navigator.platform.toLowerCase();
             let detectedPlatform = 'linux';
             

@@ -166,7 +166,7 @@
                 </div>
                 <div class="command-box">
                     <button class="copy-btn" onclick="copyCommand('windows-cmd')">Copy</button>
-                    <div class="command" id="windows-cmd">irm https://autho.pinkmahi.com/downloads/operator-node/quick-install.ps1 | iex</div>
+                    <div class="command" id="windows-cmd">irm __AUTHO_ORIGIN__/downloads/operator-node/quick-install.ps1 | iex</div>
                 </div>
             </div>
 
@@ -176,7 +176,7 @@
                 </div>
                 <div class="command-box">
                     <button class="copy-btn" onclick="copyCommand('macos-cmd')">Copy</button>
-                    <div class="command" id="macos-cmd">curl -fsSL https://autho.pinkmahi.com/downloads/operator-node/quick-install.sh | bash</div>
+                    <div class="command" id="macos-cmd">curl -fsSL __AUTHO_ORIGIN__/downloads/operator-node/quick-install.sh | bash</div>
                 </div>
             </div>
 
@@ -186,7 +186,7 @@
                 </div>
                 <div class="command-box">
                     <button class="copy-btn" onclick="copyCommand('linux-cmd')">Copy</button>
-                    <div class="command" id="linux-cmd">curl -fsSL https://autho.pinkmahi.com/downloads/operator-node/quick-install.sh | bash</div>
+                    <div class="command" id="linux-cmd">curl -fsSL __AUTHO_ORIGIN__/downloads/operator-node/quick-install.sh | bash</div>
                 </div>
             </div>
 
@@ -232,6 +232,15 @@
                 btn.textContent = 'Copy';
             }, 2000);
         }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const origin = window.location.origin;
+            ['windows-cmd', 'macos-cmd', 'linux-cmd'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.textContent = String(el.textContent || '').replace(/__AUTHO_ORIGIN__/g, origin);
+            });
+        });
     </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-import express, { Express, Request, Response } from 'express';
+﻿import express, { Express, Request, Response } from 'express';
 import * as http from 'http';
 import WebSocket from 'ws';
 import * as fs from 'fs';
@@ -537,6 +537,73 @@ export class OperatorNode extends EventEmitter {
   private setupRoutes(): void {
     const publicDir = this.getPublicDir();
     this.app.use(express.static(publicDir, { index: false }));
+
+    this.app.get('/downloads/gateway-node/:filename', (req: Request, res: Response) => {
+      const { filename } = req.params;
+      const downloadsDir = this.getDownloadsDir();
+      const filePath = path.join(downloadsDir, 'gateway-node', filename);
+
+      const proto = String((req.headers as any)?.['x-forwarded-proto'] || req.protocol || 'https')
+        .split(',')[0]
+        .trim();
+      const host = String(req.headers.host || '').trim();
+      const origin = host ? `${proto}://${host}` : 'http://localhost:3000';
+      const baseUrl = `${origin}/downloads/gateway-node`;
+
+      const sendText = (body: string, contentType: string) => {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(body);
+      };
+
+      if (filename === 'quick-install.sh') {
+        const body = `#!/bin/bash\n# Autho Gateway Node - One-Line Installer\n# Usage: curl -fsSL ${baseUrl}/quick-install.sh | bash\n\nset -e\n\necho \"ðŸŒ Autho Gateway Node - Quick Installer\"\necho \"========================================\"\n\nif ! command -v node &> /dev/null; then\n    echo \"âŒ Node.js is not installed\"\n    echo \"   Please install Node.js 18+ from: https://nodejs.org/\"\n    exit 1\nfi\n\nNODE_VERSION=$(node -e 'process.stdout.write(process.versions.node.split(\".\")[0])')\nif [ \"$NODE_VERSION\" -lt 18 ]; then\n    echo \"âŒ Node.js 18+ required. Current: $(node --version)\"\n    exit 1\nfi\n\necho \"âœ… Node.js $(node --version)\"\n\nTEMP_DIR=$(mktemp -d)\ncd \"$TEMP_DIR\"\n\necho \"ðŸ“¥ Downloading gateway node...\"\nCACHE_BUST=$(date +%s)\ncurl -fsSL \"${baseUrl}/gateway-package.js?v=\${CACHE_BUST}\" -o gateway-package.js\ncurl -fsSL \"${baseUrl}/package.json?v=\${CACHE_BUST}\" -o package.json\n\nINSTALL_DIR=\"$HOME/autho-gateway-node\"\necho \"ðŸ“ Installing to: $INSTALL_DIR\"\nmkdir -p \"$INSTALL_DIR\"\n\ncp gateway-package.js \"$INSTALL_DIR/\"\ncp package.json \"$INSTALL_DIR/\"\ncd \"$INSTALL_DIR\"\n\necho \"ðŸ“¦ Installing dependencies...\"\nnpm install --silent\n\ncat > start.sh << 'EOF'\n#!/bin/bash\ncd \"$(dirname \"$0\")\"\nexport AUTHO_OPERATOR_URLS=\"${origin}\"\nnode gateway-package.js\nEOF\nchmod +x start.sh\n\nrm -rf \"$TEMP_DIR\"\n\necho \"\"\necho \"âœ… Installation complete!\"\necho \"\"\necho \"ðŸš€ Start the gateway node:\"\necho \"   cd $INSTALL_DIR\"\necho \"   ./start.sh\"\necho \"\"\necho \"ðŸŒ Gateway will run on: http://localhost:3001\"\necho \"ðŸ“Š Health check: http://localhost:3001/health\"\necho \"\"\necho \"ðŸŽ‰ Welcome to the Autho network!\"\n`;
+        sendText(body, 'text/plain; charset=utf-8');
+        return;
+      }
+
+      if (filename === 'quick-install.ps1') {
+        const body = `# Autho Gateway Node - PowerShell Installer\n# Usage: irm ${baseUrl}/quick-install.ps1 | iex\n\nWrite-Host \"ðŸŒ Autho Gateway Node - Quick Installer\" -ForegroundColor Cyan\nWrite-Host \"========================================\" -ForegroundColor Cyan\nWrite-Host \"\"\n\ntry {\n    $nodeVersion = node --version\n    $majorVersion = [int]($nodeVersion -replace 'v(\\d+)\\..*', '$1')\n    if ($majorVersion -lt 18) {\n        Write-Host \"âŒ Node.js 18+ required. Current: $nodeVersion\" -ForegroundColor Red\n        Write-Host \"   Download from: https://nodejs.org/\" -ForegroundColor Yellow\n        exit 1\n    }\n    Write-Host \"âœ… Node.js $nodeVersion\" -ForegroundColor Green\n} catch {\n    Write-Host \"âŒ Node.js is not installed\" -ForegroundColor Red\n    Write-Host \"   Please install Node.js 18+ from: https://nodejs.org/\" -ForegroundColor Yellow\n    exit 1\n}\n\n$installDir = \"$env:USERPROFILE\\autho-gateway-node\"\nWrite-Host \"ðŸ“ Installing to: $installDir\" -ForegroundColor Cyan\nif (-not (Test-Path $installDir)) {\n    New-Item -ItemType Directory -Path $installDir -Force | Out-Null\n    Write-Host \"âœ… Created installation directory\" -ForegroundColor Green\n}\n\nWrite-Host \"ðŸ“¥ Downloading gateway node...\"\ntry {\n    $baseUrl = \"${baseUrl}\"\n    $cacheBust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()\n    $headers = @{ 'Cache-Control' = 'no-cache'; 'Pragma' = 'no-cache' }\n    Invoke-WebRequest -Uri \"$baseUrl/gateway-package.js?v=$cacheBust\" -Headers $headers -OutFile \"$installDir\\gateway-package.js\" -UseBasicParsing\n    Invoke-WebRequest -Uri \"$baseUrl/package.json?v=$cacheBust\" -Headers $headers -OutFile \"$installDir\\package.json\" -UseBasicParsing\n    Invoke-WebRequest -Uri \"$baseUrl/Start-Autho-Gateway-Node.bat?v=$cacheBust\" -Headers $headers -OutFile \"$installDir\\Start-Autho-Gateway-Node.bat\" -UseBasicParsing\n    Invoke-WebRequest -Uri \"$baseUrl/Start-Autho-Gateway-Node-Background.bat?v=$cacheBust\" -Headers $headers -OutFile \"$installDir\\Start-Autho-Gateway-Node-Background.bat\" -UseBasicParsing\n    Write-Host \"âœ… Files downloaded\" -ForegroundColor Green\n} catch {\n    Write-Host \"âŒ Failed to download files: $_\" -ForegroundColor Red\n    exit 1\n}\n\nWrite-Host \"ðŸ“¦ Installing dependencies...\" -ForegroundColor Cyan\nPush-Location $installDir\ntry {\n    npm install --silent 2>&1 | Out-Null\n    Write-Host \"âœ… Dependencies installed\" -ForegroundColor Green\} catch {\n    Write-Host \"âš ï¸  Warning: npm install had issues, but continuing...\" -ForegroundColor Yellow\}\nPop-Location\n\nWrite-Host \"\"\nWrite-Host \"âœ… Installation complete!\" -ForegroundColor Green\nWrite-Host \"\"\nWrite-Host \"ðŸ–±ï¸ Next time, start by double-clicking:\" -ForegroundColor Cyan\nWrite-Host \"   $installDir\\Start-Autho-Gateway-Node.bat\" -ForegroundColor White\nWrite-Host \"\"\nWrite-Host \"ðŸŒ Gateway will run on: http://localhost:3001\" -ForegroundColor Cyan\nWrite-Host \"ðŸ“Š Health check: http://localhost:3001/health\" -ForegroundColor Cyan\nWrite-Host \"\"\nWrite-Host \"ðŸŽ‰ Welcome to the Autho network!\" -ForegroundColor Green\nWrite-Host \"\"\n`;
+        sendText(body, 'text/plain; charset=utf-8');
+        return;
+      }
+
+      if (filename === 'quick-install.bat') {
+        const body = `@echo off\r\nREM Autho Gateway Node - One-Line Installer for Windows\r\n\r\necho ðŸŒ Autho Gateway Node - Quick Installer\r\necho ========================================\r\n\r\nwhere node >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n    echo âŒ Node.js is not installed\r\n    echo    Please install Node.js 18+ from: https://nodejs.org/\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\nset INSTALL_DIR=%USERPROFILE%\\autho-gateway-node\r\necho ðŸ“ Installing to: %INSTALL_DIR%\r\nif not exist \"%INSTALL_DIR%\" mkdir \"%INSTALL_DIR%\"\r\n\r\necho ðŸ“¥ Downloading gateway node...\r\ncd /d \"%INSTALL_DIR%\"\r\nfor /f %%i in ('powershell -NoProfile -Command \"[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()\"') do set CACHE_BUST=%%i\r\n\r\npowershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $h=@{ 'Cache-Control'='no-cache'; 'Pragma'='no-cache' }; Invoke-WebRequest -UseBasicParsing -Headers $h -Uri '${baseUrl}/gateway-package.js?v=%CACHE_BUST%' -OutFile 'gateway-package.js' | Out-Null\"\r\nif %ERRORLEVEL% NEQ 0 (\r\n    echo âŒ Failed to download gateway-package.js\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\npowershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $h=@{ 'Cache-Control'='no-cache'; 'Pragma'='no-cache' }; Invoke-WebRequest -UseBasicParsing -Headers $h -Uri '${baseUrl}/package.json?v=%CACHE_BUST%' -OutFile 'package.json' | Out-Null\"\r\nif %ERRORLEVEL% NEQ 0 (\r\n    echo âŒ Failed to download package.json\r\n    pause\r\n    exit /b 1\r\n)\r\n\r\npowershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $h=@{ 'Cache-Control'='no-cache'; 'Pragma'='no-cache' }; Invoke-WebRequest -UseBasicParsing -Headers $h -Uri '${baseUrl}/Start-Autho-Gateway-Node.bat?v=%CACHE_BUST%' -OutFile 'Start-Autho-Gateway-Node.bat' | Out-Null\"\r\n\r\necho ðŸ“¦ Installing dependencies...\r\ncall npm install --silent\r\n\r\necho.\r\necho âœ… Installation complete!\r\necho.\r\necho ðŸ–±ï¸ Start the gateway node by double-clicking:\r\necho    %INSTALL_DIR%\\Start-Autho-Gateway-Node.bat\r\necho.\r\necho ðŸŒ Gateway will run on: http://localhost:3001\r\necho ðŸ“Š Health check: http://localhost:3001/health\r\necho.\r\npause\r\n`;
+        sendText(body, 'text/plain; charset=utf-8');
+        return;
+      }
+
+      if (filename === 'Start-Autho-Gateway-Node.bat') {
+        const body = `@echo off\r\nsetlocal enabledelayedexpansion\r\n\r\nset \"SCRIPT_DIR=%~dp0\"\r\ncd /d \"%SCRIPT_DIR%\"\r\n\r\necho ==============================================\r\necho  Autho Gateway Node (One-Click Launcher)\r\necho ==============================================\r\n\r\nwhere node >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo.\r\n  echo ERROR: Node.js is not installed.\r\n  echo Please install Node.js 18+ from https://nodejs.org/\r\n  echo.\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\nwhere npm >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo.\r\n  echo ERROR: npm was not found.\r\n  echo Reinstall Node.js (it includes npm): https://nodejs.org/\r\n  echo.\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\nset \"PORT=%1\"\r\nif \"%PORT%\"==\"\" (\r\n  if defined GATEWAY_PORT (\r\n    set \"PORT=%GATEWAY_PORT%\"\r\n  ) else (\r\n    set \"PORT=3001\"\r\n  )\r\n)\r\n\r\nif not exist \"node_modules\" (\r\n  echo Installing dependencies (first run)...\r\n  call npm install\r\n)\r\n\r\necho.\r\necho Starting gateway node on port %PORT%...\r\necho A new window will open with the node logs.\r\necho.\r\n\r\nstart \"Autho Gateway Node\" cmd /k \"cd /d \\\"%SCRIPT_DIR%\\\" ^&^& set GATEWAY_PORT=%PORT% ^&^& set AUTHO_OPERATOR_URLS=${origin} ^&^& node gateway-package.js\"\r\n\r\ntimeout /t 2 /nobreak >nul\r\nstart \"\" \"http://localhost:%PORT%/m\"\r\n\r\necho.\r\necho Opened: http://localhost:%PORT%/m\r\necho.\r\nexit /b 0\r\n`;
+        sendText(body, 'text/plain; charset=utf-8');
+        return;
+      }
+
+      if (filename === 'Start-Autho-Gateway-Node-Background.bat') {
+        const body = `@echo off\r\nsetlocal enabledelayedexpansion\r\n\r\nset \"SCRIPT_DIR=%~dp0\"\r\ncd /d \"%SCRIPT_DIR%\"\r\n\r\necho ==============================================\r\necho  Autho Gateway Node (Background Launcher)\r\necho ==============================================\r\n\r\nwhere node >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo.\r\n  echo ERROR: Node.js is not installed.\r\n  echo Please install Node.js 18+ from https://nodejs.org/\r\n  echo.\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\nwhere npm >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo.\r\n  echo ERROR: npm was not found.\r\n  echo Reinstall Node.js (it includes npm): https://nodejs.org/\r\n  echo.\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\nset \"PORT=%1\"\r\nif \"%PORT%\"==\"\" (\r\n  if defined GATEWAY_PORT (\r\n    set \"PORT=%GATEWAY_PORT%\"\r\n  ) else (\r\n    set \"PORT=3001\"\r\n  )\r\n)\r\n\r\nif not exist \"node_modules\" (\r\n  echo Installing dependencies (first run)...\r\n  call npm install\r\n)\r\n\r\necho.\r\necho Starting gateway node in the background on port %PORT%...\r\necho Logs: %SCRIPT_DIR%gateway-node.log\r\necho.\r\n\r\nstart \"\" /min cmd /c \"cd /d \\\"%SCRIPT_DIR%\\\" ^&^& set GATEWAY_PORT=%PORT% ^&^& set AUTHO_OPERATOR_URLS=${origin} ^&^& node gateway-package.js 1^> gateway-node.log 2^>^&1\"\r\n\r\ntimeout /t 2 /nobreak >nul\r\nstart \"\" \"http://localhost:%PORT%/m\"\r\n\r\necho.\r\necho Opened: http://localhost:%PORT%/m\r\necho.\r\nexit /b 0\r\n`;
+        sendText(body, 'text/plain; charset=utf-8');
+        return;
+      }
+
+      if (filename === 'Autho-Gateway-OneClick-Windows.bat') {
+        const body = `@echo off\r\nsetlocal enabledelayedexpansion\r\n\r\necho ==============================================\r\necho  Autho Gateway Node - One-Click Windows Setup\r\necho ==============================================\r\n\r\nset \"INSTALL_DIR=%USERPROFILE%\\autho-gateway-node\"\r\n\r\nwhere node >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo.\r\n  echo ERROR: Node.js is not installed.\r\n  echo Please install Node.js 18+ from https://nodejs.org/\r\n  echo.\r\n  start \"\" \"https://nodejs.org/\"\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\nwhere npm >nul 2>nul\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo.\r\n  echo ERROR: npm was not found.\r\n  echo Reinstall Node.js (it includes npm): https://nodejs.org/\r\n  echo.\r\n  start \"\" \"https://nodejs.org/\"\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\necho âœ… Node:\r\nnode --version\r\n\r\nif not exist \"%INSTALL_DIR%\" (\r\n  echo ðŸ“ Creating: %INSTALL_DIR%\r\n  mkdir \"%INSTALL_DIR%\" >nul 2>nul\r\n)\r\n\r\ncd /d \"%INSTALL_DIR%\"\r\n\r\necho ðŸ“¥ Downloading gateway files...\r\nset \"BASE_URL=${baseUrl}\"\r\nfor /f %%i in ('powershell -NoProfile -Command \"[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()\"') do set CACHE_BUST=%%i\r\n\r\npowershell -NoProfile -Command \"$ErrorActionPreference='Stop'; try { Invoke-WebRequest -Uri '%BASE_URL%/gateway-package.js?v=%CACHE_BUST%' -Headers @{ 'Cache-Control'='no-cache'; 'Pragma'='no-cache' } -OutFile 'gateway-package.js' -UseBasicParsing | Out-Null; exit 0 } catch { Write-Host $_; exit 1 }\"\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo ERROR: Failed to download gateway-package.js\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\npowershell -NoProfile -Command \"$ErrorActionPreference='Stop'; try { Invoke-WebRequest -Uri '%BASE_URL%/package.json?v=%CACHE_BUST%' -Headers @{ 'Cache-Control'='no-cache'; 'Pragma'='no-cache' } -OutFile 'package.json' -UseBasicParsing | Out-Null; exit 0 } catch { Write-Host $_; exit 1 }\"\r\nif %ERRORLEVEL% NEQ 0 (\r\n  echo ERROR: Failed to download package.json\r\n  pause\r\n  exit /b 1\r\n)\r\n\r\npowershell -NoProfile -Command \"Invoke-WebRequest -Uri '%BASE_URL%/Start-Autho-Gateway-Node.bat?v=%CACHE_BUST%' -Headers @{ 'Cache-Control'='no-cache'; 'Pragma'='no-cache' } -OutFile 'Start-Autho-Gateway-Node.bat' -UseBasicParsing\" >nul 2>nul\r\n\r\nif not exist \"node_modules\" (\r\n  echo ðŸ“¦ Installing dependencies (first run)...\r\n  call npm install\r\n  if %ERRORLEVEL% NEQ 0 (\r\n    echo ERROR: npm install failed.\r\n    pause\r\n    exit /b 1\r\n  )\r\n) else (\r\n  echo âœ… Dependencies already installed.\r\n)\r\n\r\nset \"DESKTOP=%USERPROFILE%\\Desktop\"\r\nif exist \"%DESKTOP%\" (\r\n  powershell -NoProfile -Command \"$s=(New-Object -ComObject WScript.Shell).CreateShortcut(\"$env:USERPROFILE\\Desktop\\Autho Gateway Node.lnk\"); $s.TargetPath=\"%INSTALL_DIR%\\Start-Autho-Gateway-Node.bat\"; $s.WorkingDirectory=\"%INSTALL_DIR%\"; $s.WindowStyle=1; $s.Description=\"Start Autho Gateway Node\"; $s.Save()\" >nul 2>nul\r\n)\r\n\r\necho.\r\necho âœ… Installed!\r\necho.\r\necho ðŸ–¥ï¸ Desktop shortcut created (if possible):\r\necho    Autho Gateway Node\r\necho.\r\necho ðŸš€ Starting gateway node...\r\necho.\r\ncall Start-Autho-Gateway-Node.bat\r\n\r\npause\r\nexit /b 0\r\n`;
+        sendText(body, 'text/plain; charset=utf-8');
+        return;
+      }
+
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.sendFile(filePath);
+        return;
+      }
+
+      res.status(404).json({ error: 'File not found' });
+    });
 
     const downloadsDir = this.getDownloadsDir();
     if (downloadsDir) {
@@ -2146,11 +2213,11 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.heartbeatManager.on('consensus_achieved', (result: any) => {
-      console.log(`[Consensus] ✅ ${result.agreementPercentage.toFixed(1)}% agreement`);
+      console.log(`[Consensus] âœ… ${result.agreementPercentage.toFixed(1)}% agreement`);
     });
 
     this.heartbeatManager.on('out_of_consensus', async (data: any) => {
-      console.log(`[Consensus] ⚠️ Out of consensus - requesting sync`);
+      console.log(`[Consensus] âš ï¸ Out of consensus - requesting sync`);
       if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
         this.mainSeedWs.send(JSON.stringify({
           type: 'sync_request',
@@ -2232,3 +2299,4 @@ export class OperatorNode extends EventEmitter {
     };
   }
 }
+
