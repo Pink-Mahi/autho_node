@@ -379,6 +379,7 @@ export class OperatorNode extends EventEmitter {
       { urlPath: '/mobile-consignment.html', outPath: 'mobile-consignment.html' },
       { urlPath: '/mobile-consign.html', outPath: 'mobile-consign.html' },
       { urlPath: '/mobile-history.html', outPath: 'mobile-history.html' },
+      { urlPath: '/join.html', outPath: 'join.html' },
       { urlPath: '/wallet-auth.js', outPath: 'wallet-auth.js' },
       { urlPath: '/wallet-generator.js', outPath: 'wallet-generator.js' },
       { urlPath: '/js/qr.bundle.js', outPath: path.join('js', 'qr.bundle.js') },
@@ -673,6 +674,12 @@ export class OperatorNode extends EventEmitter {
       const fp = this.resolvePublicFile('dashboard.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('Not Found');
+    });
+
+    this.app.get('/admin/login', async (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('admin-login.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      await this.proxyToSeed(req, res, '/admin/login');
     });
 
     this.app.get('/operator', (req: Request, res: Response) => {
@@ -1822,11 +1829,8 @@ export class OperatorNode extends EventEmitter {
       await this.proxyToSeed(req, res);
     });
 
-    this.app.all('/api/admin/*', (req: Request, res: Response) => {
-      res.status(403).json({ 
-        success: false, 
-        error: 'Admin endpoints are not available on operator nodes. Please use the main node dashboard.' 
-      });
+    this.app.all('/api/admin/*', async (req: Request, res: Response) => {
+      await this.proxyToSeed(req, res);
     });
 
     this.app.all('/api/*', async (req: Request, res: Response) => {
