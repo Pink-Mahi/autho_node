@@ -1214,6 +1214,69 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // Consensus status endpoint for monitoring
+    this.app.get('/api/consensus/status', async (req: Request, res: Response) => {
+      try {
+        if (!this.consensusNode) {
+          res.json({
+            success: false,
+            error: 'Consensus not initialized',
+          });
+          return;
+        }
+
+        const consensusState = this.consensusNode.getState();
+        const mempoolEvents = this.consensusNode.getMempoolEvents();
+        const checkpoints = this.consensusNode.getCheckpoints();
+
+        res.json({
+          success: true,
+          nodeId: this.config.operatorId,
+          isOperator: true,
+          consensus: {
+            currentCheckpointNumber: consensusState.currentCheckpointNumber,
+            lastCheckpointHash: consensusState.lastCheckpointHash,
+            lastCheckpointAt: consensusState.lastCheckpointAt,
+            isLeader: consensusState.isLeader,
+            currentLeaderId: consensusState.currentLeaderId,
+            activeOperators: consensusState.activeOperators,
+            pendingProposal: consensusState.pendingProposal ? {
+              checkpointNumber: consensusState.pendingProposal.checkpointNumber,
+              proposedBy: consensusState.pendingProposal.proposedBy,
+              eventCount: consensusState.pendingProposal.eventIds.length,
+            } : null,
+          },
+          mempool: {
+            totalEvents: consensusState.mempoolStats.totalEvents,
+            validEvents: consensusState.mempoolStats.validEvents,
+            invalidEvents: consensusState.mempoolStats.invalidEvents,
+            pendingEvents: consensusState.mempoolStats.pendingEvents,
+            eventsByType: consensusState.mempoolStats.eventsByType,
+            oldestEventAge: consensusState.mempoolStats.oldestEventAge,
+          },
+          checkpoints: {
+            total: checkpoints.length,
+            recent: checkpoints.slice(-5).map(c => ({
+              number: c.checkpointNumber,
+              hash: c.checkpointHash.substring(0, 16) + '...',
+              eventCount: c.events.length,
+              finalizedAt: c.finalizedAt,
+              yesVotes: c.totalYesVotes,
+              noVotes: c.totalNoVotes,
+            })),
+          },
+          peers: {
+            mainSeedConnected: this.mainSeedWs?.readyState === WebSocket.OPEN,
+            operatorPeers: this.operatorPeerConnections.size,
+            gatewayConnections: this.gatewayConnections.size,
+          },
+          timestamp: Date.now(),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Operator discovery endpoint for gateway nodes
     this.app.get('/api/network/operators', async (req: Request, res: Response) => {
       try {
