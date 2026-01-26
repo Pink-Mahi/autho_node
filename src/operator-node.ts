@@ -9,6 +9,7 @@ import { HeartbeatManager } from './consensus/heartbeat-manager';
 import { StateVerifier, LedgerState } from './consensus/state-verifier';
 import { EventStore, EventType, QuorumSignature } from './event-store';
 import { StateBuilder } from './event-store';
+import { verifySignature } from './crypto';
 import { OperatorPeerDiscovery, OperatorPeerInfo, connectToOperatorPeer } from './operator-peer-discovery';
 
 interface OperatorConfig {
@@ -60,6 +61,7 @@ export class OperatorNode extends EventEmitter {
   private operatorHeartbeatTimer: any;
 
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
+  private operatorApplyChallenges: Map<string, { challengeId: string; accountId: string; nonce: string; createdAt: number; expiresAt: number; used: boolean }> = new Map();
 
   constructor(config: OperatorConfig) {
     super();
@@ -541,6 +543,24 @@ export class OperatorNode extends EventEmitter {
       return null;
     }
     return sess;
+  }
+
+  private async getAccountFromSession(req: Request): Promise<{ accountId: string; role?: string } | null> {
+    const base = this.getSeedHttpBase();
+    if (!base) return null;
+    try {
+      const authHeader = String((req.headers as any)?.authorization || '').trim();
+      if (!authHeader) return null;
+      const r = await fetch(`${base}/api/auth/me`, {
+        method: 'GET',
+        headers: { Authorization: authHeader },
+      });
+      const data = await r.json() as any;
+      if (!r.ok || !data || !data.account) return null;
+      return data.account;
+    } catch {
+      return null;
+    }
   }
 
   private setupRoutes(): void {
@@ -1342,6 +1362,164 @@ export class OperatorNode extends EventEmitter {
         mainSeedWsUrl: wsUrl || null,
         isConnected: this.isConnectedToMain
       });
+    });
+
+    // Operator application (decentralized - accepts on any node and broadcasts to network)
+    this.app.post('/api/operators/apply/challenge', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Login required' });
+          return;
+        }
+
+        const challengeId = `op_apply_${Date.now()}_${randomBytes(8).toString('hex')}`;
+        const nonce = randomBytes(32).toString('hex');
+        const createdAt = Date.now();
+        const expiresAt = createdAt + 5 * 60 * 1000;
+
+        this.operatorApplyChallenges.set(challengeId, {
+          challengeId,
+          accountId: String((account as any).accountId || ''),
+          nonce,
+          createdAt,
+          expiresAt,
+          used: false,
+        });
+
+        res.json({ success: true, challengeId, nonce, expiresAt });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    this.app.post('/api/operators/apply', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Login required' });
+          return;
+        }
+
+        const accountId = String((account as any).accountId || '').trim();
+        const { challengeId, operatorId, publicKey, btcAddress, operatorUrl, signature } = req.body || {};
+
+        if (!challengeId || !operatorId || !publicKey || !btcAddress || !operatorUrl || !signature) {
+          res.status(400).json({
+            success: false,
+            error: 'Missing required fields: challengeId, operatorId, publicKey, btcAddress, operatorUrl, signature',
+          });
+          return;
+        }
+
+        const url = String(operatorUrl).trim();
+        const isHttps = /^https:\/\//i.test(url);
+        const isOnion = /^https?:\/\//i.test(url) && /\.onion(\/|$)/i.test(url);
+        if (!isHttps && !isOnion) {
+          res.status(400).json({ success: false, error: 'operatorUrl must start with https:// (or be an http(s)://*.onion URL)' });
+          return;
+        }
+
+        const chall = this.operatorApplyChallenges.get(String(challengeId));
+        if (!chall || chall.accountId !== accountId || chall.used || Date.now() > chall.expiresAt) {
+          res.status(401).json({ success: false, error: 'Invalid or expired challenge' });
+          return;
+        }
+
+        const sigOk = verifySignature(String(chall.nonce), String(signature), String(publicKey));
+        if (!sigOk) {
+          res.status(401).json({ success: false, error: 'Invalid signature' });
+          return;
+        }
+        chall.used = true;
+
+        // Check if operatorId already exists in local state
+        const state = await this.canonicalStateBuilder.buildState();
+        const existing = (state as any).operators?.get?.(String(operatorId));
+        if (existing) {
+          res.status(409).json({ success: false, error: 'operatorId already exists' });
+          return;
+        }
+
+        const now = Date.now();
+        const eventNonce = randomBytes(32).toString('hex');
+
+        // Get active operators for voting eligibility
+        const ACTIVE_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
+        const allOps = Array.from((state as any).operators?.values?.() || []) as any[];
+        const activeOps = allOps.filter((o: any) => o && o.status === 'active');
+        const eligibleVoterIds = activeOps
+          .filter((o: any) => {
+            const last = Number(o?.lastActiveAt || o?.lastHeartbeatAt || o?.admittedAt || 0);
+            return last > 0 && (now - last) <= ACTIVE_WINDOW_MS;
+          })
+          .map((o: any) => String(o.operatorId || '').trim())
+          .filter((id: string) => Boolean(id));
+
+        const eligibleVoterCount = eligibleVoterIds.length;
+        const requiredYesVotes = eligibleVoterCount > 0 ? Math.ceil((2 / 3) * eligibleVoterCount) : undefined;
+        const eligibleVotingAt = now + 30 * 24 * 60 * 60 * 1000;
+
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: this.config.operatorId,
+            publicKey: this.config.publicKey,
+            signature: createHash('sha256').update(`OPERATOR_CANDIDATE_REQUESTED:${operatorId}:${now}`).digest('hex'),
+          },
+        ];
+
+        // Create event locally
+        const event = await this.canonicalEventStore.appendEvent(
+          {
+            type: EventType.OPERATOR_CANDIDATE_REQUESTED,
+            timestamp: now,
+            nonce: eventNonce,
+            candidateId: String(operatorId),
+            gatewayNodeId: String(url),
+            operatorUrl: String(url),
+            btcAddress: String(btcAddress).trim(),
+            publicKey: String(publicKey).trim(),
+            sponsorId: accountId,
+            eligibleVoterIds,
+            eligibleVoterCount,
+            requiredYesVotes,
+            eligibleVotingAt,
+          } as any,
+          signatures
+        );
+
+        // Broadcast event to peers and main seed
+        const eventMessage = {
+          type: 'new_event',
+          event,
+          operatorId: this.config.operatorId,
+          timestamp: now,
+        };
+
+        // Send to main seed if connected
+        if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+          this.mainSeedWs.send(JSON.stringify(eventMessage));
+        }
+
+        // Broadcast to operator peers
+        this.broadcastToOperatorPeers(eventMessage);
+
+        // Also broadcast registry update so peers know state changed
+        this.broadcastRegistryUpdate();
+
+        console.log(`[Operator] 📋 Operator application created locally and broadcast: ${operatorId}`);
+
+        res.json({
+          success: true,
+          message: 'Operator application submitted and broadcast to network',
+          candidateId: String(operatorId),
+          operatorUrl: String(url),
+          eventHash: event.eventHash,
+        });
+      } catch (error: any) {
+        console.error('[Operator] Failed to process operator application:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
     this.app.get('/api/network/connections', async (req: Request, res: Response) => {
