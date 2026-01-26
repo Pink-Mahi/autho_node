@@ -85,7 +85,10 @@ export class EventStore {
 
     const calculatedHash = this.calculateEventHash(event);
     if (calculatedHash !== event.eventHash) {
-      throw new Error('Invalid event hash');
+      const legacyHash = this.calculateLegacyEventHash(event);
+      if (legacyHash !== event.eventHash) {
+        throw new Error('Invalid event hash');
+      }
     }
 
     const expectedSeq = this.state.sequenceNumber + 1;
@@ -181,8 +184,11 @@ export class EventStore {
       // Verify event hash
       const calculatedHash = this.calculateEventHash(event);
       if (calculatedHash !== event.eventHash) {
-        console.error(`Event ${event.sequenceNumber} hash mismatch`);
-        return false;
+        const legacyHash = this.calculateLegacyEventHash(event);
+        if (legacyHash !== event.eventHash) {
+          console.error(`Event ${event.sequenceNumber} hash mismatch`);
+          return false;
+        }
       }
 
       // Verify chain link
@@ -251,6 +257,16 @@ export class EventStore {
     const delimiter = Buffer.from([0x00]);
     const canonicalBytes = canonicalCborEncode(canonical);
     return sha256(Buffer.concat([domainSep, delimiter, canonicalBytes]));
+  }
+
+  private calculateLegacyEventHash(event: Event): string {
+    return sha256(JSON.stringify({
+      prevEventHash: event.prevEventHash,
+      sequenceNumber: event.sequenceNumber,
+      payload: event.payload,
+      signatures: event.signatures,
+      createdAt: event.createdAt,
+    }));
   }
 
   /**
