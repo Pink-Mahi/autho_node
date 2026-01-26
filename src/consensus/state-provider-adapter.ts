@@ -45,6 +45,11 @@ export class StateProviderAdapter implements StateProvider {
   }
 
   getOperatorCandidate(candidateId: string): any | undefined {
+    // Operator candidates are stored in the operators map with status 'pending'
+    const operator = this.state.operators.get(candidateId);
+    if (operator && operator.status === 'pending') {
+      return operator;
+    }
     return this.state.operatorCandidates?.get(candidateId);
   }
 

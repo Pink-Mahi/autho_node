@@ -2383,6 +2383,12 @@ export class OperatorNode extends EventEmitter {
     // This enables true decentralization - operators can verify each other
     this.startConsensusVerification();
     
+    // Start the consensus node (mempool + checkpoint manager)
+    if (this.consensusNode) {
+      this.consensusNode.start();
+      console.log('[Consensus] Mempool and checkpoint manager started');
+    }
+    
     await this.connectToMainSeed();
 
     this.startPeerDiscovery();
