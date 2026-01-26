@@ -1333,6 +1333,17 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
+    this.app.get('/api/config/main-seed', (req: Request, res: Response) => {
+      const httpBase = this.getSeedHttpBase();
+      const wsUrl = String(this.config.mainSeedUrl || '').trim();
+      res.json({
+        success: true,
+        mainSeedHttpUrl: httpBase || null,
+        mainSeedWsUrl: wsUrl || null,
+        isConnected: this.isConnectedToMain
+      });
+    });
+
     this.app.get('/api/network/connections', async (req: Request, res: Response) => {
       try {
         // Proxy to main seed to get network data
