@@ -152,6 +152,26 @@ export class OperatorNode extends EventEmitter {
       timestamp: Date.now(),
       signature: '',
     });
+    
+    // Broadcast to mempool visualizer subscribers
+    this.broadcastToConsensusSubscribers({
+      type: 'mempool_event',
+      payload: event,
+    });
+  }
+
+  /**
+   * Broadcast to clients subscribed to consensus updates (mempool visualizer)
+   */
+  private broadcastToConsensusSubscribers(message: any): void {
+    const msgStr = JSON.stringify(message);
+    for (const [ws, meta] of this.gatewayConnections) {
+      if (ws.readyState === WebSocket.OPEN && (meta as any).subscribedToConsensus) {
+        try {
+          ws.send(msgStr);
+        } catch {}
+      }
+    }
   }
 
   /**
@@ -204,6 +224,12 @@ export class OperatorNode extends EventEmitter {
       senderId: this.config.operatorId,
       timestamp: Date.now(),
       signature: '',
+    });
+
+    // Broadcast to mempool visualizer subscribers
+    this.broadcastToConsensusSubscribers({
+      type: 'checkpoint_finalized',
+      payload: checkpoint,
     });
 
     // Broadcast registry update
@@ -2411,6 +2437,30 @@ export class OperatorNode extends EventEmitter {
       case 'sync_request':
         console.log('[Operator] Gateway requesting sync');
         this.sendSyncResponse(ws);
+        break;
+
+      case 'subscribe_consensus':
+        // Subscribe to real-time consensus updates (for mempool visualizer)
+        const meta = this.gatewayConnections.get(ws);
+        if (meta) {
+          (meta as any).subscribedToConsensus = true;
+        }
+        
+        // Send current consensus state
+        if (this.consensusNode) {
+          const consensusState = this.consensusNode.getState();
+          const mempoolEvents = this.consensusNode.getMempoolEvents();
+          
+          ws.send(JSON.stringify({
+            type: 'consensus_state',
+            state: consensusState,
+          }));
+          
+          ws.send(JSON.stringify({
+            type: 'mempool_snapshot',
+            events: mempoolEvents,
+          }));
+        }
         break;
 
       case 'operator_handshake':
