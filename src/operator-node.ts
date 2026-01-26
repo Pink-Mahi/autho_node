@@ -9,6 +9,7 @@ import { HeartbeatManager } from './consensus/heartbeat-manager';
 import { StateVerifier, LedgerState } from './consensus/state-verifier';
 import { EventStore, EventType, QuorumSignature } from './event-store';
 import { StateBuilder } from './event-store';
+import { OperatorPeerDiscovery, OperatorPeerInfo, connectToOperatorPeer } from './operator-peer-discovery';
 
 interface OperatorConfig {
   operatorId: string;
@@ -51,6 +52,9 @@ export class OperatorNode extends EventEmitter {
   private lastMismatchSyncAt: number = 0;
   private consecutiveSyncFailures: number = 0;
   private gatewayConnections: Map<WebSocket, { connectedAt: number; lastSeen: number; ip?: string }> = new Map();
+  private operatorPeerConnections: Map<string, { ws: WebSocket; operatorId: string; wsUrl: string; connectedAt: number; lastSeen: number }> = new Map();
+  private peerDiscoveryTimer?: NodeJS.Timeout;
+  private peerDiscovery?: OperatorPeerDiscovery;
   private heartbeatManager?: HeartbeatManager;
   private lastMainNodeHeartbeat: number = Date.now();
   private operatorHeartbeatTimer: any;
@@ -384,6 +388,8 @@ export class OperatorNode extends EventEmitter {
       { urlPath: '/join.html', outPath: 'join.html' },
       { urlPath: '/wallet-auth.js', outPath: 'wallet-auth.js' },
       { urlPath: '/wallet-generator.js', outPath: 'wallet-generator.js' },
+      { urlPath: '/js/btc.bundle.js', outPath: path.join('js', 'btc.bundle.js') },
+      { urlPath: '/js/btc.bundle.js.map', outPath: path.join('js', 'btc.bundle.js.map') },
       { urlPath: '/js/qr.bundle.js', outPath: path.join('js', 'qr.bundle.js') },
       { urlPath: '/customer/login.html', outPath: path.join('customer', 'login.html') },
       { urlPath: '/customer/signup.html', outPath: path.join('customer', 'signup.html') },
@@ -1870,6 +1876,8 @@ export class OperatorNode extends EventEmitter {
     this.setupWebSocketServer();
     await this.connectToMainSeed();
 
+    this.startPeerDiscovery();
+
     console.log('\n[Operator] Node is running!');
     console.log('[Operator] WebSocket server ready for gateway connections');
     console.log('[Operator] Press Ctrl+C to stop\n');
@@ -1927,6 +1935,10 @@ export class OperatorNode extends EventEmitter {
         this.sendSyncResponse(ws);
         break;
 
+      case 'operator_handshake':
+        this.registerOperatorPeerFromIncoming(ws, message);
+        break;
+
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
         break;
@@ -1958,12 +1970,201 @@ export class OperatorNode extends EventEmitter {
     });
   }
 
+  private broadcastToOperatorPeers(message: any): void {
+    for (const peer of this.operatorPeerConnections.values()) {
+      try {
+        if (peer.ws.readyState === WebSocket.OPEN) {
+          peer.ws.send(JSON.stringify(message));
+        }
+      } catch {}
+    }
+  }
+
+  private broadcastRegistryUpdate(): void {
+    const data = this.getGatewaySyncData();
+    const msg = { type: 'registry_update', data, timestamp: Date.now() };
+    this.broadcastToGateways(msg);
+    this.broadcastToOperatorPeers(msg);
+  }
+
+  private startPeerDiscovery(): void {
+    if (this.peerDiscoveryTimer) return;
+
+    const myOperatorId = this.getOperatorId();
+    if (!myOperatorId) return;
+
+    const base = this.getSeedHttpBase();
+    if (!base) return;
+
+    this.peerDiscovery = new OperatorPeerDiscovery({
+      mainSeedHttpUrl: base,
+      myOperatorId,
+      discoveryIntervalMs: 5 * 60 * 1000,
+    });
+
+    const tick = async () => {
+      try {
+        const peers = await this.peerDiscovery!.discoverPeers();
+        for (const p of peers) {
+          const peerId = String(p?.operatorId || '').trim();
+          if (!peerId || peerId === myOperatorId) continue;
+          if (this.operatorPeerConnections.has(peerId)) continue;
+          void this.connectToPeer(p);
+        }
+      } catch {
+      }
+    };
+
+    void tick();
+    this.peerDiscoveryTimer = setInterval(() => void tick(), 5 * 60 * 1000);
+  }
+
+  private async connectToPeer(peer: OperatorPeerInfo): Promise<void> {
+    const myOperatorId = this.getOperatorId();
+    const peerId = String(peer?.operatorId || '').trim();
+    const wsUrl = String(peer?.wsUrl || '').trim();
+    if (!myOperatorId || !peerId || !wsUrl) return;
+    if (this.operatorPeerConnections.has(peerId)) return;
+
+    const ws = connectToOperatorPeer(
+      peer,
+      myOperatorId,
+      (message: any) => void this.handleOperatorPeerMessage(peerId, message),
+      () => {
+        this.operatorPeerConnections.delete(peerId);
+      }
+    );
+
+    this.operatorPeerConnections.set(peerId, {
+      ws,
+      operatorId: peerId,
+      wsUrl,
+      connectedAt: Date.now(),
+      lastSeen: Date.now(),
+    });
+  }
+
+  private async handleOperatorPeerMessage(peerId: string, message: any): Promise<void> {
+    const meta = this.operatorPeerConnections.get(peerId);
+    if (meta) meta.lastSeen = Date.now();
+    const ws = meta?.ws;
+
+    switch (message?.type) {
+      case 'operator_handshake_ack':
+        break;
+
+      case 'state_verification':
+        try {
+          if (!this.heartbeatManager) break;
+          const response = this.heartbeatManager.handleVerificationMessage(message);
+          if (response && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(response));
+          }
+        } catch {}
+        break;
+
+      case 'verification_response':
+        this.handleVerificationResponse(message);
+        break;
+
+      case 'sync_request':
+        try {
+          if (!ws || ws.readyState !== WebSocket.OPEN) break;
+          const lastSequence = Math.floor(Number(message?.lastSequence || 0));
+          const storeState = this.canonicalEventStore.getState();
+          const headSeq = Math.floor(Number(storeState.sequenceNumber || 0));
+          const fromSeq = Math.max(1, lastSequence + 1);
+          const toSeq = headSeq;
+
+          const events = fromSeq <= toSeq
+            ? await this.canonicalEventStore.getEventsBySequence(fromSeq, toSeq)
+            : [];
+
+          ws.send(JSON.stringify({
+            type: 'sync_data',
+            operatorId: this.getOperatorId(),
+            networkId: this.computeNetworkId(),
+            events,
+            timestamp: Date.now(),
+          }));
+        } catch {}
+        break;
+
+      case 'sync_data':
+        await this.handleSyncData(message);
+        break;
+
+      case 'registry_update':
+        try {
+          const remoteSeq = Number(message?.data?.sequenceNumber || 0);
+          if (remoteSeq && remoteSeq > this.state.lastSyncedSequence && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'sync_request',
+              operatorId: this.getOperatorId(),
+              networkId: this.computeNetworkId(),
+              lastSequence: this.state.lastSyncedSequence,
+              timestamp: Date.now(),
+              reason: 'registry_update',
+            }));
+          }
+        } catch {}
+        break;
+
+      case 'ping':
+        try {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+          }
+        } catch {}
+        break;
+      default:
+        break;
+    }
+  }
+
+  private registerOperatorPeerFromIncoming(ws: WebSocket, message: any): void {
+    const peerId = String(message?.operatorId || '').trim();
+    if (!peerId) return;
+
+    this.gatewayConnections.delete(ws);
+
+    if (!this.operatorPeerConnections.has(peerId)) {
+      this.operatorPeerConnections.set(peerId, {
+        ws,
+        operatorId: peerId,
+        wsUrl: '',
+        connectedAt: Date.now(),
+        lastSeen: Date.now(),
+      });
+    }
+
+    try {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'operator_handshake_ack',
+          operatorId: this.getOperatorId(),
+          timestamp: Date.now(),
+        }));
+      }
+    } catch {}
+  }
+
   async stop(): Promise<void> {
     console.log('[Operator] Stopping...');
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
+
+    if (this.peerDiscoveryTimer) {
+      clearInterval(this.peerDiscoveryTimer);
+      this.peerDiscoveryTimer = undefined;
+    }
+
+    for (const peer of this.operatorPeerConnections.values()) {
+      try { peer.ws.close(); } catch {}
+    }
+    this.operatorPeerConnections.clear();
 
     if (this.mainSeedWs) {
       this.mainSeedWs.close();
@@ -2058,11 +2259,11 @@ export class OperatorNode extends EventEmitter {
     switch (message.type) {
       case 'sync_data':
         await this.handleSyncData(message);
-        this.broadcastToGateways({ type: 'registry_update', data: this.getGatewaySyncData(), timestamp: Date.now() });
+        this.broadcastRegistryUpdate();
         break;
       case 'new_event':
         await this.handleNewEvent(message.event);
-        this.broadcastToGateways({ type: 'registry_update', data: this.getGatewaySyncData(), timestamp: Date.now() });
+        this.broadcastRegistryUpdate();
         break;
       case 'registry_update':
         try {
@@ -2127,6 +2328,8 @@ export class OperatorNode extends EventEmitter {
 
       await this.persistState();
       this.consecutiveSyncFailures = 0;
+
+      this.broadcastRegistryUpdate();
     } catch (error: any) {
       console.error('[Operator] Sync error:', error.message);
       if (String(error?.message || '').includes('Invalid event hash')) {
@@ -2180,6 +2383,7 @@ export class OperatorNode extends EventEmitter {
       }
       await this.rebuildLocalStateFromCanonical();
       await this.persistState();
+      this.broadcastRegistryUpdate();
     } catch (e: any) {
       console.error('[Operator] Failed to apply new event:', e?.message || String(e));
     }
@@ -2274,13 +2478,22 @@ export class OperatorNode extends EventEmitter {
           timestamp: Date.now(),
           reason: 'out_of_consensus'
         }));
+      } else {
+        this.broadcastToOperatorPeers({
+          type: 'sync_request',
+          operatorId: this.getOperatorId(),
+          networkId: this.computeNetworkId(),
+          lastSequence: this.state.lastSyncedSequence,
+          timestamp: Date.now(),
+          reason: 'out_of_consensus',
+        });
       }
     });
 
     this.heartbeatManager.start(
       this.config.operatorId,
       async () => await this.getCurrentLedgerState(),
-      (message: any) => this.sendVerificationToMainSeed(message)
+      (message: any) => this.sendVerificationToNetwork(message)
     );
 
     console.log('[Consensus] Started verification (60s interval)');
@@ -2323,10 +2536,11 @@ export class OperatorNode extends EventEmitter {
     }
   }
 
-  private sendVerificationToMainSeed(message: any): void {
+  private sendVerificationToNetwork(message: any): void {
     if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
       this.mainSeedWs.send(JSON.stringify(message));
     }
+    this.broadcastToOperatorPeers(message);
   }
 
   getConsensusStatus(): any {
