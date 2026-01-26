@@ -579,8 +579,12 @@
           <span class="stat-value" id="activeOperators">0</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Connected Peers</span>
+          <span class="stat-label">Operator Peers</span>
           <span class="stat-value" id="connectedPeers">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Gateway Connections</span>
+          <span class="stat-value" id="gatewayConnections">0</span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Ledger Sequence</span>
@@ -1075,6 +1079,7 @@
           document.getElementById('currentLeader').textContent = data.consensus?.currentLeaderId || '-';
           document.getElementById('activeOperators').textContent = data.consensus?.activeOperators?.length || 0;
           document.getElementById('connectedPeers').textContent = data.connections?.operatorConnections || data.peers?.operatorPeers || 0;
+          document.getElementById('gatewayConnections').textContent = data.connections?.gatewayConnections || data.peers?.gatewayConnections || 0;
           document.getElementById('ledgerSequence').textContent = data.consensus?.currentCheckpointNumber || 0;
           
           // Update checkpoints

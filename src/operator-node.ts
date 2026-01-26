@@ -1321,6 +1321,10 @@ export class OperatorNode extends EventEmitter {
             operatorPeers: this.operatorPeerConnections.size,
             gatewayConnections: this.gatewayConnections.size,
           },
+          connections: {
+            operatorConnections: this.operatorPeerConnections.size,
+            gatewayConnections: this.gatewayConnections.size,
+          },
           timestamp: Date.now(),
         });
       } catch (error: any) {
@@ -1622,7 +1626,8 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
-    this.app.get('/api/consensus/status', (req: Request, res: Response) => {
+    // Heartbeat-style consensus verification status (separate from mempool consensus)
+    this.app.get('/api/consensus/verification', (req: Request, res: Response) => {
       const status = this.getConsensusStatus();
       res.json({ success: true, ...status });
     });

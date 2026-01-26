@@ -1074,7 +1074,7 @@
                 return;
             }
 
-            const cr = await fetch('/api/consensus/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const cr = await fetch('/api/consensus/verification', { headers: getAuthHeaders(), cache: 'no-store' });
             const consensusResp = await cr.json().catch(() => ({}));
             const consensus = (cr.ok && consensusResp && consensusResp.success === true)
                 ? consensusResp
@@ -1619,7 +1619,7 @@
             }
 
             // Fetch consensus status
-            const consensusR = await fetch('/api/consensus/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const consensusR = await fetch('/api/consensus/verification', { headers: getAuthHeaders(), cache: 'no-store' });
             const consensus = await consensusR.json().catch(() => ({ enabled: false }));
 
             const network = data.network || {};
