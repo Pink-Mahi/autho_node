@@ -1448,6 +1448,92 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // Mesh network diagnostic endpoint - shows all connected nodes
+    this.app.get('/api/network/mesh', async (req: Request, res: Response) => {
+      try {
+        const now = Date.now();
+
+        // Operator peer connections (outbound to other operators)
+        const operatorPeers = Array.from(this.operatorPeerConnections.entries())
+          .filter(([, p]) => p.ws.readyState === WebSocket.OPEN)
+          .map(([peerId, p]) => ({
+            operatorId: p.operatorId,
+            wsUrl: p.wsUrl,
+            connectedAt: p.connectedAt,
+            lastSeen: p.lastSeen,
+            ageMs: now - p.connectedAt,
+          }));
+
+        // Gateway connections (inbound from gateways)
+        const openGateways = Array.from(this.gatewayConnections.entries())
+          .filter(([ws]) => ws.readyState === WebSocket.OPEN);
+
+        const gateways = openGateways
+          .filter(([, c]) => !c.isUi && c.isGateway)
+          .map(([, c]) => ({
+            connectedAt: c.connectedAt,
+            lastSeen: c.lastSeen,
+            ageMs: now - c.connectedAt,
+            ip: c.ip,
+          }));
+
+        const uiClients = openGateways
+          .filter(([, c]) => c.isUi)
+          .map(([, c]) => ({
+            connectedAt: c.connectedAt,
+            lastSeen: c.lastSeen,
+            subscribedToConsensus: c.subscribedToConsensus || false,
+            ip: c.ip,
+          }));
+
+        const mainSeedConnected = this.mainSeedWs?.readyState === WebSocket.OPEN;
+
+        const state = await this.canonicalStateBuilder.buildState();
+        const allOperators = Array.from((state as any).operators?.values?.() || []) as any[];
+        const activeOperators = allOperators.filter((o: any) => o && o.status === 'active');
+
+        res.json({
+          success: true,
+          timestamp: now,
+          nodeType: 'operator',
+          operatorId: this.config.operatorId,
+          mesh: {
+            mainSeedConnected,
+            connectedOperatorPeers: operatorPeers.length,
+            connectedGateways: gateways.length,
+            uiClients: uiClients.length,
+            totalGatewayConnections: openGateways.length,
+          },
+          mainSeed: {
+            connected: mainSeedConnected,
+            url: this.config.mainSeedUrl || '',
+          },
+          operatorPeers: {
+            connected: operatorPeers,
+            registeredActive: activeOperators.length,
+          },
+          gateways: {
+            connected: gateways,
+          },
+          ledger: {
+            sequenceNumber: this.state.lastSyncedSequence,
+            lastEventHash: this.state.lastSyncedHash,
+          },
+          consensus: this.consensusNode ? {
+            currentCheckpoint: this.consensusNode.getState().currentCheckpointNumber,
+            isLeader: this.consensusNode.getState().isLeader,
+            mempoolSize: this.consensusNode.getState().mempoolStats.totalEvents,
+          } : null,
+          peerDiscovery: {
+            enabled: !!this.peerDiscoveryTimer,
+            lastDiscoverySource: this.getSeedHttpBase() || '',
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/operators/candidates', async (req: Request, res: Response) => {
       try {
         const sess = await this.requireOperatorSession(req, res);
