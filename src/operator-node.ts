@@ -1488,21 +1488,38 @@ export class OperatorNode extends EventEmitter {
           signatures
         );
 
-        // Broadcast event to peers and main seed
-        const eventMessage = {
-          type: 'new_event',
-          event,
+        // Broadcast event to peers and main seed using append_event format
+        const requestId = `opapp_${Date.now()}_${randomBytes(4).toString('hex')}`;
+        const appendEventMessage = {
+          type: 'append_event',
+          requestId,
+          payload: {
+            type: EventType.OPERATOR_CANDIDATE_REQUESTED,
+            timestamp: now,
+            nonce: eventNonce,
+            candidateId: String(operatorId),
+            gatewayNodeId: String(url),
+            operatorUrl: String(url),
+            btcAddress: String(btcAddress).trim(),
+            publicKey: String(publicKey).trim(),
+            sponsorId: accountId,
+            eligibleVoterIds,
+            eligibleVoterCount,
+            requiredYesVotes,
+            eligibleVotingAt,
+          },
+          signatures,
           operatorId: this.config.operatorId,
-          timestamp: now,
         };
 
         // Send to main seed if connected
         if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-          this.mainSeedWs.send(JSON.stringify(eventMessage));
+          this.mainSeedWs.send(JSON.stringify(appendEventMessage));
+          console.log(`[Operator] 📤 Sent append_event to main seed for operator application: ${operatorId}`);
         }
 
-        // Broadcast to operator peers
-        this.broadcastToOperatorPeers(eventMessage);
+        // Broadcast to operator peers (they can also relay to main seed)
+        this.broadcastToOperatorPeers(appendEventMessage);
 
         // Also broadcast registry update so peers know state changed
         this.broadcastRegistryUpdate();
