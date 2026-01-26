@@ -258,6 +258,8 @@
       try { return String(localStorage.getItem('autho_session_id') || '').trim(); } catch { return ''; }
     }
 
+    let mainSeedHttpUrl = null;
+
     async function loadMe() {
       const sessionId = getSessionId();
       if (!sessionId) {
@@ -275,6 +277,16 @@
 
       const acct = data.account;
       document.getElementById('me').textContent = `${String(acct.accountId || '')} (${String(acct.role || '')})`;
+
+      try {
+        const configRes = await fetch('/api/config/main-seed', { cache: 'no-store' });
+        const configData = await configRes.json().catch(() => ({}));
+        if (configRes.ok && configData.success && configData.mainSeedHttpUrl) {
+          mainSeedHttpUrl = configData.mainSeedHttpUrl;
+        }
+      } catch (e) {
+        console.warn('Could not fetch main seed config:', e);
+      }
 
       const seed = computeMainSeedUrl();
       document.getElementById('seedUrl').value = seed;
@@ -433,7 +445,8 @@
           return;
         }
 
-        const challRes = await fetch('/api/operators/apply/challenge', {
+        const applyBaseUrl = mainSeedHttpUrl || window.location.origin;
+        const challRes = await fetch(`${applyBaseUrl}/api/operators/apply/challenge`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
           body: JSON.stringify({})
@@ -446,7 +459,7 @@
         const nonce = String(chall.nonce || '');
         const signature = await window.AuthoBTC.signMessageSha256(nonce, privateKey);
 
-        const res = await fetch('/api/operators/apply', {
+        const res = await fetch(`${applyBaseUrl}/api/operators/apply`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
           body: JSON.stringify({
