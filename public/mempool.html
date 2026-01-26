@@ -1080,7 +1080,7 @@
           document.getElementById('activeOperators').textContent = data.consensus?.activeOperators?.length || 0;
           document.getElementById('connectedPeers').textContent = data.connections?.operatorConnections || data.peers?.operatorPeers || 0;
           document.getElementById('gatewayConnections').textContent = data.connections?.gatewayConnections || data.peers?.gatewayConnections || 0;
-          document.getElementById('ledgerSequence').textContent = data.consensus?.currentCheckpointNumber || 0;
+          document.getElementById('ledgerSequence').textContent = data.ledgerSequence ?? data.ledger?.sequenceNumber ?? 0;
           
           // Update checkpoints
           if (data.checkpoints?.recent) {

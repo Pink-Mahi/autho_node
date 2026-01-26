@@ -59,7 +59,17 @@ export class OperatorNode extends EventEmitter {
   private syncInProgress: boolean = false;
   private lastMismatchSyncAt: number = 0;
   private consecutiveSyncFailures: number = 0;
-  private gatewayConnections: Map<WebSocket, { connectedAt: number; lastSeen: number; ip?: string }> = new Map();
+  private gatewayConnections: Map<
+    WebSocket,
+    {
+      connectedAt: number;
+      lastSeen: number;
+      ip?: string;
+      isGateway?: boolean;
+      isUi?: boolean;
+      subscribedToConsensus?: boolean;
+    }
+  > = new Map();
   private operatorPeerConnections: Map<string, { ws: WebSocket; operatorId: string; wsUrl: string; connectedAt: number; lastSeen: number }> = new Map();
   private peerDiscoveryTimer?: NodeJS.Timeout;
   private peerDiscovery?: OperatorPeerDiscovery;
@@ -1280,6 +1290,13 @@ export class OperatorNode extends EventEmitter {
         const mempoolEvents = this.consensusNode.getMempoolEvents();
         const checkpoints = this.consensusNode.getCheckpoints();
 
+        const openGateways = Array.from(this.gatewayConnections.entries())
+          .filter(([ws, meta]) => {
+            if (ws.readyState !== WebSocket.OPEN) return false;
+            if ((meta as any)?.isUi) return false;
+            return Boolean((meta as any)?.isGateway);
+          });
+
         res.json({
           success: true,
           nodeId: this.config.operatorId,
@@ -1319,12 +1336,17 @@ export class OperatorNode extends EventEmitter {
           peers: {
             mainSeedConnected: this.mainSeedWs?.readyState === WebSocket.OPEN,
             operatorPeers: this.operatorPeerConnections.size,
-            gatewayConnections: this.gatewayConnections.size,
+            gatewayConnections: openGateways.length,
           },
           connections: {
             operatorConnections: this.operatorPeerConnections.size,
-            gatewayConnections: this.gatewayConnections.size,
+            gatewayConnections: openGateways.length,
           },
+          ledger: {
+            sequenceNumber: this.state.lastSyncedSequence,
+            lastEventHash: this.state.lastSyncedHash,
+          },
+          ledgerSequence: this.state.lastSyncedSequence,
           timestamp: Date.now(),
         });
       } catch (error: any) {
@@ -2447,6 +2469,8 @@ export class OperatorNode extends EventEmitter {
         connectedAt: now,
         lastSeen: now,
         ip: clientIp,
+        isGateway: false,
+        isUi: false,
       });
 
       ws.on('message', (data: Buffer) => {
@@ -2481,6 +2505,9 @@ export class OperatorNode extends EventEmitter {
     switch (message.type) {
       case 'sync_request':
         console.log('[Operator] Gateway requesting sync');
+        if (conn) {
+          (conn as any).isGateway = true;
+        }
         this.sendSyncResponse(ws);
         break;
 
@@ -2489,6 +2516,7 @@ export class OperatorNode extends EventEmitter {
         const meta = this.gatewayConnections.get(ws);
         if (meta) {
           (meta as any).subscribedToConsensus = true;
+          (meta as any).isUi = true;
         }
         
         // Send current consensus state
