@@ -1460,6 +1460,76 @@ export class OperatorNode extends EventEmitter {
         const requiredYesVotes = eligibleVoterCount > 0 ? Math.ceil((2 / 3) * eligibleVoterCount) : undefined;
         const eligibleVotingAt = now + 30 * 24 * 60 * 60 * 1000;
 
+        // Forward the application to main seed via HTTP API (to avoid duplicate events)
+        // The main seed will create the event and we'll sync it back
+        const base = this.getSeedHttpBase();
+        if (base) {
+          try {
+            // Forward challenge request to main seed
+            const authHeader = String((req.headers as any)?.authorization || '').trim();
+            const mainChallRes = await fetch(`${base}/api/operators/apply/challenge`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(authHeader ? { 'Authorization': authHeader } : {}),
+              },
+              body: JSON.stringify({}),
+            });
+            const mainChall = await mainChallRes.json() as any;
+            if (!mainChallRes.ok || !mainChall?.success) {
+              throw new Error(mainChall?.error || 'Failed to get challenge from main seed');
+            }
+
+            // Sign the main seed's challenge with the applicant's signature
+            // The applicant already signed our local challenge, but we need to forward their credentials
+            // Actually, we need to forward the original application to main seed
+            const mainApplyRes = await fetch(`${base}/api/operators/apply`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(authHeader ? { 'Authorization': authHeader } : {}),
+              },
+              body: JSON.stringify({
+                challengeId: mainChall.challengeId,
+                operatorId,
+                operatorUrl: url,
+                btcAddress: String(btcAddress).trim(),
+                publicKey: String(publicKey).trim(),
+                signature, // Use the same signature - main seed will verify against nonce
+              }),
+            });
+            const mainApplyData = await mainApplyRes.json() as any;
+            
+            if (!mainApplyRes.ok || !mainApplyData?.success) {
+              throw new Error(mainApplyData?.error || 'Main seed rejected the application');
+            }
+
+            console.log(`[Operator] 📤 Forwarded operator application to main seed: ${operatorId}`);
+
+            // Trigger a sync to get the new event from main seed
+            if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+              this.mainSeedWs.send(JSON.stringify({
+                type: 'sync_request',
+                operatorId: this.config.operatorId,
+                networkId: this.computeNetworkId(),
+                lastSequence: this.state.lastSyncedSequence,
+              }));
+            }
+
+            res.json({
+              success: true,
+              message: 'Operator application submitted to main seed',
+              candidateId: String(operatorId),
+              operatorUrl: String(url),
+            });
+            return;
+          } catch (forwardErr: any) {
+            console.error(`[Operator] Failed to forward to main seed, creating locally:`, forwardErr.message);
+            // Fall through to create locally if main seed fails
+          }
+        }
+
+        // Main seed not available - create event locally (for decentralized resilience)
         const signatures: QuorumSignature[] = [
           {
             operatorId: this.config.operatorId,
@@ -1468,7 +1538,6 @@ export class OperatorNode extends EventEmitter {
           },
         ];
 
-        // Create event locally
         const event = await this.canonicalEventStore.appendEvent(
           {
             type: EventType.OPERATOR_CANDIDATE_REQUESTED,
@@ -1488,47 +1557,21 @@ export class OperatorNode extends EventEmitter {
           signatures
         );
 
-        // Broadcast event to peers and main seed using append_event format
-        const requestId = `opapp_${Date.now()}_${randomBytes(4).toString('hex')}`;
-        const appendEventMessage = {
-          type: 'append_event',
-          requestId,
-          payload: {
-            type: EventType.OPERATOR_CANDIDATE_REQUESTED,
-            timestamp: now,
-            nonce: eventNonce,
-            candidateId: String(operatorId),
-            gatewayNodeId: String(url),
-            operatorUrl: String(url),
-            btcAddress: String(btcAddress).trim(),
-            publicKey: String(publicKey).trim(),
-            sponsorId: accountId,
-            eligibleVoterIds,
-            eligibleVoterCount,
-            requiredYesVotes,
-            eligibleVotingAt,
-          },
-          signatures,
+        // Broadcast to operator peers when main seed is down
+        this.broadcastToOperatorPeers({
+          type: 'new_local_event',
+          event,
           operatorId: this.config.operatorId,
-        };
+          timestamp: now,
+        });
 
-        // Send to main seed if connected
-        if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-          this.mainSeedWs.send(JSON.stringify(appendEventMessage));
-          console.log(`[Operator] 📤 Sent append_event to main seed for operator application: ${operatorId}`);
-        }
-
-        // Broadcast to operator peers (they can also relay to main seed)
-        this.broadcastToOperatorPeers(appendEventMessage);
-
-        // Also broadcast registry update so peers know state changed
         this.broadcastRegistryUpdate();
 
-        console.log(`[Operator] 📋 Operator application created locally and broadcast: ${operatorId}`);
+        console.log(`[Operator] 📋 Operator application created locally (main seed unavailable): ${operatorId}`);
 
         res.json({
           success: true,
-          message: 'Operator application submitted and broadcast to network',
+          message: 'Operator application submitted locally (main seed unavailable)',
           candidateId: String(operatorId),
           operatorUrl: String(url),
           eventHash: event.eventHash,
