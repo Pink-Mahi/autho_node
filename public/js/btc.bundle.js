@@ -9230,6 +9230,22 @@ zone
 zoo`.split("\n");
 
   // src/client/btc-browser.ts
+  async function sha256Bytes(message) {
+    const enc = new TextEncoder();
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", enc.encode(String(message)));
+    return new Uint8Array(digest);
+  }
+  function generateSecp256k1KeyPair() {
+    const priv = secp256k1.utils.randomPrivateKey();
+    const pub = secp256k1.getPublicKey(priv, true);
+    return { privateKeyHex: hex.encode(priv), publicKeyHex: hex.encode(pub) };
+  }
+  async function signMessageSha256(message, privateKeyHex) {
+    const hash = await sha256Bytes(String(message));
+    const sig = secp256k1.sign(hash, hex.decode(String(privateKeyHex)));
+    const sigBytes = sig?.toCompactRawBytes ? sig.toCompactRawBytes() : sig;
+    return hex.encode(sigBytes);
+  }
   function getNetwork(network) {
     return network === "testnet" ? TEST_NETWORK : NETWORK;
   }
@@ -9381,7 +9397,9 @@ zoo`.split("\n");
     getAddressFromMnemonic: (mnemonic, network, account, index) => getP2WPKHAddressFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
     getPublicKeyFromMnemonic: (mnemonic, network, account, index) => getPublicKeyFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
     generateMnemonic24: () => generateMnemonic24(),
-    buildAndSignP2WPKH: (params) => buildAndSignP2WPKH(params)
+    buildAndSignP2WPKH: (params) => buildAndSignP2WPKH(params),
+    generateSecp256k1KeyPair: () => generateSecp256k1KeyPair(),
+    signMessageSha256: (message, privateKeyHex) => signMessageSha256(message, privateKeyHex)
   };
 })();
 //# sourceMappingURL=btc.bundle.js.map
