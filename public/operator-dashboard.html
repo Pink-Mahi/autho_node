@@ -280,6 +280,7 @@
                 <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
                 <button class="nav-tab" onclick="switchTab('network')">🛰️ Network Health</button>
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
+                <button class="nav-tab" onclick="switchTab('mempool')">📦 Mempool</button>
                 <button class="nav-tab" onclick="switchTab('anchoring')">⚓ Bitcoin Anchoring</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
@@ -517,6 +518,67 @@
             </div>
             <div id="statusPanel" class="empty-state">Open this tab to load status.</div>
         </div>
+
+        <div class="section" id="mempool-section">
+            <h2 class="section-title">📦 Mempool Visualizer</h2>
+            <p class="muted" style="margin-bottom: 15px;">Real-time view of pending events in the consensus mempool. Events are validated and ordered before being included in checkpoints.</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Mempool Size</div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #d4af37;" id="mempoolSize">0</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Valid Events</div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #4cd964;" id="mempoolValid">0</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Current Leader</div>
+                    <div style="font-size: 0.9rem; font-weight: 600; color: #d4af37; word-break: break-all;" id="mempoolLeader">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Checkpoint #</div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #d4af37;" id="mempoolCheckpoint">0</div>
+                </div>
+            </div>
+
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.85rem; color: #999;">Next Checkpoint Progress</span>
+                    <span style="font-size: 0.85rem; color: #4cd964;" id="mempoolTimer">30s</span>
+                </div>
+                <div style="height: 8px; background: rgba(212, 175, 55, 0.15); border-radius: 4px; overflow: hidden;">
+                    <div id="mempoolProgress" style="height: 100%; width: 0%; background: linear-gradient(90deg, #d4af37, #f4d03f); border-radius: 4px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px;">
+                    <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1rem;">📊 Pending Events</h3>
+                    <div id="mempoolTreemap" style="min-height: 250px; background: rgba(10, 10, 10, 0.5); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; align-content: flex-start;">
+                        <div class="empty-state" style="width: 100%; text-align: center;">Waiting for events...</div>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: 0.75rem;">
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #3b82f6; border-radius: 3px;"></span> Account</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #22c55e; border-radius: 3px;"></span> Item Mint</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #f59e0b; border-radius: 3px;"></span> Title</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #8b5cf6; border-radius: 3px;"></span> Settlement</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #f97316; border-radius: 3px;"></span> Operator</span>
+                    </div>
+                </div>
+
+                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px;">
+                    <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1rem;">📋 Recent Events</h3>
+                    <div id="mempoolRecentEvents" style="max-height: 300px; overflow-y: auto;">
+                        <div class="empty-state">No recent events</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: center;">
+                <a href="/mempool.html" target="_blank" class="btn btn-secondary" style="text-decoration: none;">Open Full Mempool Visualizer ↗</a>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -558,6 +620,8 @@
                 loadNodeStatus();
             } else if (tab === 'security') {
                 loadSecurity();
+            } else if (tab === 'mempool') {
+                loadMempool();
             }
         }
 
@@ -1948,6 +2012,167 @@
                 }
             }
         }
+
+        // Mempool visualization
+        let mempoolWs = null;
+        let mempoolEvents = [];
+        let mempoolRecentEvents = [];
+        let mempoolCheckpointStart = Date.now();
+        const CHECKPOINT_INTERVAL = 30000;
+
+        async function loadMempool() {
+            // Fetch consensus status
+            try {
+                const r = await fetch('/api/consensus/status');
+                const data = await r.json();
+                if (data.success) {
+                    document.getElementById('mempoolSize').textContent = data.mempool?.totalEvents || 0;
+                    document.getElementById('mempoolValid').textContent = data.mempool?.validEvents || 0;
+                    document.getElementById('mempoolLeader').textContent = data.consensus?.currentLeaderId || '-';
+                    document.getElementById('mempoolCheckpoint').textContent = (data.consensus?.currentCheckpointNumber || 0) + 1;
+                }
+            } catch (e) {
+                console.error('Failed to load mempool status:', e);
+            }
+
+            // Connect WebSocket for live updates
+            connectMempoolWs();
+        }
+
+        function connectMempoolWs() {
+            if (mempoolWs && mempoolWs.readyState === WebSocket.OPEN) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            mempoolWs = new WebSocket(wsUrl);
+            
+            mempoolWs.onopen = () => {
+                mempoolWs.send(JSON.stringify({ type: 'subscribe_consensus' }));
+            };
+            
+            mempoolWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMempoolMessage(data);
+                } catch (e) {}
+            };
+            
+            mempoolWs.onclose = () => {
+                setTimeout(connectMempoolWs, 3000);
+            };
+        }
+
+        function handleMempoolMessage(data) {
+            if (data.type === 'consensus_state') {
+                document.getElementById('mempoolSize').textContent = data.state?.mempoolStats?.totalEvents || 0;
+                document.getElementById('mempoolValid').textContent = data.state?.mempoolStats?.validEvents || 0;
+                document.getElementById('mempoolLeader').textContent = data.state?.currentLeaderId || '-';
+                document.getElementById('mempoolCheckpoint').textContent = (data.state?.currentCheckpointNumber || 0) + 1;
+            } else if (data.type === 'mempool_snapshot') {
+                mempoolEvents = data.events || [];
+                renderMempoolTreemap();
+            } else if (data.type === 'mempool_event') {
+                const event = data.payload;
+                if (event && !mempoolEvents.find(e => e.eventId === event.eventId)) {
+                    mempoolEvents.push(event);
+                    addMempoolRecentEvent(event);
+                    renderMempoolTreemap();
+                    document.getElementById('mempoolSize').textContent = mempoolEvents.length;
+                }
+            } else if (data.type === 'checkpoint_finalized') {
+                const cp = data.payload;
+                const finalizedIds = new Set((cp.events || []).map(e => e.eventId));
+                mempoolEvents = mempoolEvents.filter(e => !finalizedIds.has(e.eventId));
+                mempoolCheckpointStart = Date.now();
+                renderMempoolTreemap();
+                document.getElementById('mempoolSize').textContent = mempoolEvents.length;
+                document.getElementById('mempoolCheckpoint').textContent = (cp.checkpointNumber || 0) + 1;
+            }
+        }
+
+        function addMempoolRecentEvent(event) {
+            mempoolRecentEvents.unshift(event);
+            if (mempoolRecentEvents.length > 10) mempoolRecentEvents = mempoolRecentEvents.slice(0, 10);
+            renderMempoolRecentEvents();
+        }
+
+        function renderMempoolTreemap() {
+            const container = document.getElementById('mempoolTreemap');
+            if (mempoolEvents.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="width: 100%; text-align: center;">Waiting for events...</div>';
+                return;
+            }
+
+            container.innerHTML = mempoolEvents.map(event => {
+                const type = event.type || 'UNKNOWN';
+                let bg = '#6b7280';
+                if (type.includes('ACCOUNT')) bg = '#3b82f6';
+                else if (type.includes('ITEM_MINTED')) bg = '#22c55e';
+                else if (type.includes('TITLE')) bg = '#f59e0b';
+                else if (type.includes('SETTLEMENT')) bg = '#8b5cf6';
+                else if (type.includes('OPERATOR')) bg = '#f97316';
+                else if (type.includes('CONSIGNMENT')) bg = '#06b6d4';
+
+                const abbrev = getTypeAbbrev(type);
+                return `<div style="width: 45px; height: 45px; background: ${bg}; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: white; cursor: pointer;" title="${type}\n${event.eventId?.substring(0, 16)}...">${abbrev}</div>`;
+            }).join('');
+        }
+
+        function renderMempoolRecentEvents() {
+            const container = document.getElementById('mempoolRecentEvents');
+            if (mempoolRecentEvents.length === 0) {
+                container.innerHTML = '<div class="empty-state">No recent events</div>';
+                return;
+            }
+
+            container.innerHTML = mempoolRecentEvents.map(event => {
+                const type = event.type || 'UNKNOWN';
+                const abbrev = getTypeAbbrev(type);
+                const age = formatAge(event.timestamp || event.receivedAt);
+                return `<div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(10,10,10,0.5); border-radius: 6px; margin-bottom: 6px;">
+                    <span style="background: #d4af37; color: #0a0a0a; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700;">${abbrev}</span>
+                    <span style="flex: 1; font-size: 11px; color: #999; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${event.eventId?.substring(0, 16)}...</span>
+                    <span style="font-size: 10px; color: #666;">${age}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function getTypeAbbrev(type) {
+            const abbrevs = {
+                'ACCOUNT_CREATED': 'ACC',
+                'ITEM_MINTED': 'MINT',
+                'TITLE_UPDATED': 'TITLE',
+                'SETTLEMENT_CREATED': 'SETL',
+                'SETTLEMENT_COMPLETED': 'DONE',
+                'CONSIGNMENT_CREATED': 'CONS',
+                'OPERATOR_CANDIDATE_REQUESTED': 'OP+',
+                'OPERATOR_ADMITTED': 'OP✓',
+                'OPERATOR_HEARTBEAT': '♥',
+            };
+            return abbrevs[type] || type.substring(0, 4);
+        }
+
+        function formatAge(timestamp) {
+            if (!timestamp) return '?';
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+            return `${Math.floor(seconds / 3600)}h`;
+        }
+
+        function updateMempoolProgress() {
+            const elapsed = Date.now() - mempoolCheckpointStart;
+            const progress = Math.min(100, (elapsed / CHECKPOINT_INTERVAL) * 100);
+            const remaining = Math.max(0, Math.ceil((CHECKPOINT_INTERVAL - elapsed) / 1000));
+            
+            const progressEl = document.getElementById('mempoolProgress');
+            const timerEl = document.getElementById('mempoolTimer');
+            if (progressEl) progressEl.style.width = `${progress}%`;
+            if (timerEl) timerEl.textContent = `${remaining}s`;
+        }
+
+        setInterval(updateMempoolProgress, 100);
 
         window.addEventListener('load', async () => {
             await requireOperatorAuth();
