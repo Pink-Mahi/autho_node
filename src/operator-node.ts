@@ -545,7 +545,20 @@ export class OperatorNode extends EventEmitter {
 
   private setupRoutes(): void {
     const publicDir = this.getPublicDir();
-    this.app.use(express.static(publicDir, { index: false }));
+    this.app.use(express.static(publicDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        try {
+          const p = String(filePath || '').toLowerCase();
+          if (p.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          } else if (p.endsWith('.js.map') || p.endsWith('.map')) {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          }
+        } catch {
+        }
+      },
+    }));
 
     this.app.get('/downloads/gateway-node/:filename', (req: Request, res: Response) => {
       const { filename } = req.params;
