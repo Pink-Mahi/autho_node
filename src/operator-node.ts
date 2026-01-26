@@ -1463,9 +1463,25 @@ export class OperatorNode extends EventEmitter {
         const requiredYesVotes = eligibleVoterCount > 0 ? Math.ceil((2 / 3) * eligibleVoterCount) : undefined;
         const eligibleVotingAt = now + 30 * 24 * 60 * 60 * 1000;
 
-        // BITCOIN-STYLE: Create event locally and broadcast to ALL peers (including main)
-        // No HTTP API forwarding - pure ledger propagation
-        // Any node can create events, they propagate via P2P sync
+        // DECENTRALIZED: Send event request to main seed via WebSocket
+        // Main seed creates the authoritative event and broadcasts via sync
+        // This ensures all nodes have identical ledgers with matching hashes
+        const eventPayload = {
+          type: EventType.OPERATOR_CANDIDATE_REQUESTED,
+          timestamp: now,
+          nonce: eventNonce,
+          candidateId: String(operatorId),
+          gatewayNodeId: String(url),
+          operatorUrl: String(url),
+          btcAddress: String(btcAddress).trim(),
+          publicKey: String(publicKey).trim(),
+          sponsorId: accountId,
+          eligibleVoterIds,
+          eligibleVoterCount,
+          requiredYesVotes,
+          eligibleVotingAt,
+        };
+
         const signatures: QuorumSignature[] = [
           {
             operatorId: this.config.operatorId,
@@ -1474,58 +1490,67 @@ export class OperatorNode extends EventEmitter {
           },
         ];
 
-        const event = await this.canonicalEventStore.appendEvent(
-          {
-            type: EventType.OPERATOR_CANDIDATE_REQUESTED,
-            timestamp: now,
-            nonce: eventNonce,
+        // Send via WebSocket to main seed (preferred - no HTTP dependency)
+        if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+          const requestId = `apply_${Date.now()}_${randomBytes(4).toString('hex')}`;
+          
+          this.mainSeedWs.send(JSON.stringify({
+            type: 'append_event',
+            requestId,
+            operatorId: this.config.operatorId,
+            payload: eventPayload,
+            signatures,
+          }));
+          
+          console.log(`[Operator] 📤 Sent operator application to main seed via WebSocket: ${operatorId}`);
+
+          // Request sync to get the new event
+          setTimeout(() => {
+            if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+              this.mainSeedWs.send(JSON.stringify({
+                type: 'sync_request',
+                operatorId: this.config.operatorId,
+                networkId: this.computeNetworkId(),
+                lastSequence: this.state.lastSyncedSequence,
+              }));
+            }
+          }, 500);
+
+          res.json({
+            success: true,
+            message: 'Operator application submitted to network',
             candidateId: String(operatorId),
-            gatewayNodeId: String(url),
             operatorUrl: String(url),
-            btcAddress: String(btcAddress).trim(),
-            publicKey: String(publicKey).trim(),
-            sponsorId: accountId,
-            eligibleVoterIds,
-            eligibleVoterCount,
-            requiredYesVotes,
-            eligibleVotingAt,
-          } as any,
-          signatures
-        );
+          });
+          return;
+        }
+
+        // Fallback: If main seed not connected, create locally for resilience
+        // This event will sync when main comes back online
+        console.log(`[Operator] ⚠️ Main seed not connected, creating event locally for resilience`);
+        
+        const event = await this.canonicalEventStore.appendEvent(eventPayload as any, signatures);
 
         console.log(`[Operator] 📋 Created OPERATOR_CANDIDATE_REQUESTED event locally: ${operatorId} (seq: ${event.sequenceNumber})`);
 
-        // Broadcast new event to ALL connected peers (operators + main seed)
-        const newEventMsg = {
+        // Broadcast to operator peers (they may be able to forward to main)
+        this.broadcastToOperatorPeers({
           type: 'new_event',
-          event: {
-            ...event,
-            // Include full event data for peers to append
-          },
+          event: { ...event },
           sourceOperatorId: this.config.operatorId,
           timestamp: now,
-        };
+        });
 
-        // Send to main seed via WebSocket (if connected)
-        if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-          this.mainSeedWs.send(JSON.stringify(newEventMsg));
-          console.log(`[Operator] 📤 Broadcast new event to main seed`);
-        }
-
-        // Broadcast to all operator peers
-        this.broadcastToOperatorPeers(newEventMsg);
-        console.log(`[Operator] 📤 Broadcast new event to ${this.operatorPeerConnections.size} operator peers`);
-
-        // Also send registry update so peers know to sync
         this.broadcastRegistryUpdate();
 
         res.json({
           success: true,
-          message: 'Operator application created and broadcast to network',
+          message: 'Operator application created locally (main seed offline)',
           candidateId: String(operatorId),
           operatorUrl: String(url),
           eventHash: event.eventHash,
           sequenceNumber: event.sequenceNumber,
+          warning: 'Main seed offline - event created locally, will sync when connected',
         });
       } catch (error: any) {
         console.error('[Operator] Failed to process operator application:', error);
