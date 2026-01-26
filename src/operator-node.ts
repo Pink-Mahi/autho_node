@@ -255,6 +255,31 @@ export class OperatorNode extends EventEmitter {
   }
 
   /**
+   * Update consensus node with active operators from state
+   */
+  private async updateConsensusOperators(): Promise<void> {
+    if (!this.consensusNode) return;
+
+    try {
+      const state = await this.canonicalStateBuilder.buildState();
+      const operators = Array.from((state as any).operators?.values?.() || []) as any[];
+      
+      const activeOperators = operators
+        .filter((op: any) => op && op.status === 'active')
+        .map((op: any) => ({
+          operatorId: String(op.operatorId || ''),
+          status: 'active' as const,
+          publicKey: String(op.publicKey || ''),
+        }));
+
+      this.consensusNode.updateOperators(activeOperators);
+      console.log(`[Consensus] Updated with ${activeOperators.length} active operators`);
+    } catch (error: any) {
+      console.error('[Consensus] Failed to update operators:', error.message);
+    }
+  }
+
+  /**
    * Broadcast a consensus message to all peers
    */
   private broadcastConsensusMessage(message: ConsensusMessage): void {
@@ -2386,6 +2411,10 @@ export class OperatorNode extends EventEmitter {
     // Start the consensus node (mempool + checkpoint manager)
     if (this.consensusNode) {
       this.consensusNode.start();
+      
+      // Update consensus node with active operators from state
+      await this.updateConsensusOperators();
+      
       console.log('[Consensus] Mempool and checkpoint manager started');
     }
     
