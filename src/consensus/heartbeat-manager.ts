@@ -202,6 +202,10 @@ export class HeartbeatManager extends EventEmitter {
     return Date.now() - this.lastVerification;
   }
 
+  getReceivedHashes(): StateHash[] {
+    return Array.from(this.receivedHashes.values());
+  }
+
   /**
    * Clean up old hashes (older than maxDivergenceTime)
    */
