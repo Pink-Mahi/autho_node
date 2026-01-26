@@ -1365,6 +1365,7 @@ export class OperatorNode extends EventEmitter {
     });
 
     // Operator application (decentralized - accepts on any node and broadcasts to network)
+    // Challenge endpoint proxies to main seed when available so signatures match
     this.app.post('/api/operators/apply/challenge', async (req: Request, res: Response) => {
       try {
         const account = await this.getAccountFromSession(req);
@@ -1373,6 +1374,31 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
+        // Try to proxy to main seed first (so signature verification will work on forwarded applications)
+        const base = this.getSeedHttpBase();
+        if (base) {
+          try {
+            const authHeader = String((req.headers as any)?.authorization || '').trim();
+            const mainChallRes = await fetch(`${base}/api/operators/apply/challenge`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(authHeader ? { 'Authorization': authHeader } : {}),
+              },
+              body: JSON.stringify({}),
+            });
+            const mainChall = await mainChallRes.json() as any;
+            if (mainChallRes.ok && mainChall?.success) {
+              // Return main seed's challenge so user signs main seed's nonce
+              res.json(mainChall);
+              return;
+            }
+          } catch (proxyErr) {
+            console.log('[Operator] Main seed challenge proxy failed, using local challenge');
+          }
+        }
+
+        // Fall back to local challenge (for when main seed is unavailable)
         const challengeId = `op_apply_${Date.now()}_${randomBytes(8).toString('hex')}`;
         const nonce = randomBytes(32).toString('hex');
         const createdAt = Date.now();
@@ -1461,28 +1487,13 @@ export class OperatorNode extends EventEmitter {
         const eligibleVotingAt = now + 30 * 24 * 60 * 60 * 1000;
 
         // Forward the application to main seed via HTTP API (to avoid duplicate events)
-        // The main seed will create the event and we'll sync it back
+        // The challenge was already proxied from main seed, so signatures will match
         const base = this.getSeedHttpBase();
         if (base) {
           try {
-            // Forward challenge request to main seed
             const authHeader = String((req.headers as any)?.authorization || '').trim();
-            const mainChallRes = await fetch(`${base}/api/operators/apply/challenge`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(authHeader ? { 'Authorization': authHeader } : {}),
-              },
-              body: JSON.stringify({}),
-            });
-            const mainChall = await mainChallRes.json() as any;
-            if (!mainChallRes.ok || !mainChall?.success) {
-              throw new Error(mainChall?.error || 'Failed to get challenge from main seed');
-            }
-
-            // Sign the main seed's challenge with the applicant's signature
-            // The applicant already signed our local challenge, but we need to forward their credentials
-            // Actually, we need to forward the original application to main seed
+            
+            // Forward the application directly - challenge was already from main seed
             const mainApplyRes = await fetch(`${base}/api/operators/apply`, {
               method: 'POST',
               headers: {
@@ -1490,12 +1501,12 @@ export class OperatorNode extends EventEmitter {
                 ...(authHeader ? { 'Authorization': authHeader } : {}),
               },
               body: JSON.stringify({
-                challengeId: mainChall.challengeId,
+                challengeId,
                 operatorId,
                 operatorUrl: url,
                 btcAddress: String(btcAddress).trim(),
                 publicKey: String(publicKey).trim(),
-                signature, // Use the same signature - main seed will verify against nonce
+                signature,
               }),
             });
             const mainApplyData = await mainApplyRes.json() as any;
