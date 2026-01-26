@@ -552,8 +552,14 @@ export class OperatorNode extends EventEmitter {
           const p = String(filePath || '').toLowerCase();
           if (p.endsWith('.js')) {
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
           } else if (p.endsWith('.js.map') || p.endsWith('.map')) {
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
           }
         } catch {
         }
