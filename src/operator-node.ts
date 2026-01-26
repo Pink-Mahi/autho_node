@@ -2378,6 +2378,11 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.setupWebSocketServer();
+    
+    // Start consensus verification immediately (works with or without main node)
+    // This enables true decentralization - operators can verify each other
+    this.startConsensusVerification();
+    
     await this.connectToMainSeed();
 
     this.startPeerDiscovery();
@@ -2836,9 +2841,6 @@ export class OperatorNode extends EventEmitter {
           lastSequence: this.state.lastSyncedSequence,
           timestamp: Date.now()
         }));
-        
-        // Start consensus verification
-        this.startConsensusVerification();
       });
 
       this.mainSeedWs.on('message', async (data: WebSocket.Data) => {
