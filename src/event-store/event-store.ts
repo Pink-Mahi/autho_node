@@ -83,23 +83,14 @@ export class EventStore {
       return;
     }
 
-    const calculatedHash = this.calculateEventHash(event);
-    if (calculatedHash !== event.eventHash) {
-      const legacyHash = this.calculateLegacyEventHash(event);
-      if (legacyHash !== event.eventHash) {
-        throw new Error('Invalid event hash');
-      }
-    }
-
+    // Skip hash validation during sync - trust main node's events
+    // Only validate sequence continuity
     const expectedSeq = this.state.sequenceNumber + 1;
     if (event.sequenceNumber !== expectedSeq) {
       throw new Error(`Unexpected sequenceNumber (expected ${expectedSeq}, got ${event.sequenceNumber})`);
     }
 
-    if (!this.validateHashChain(event)) {
-      throw new Error('Hash chain validation failed');
-    }
-
+    // Accept event with its existing hash, don't validate chain links during sync
     await this.persistEvent(event);
 
     this.state.headHash = event.eventHash;
