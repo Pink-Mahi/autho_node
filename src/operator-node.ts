@@ -1275,6 +1275,39 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    this.app.get('/api/ledger/events/latest', async (req: Request, res: Response) => {
+      try {
+        const limitRaw = Number(req.query.limit || 20);
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(200, Math.floor(limitRaw)) : 20;
+
+        const head = this.canonicalEventStore.getState();
+        const toSequence = Number((head as any)?.sequenceNumber || 0);
+        const fromSequence = Math.max(1, toSequence - limit + 1);
+
+        const events = toSequence > 0
+          ? await this.canonicalEventStore.getEventsBySequence(fromSequence, toSequence)
+          : [];
+
+        res.json({
+          success: true,
+          head: {
+            sequenceNumber: toSequence,
+            headHash: String((head as any)?.headHash || ''),
+          },
+          events: events
+            .map((e: any) => ({
+              sequenceNumber: Number(e?.sequenceNumber || 0),
+              eventHash: String(e?.eventHash || ''),
+              type: String(e?.payload?.type || ''),
+              timestamp: Number(e?.payload?.timestamp || e?.createdAt || 0),
+            }))
+            .sort((a: any, b: any) => b.sequenceNumber - a.sequenceNumber),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Consensus status endpoint for monitoring
     this.app.get('/api/consensus/status', async (req: Request, res: Response) => {
       try {

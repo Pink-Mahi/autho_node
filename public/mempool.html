@@ -609,6 +609,13 @@
           <!-- Event items will be added here -->
         </div>
       </div>
+
+      <div class="stats-card">
+        <h3>✅ Confirmed Ledger Events</h3>
+        <div class="recent-events" id="ledgerEvents">
+          <!-- Ledger events will be added here -->
+        </div>
+      </div>
     </div>
   </div>
   
@@ -622,6 +629,7 @@
     let ws = null;
     let mempoolEvents = [];
     let recentEvents = [];
+    let ledgerEvents = [];
     let checkpoints = [];
     let consensusState = null;
     let currentFilter = 'all';
@@ -788,6 +796,44 @@
       renderTreemap();
       renderCheckpointTimeline();
       updateStats();
+      loadLedgerEvents();
+    }
+
+    async function loadLedgerEvents() {
+      try {
+        const r = await fetch('/api/ledger/events/latest?limit=20');
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data && data.success === true && Array.isArray(data.events)) {
+          ledgerEvents = data.events;
+          renderLedgerEvents();
+        }
+      } catch (e) {}
+    }
+
+    function renderLedgerEvents() {
+      const container = document.getElementById('ledgerEvents');
+      if (!container) return;
+      if (!ledgerEvents.length) {
+        container.innerHTML = '<div class="event-item"><div class="event-details"><div class="event-id">No confirmed events yet</div></div></div>';
+        return;
+      }
+
+      container.innerHTML = ledgerEvents.map(e => {
+        const type = String(e.type || 'UNKNOWN');
+        const typeClass = type.replace(/_/g, '_');
+        const seq = Number(e.sequenceNumber || 0);
+        const hash = String(e.eventHash || '');
+        const ts = Number(e.timestamp || 0);
+        return `
+          <div class="event-item">
+            <span class="event-type-badge ${typeClass}">${getTypeAbbrev(type)}</span>
+            <div class="event-details">
+              <div class="event-id">#${seq} ${hash.substring(0, 14)}...</div>
+              <div class="event-time">${formatAge(ts)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
     
     // Render treemap visualization
@@ -1104,9 +1150,11 @@
     // Start polling and progress updates
     setInterval(updateCheckpointProgress, 100);
     setInterval(pollConsensusStatus, 2000);
+    setInterval(loadLedgerEvents, 5000);
     
     // Initial load
     pollConsensusStatus();
+    loadLedgerEvents();
     connect();
     renderCheckpointTimeline();
   </script>
