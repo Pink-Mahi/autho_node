@@ -47,7 +47,7 @@ echo Starting gateway node in the background on port %PORT%...
 echo Logs: %SCRIPT_DIR%gateway-node.log
 echo.
 
-start "" /min cmd /c "cd /d \"%SCRIPT_DIR%\" ^&^& set GATEWAY_PORT=%PORT% ^&^& set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com ^&^& node gateway-package.js 1^> gateway-node.log 2^>^&1"
+start "" /min cmd /c "cd /d \"%SCRIPT_DIR%\" ^&^& set GATEWAY_PORT=%PORT% ^&^& set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com ^&^& node gateway-package.js 1^> gateway-node.log 2^>^&1"
 
 timeout /t 2 /nobreak >nul
 start "" "http://localhost:%PORT%/m"

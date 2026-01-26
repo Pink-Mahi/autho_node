@@ -63,7 +63,7 @@ cat > gateway-config.json <<EOF
   "nodeId": "gateway-$(date +%s)",
   "port": 3001,
   "host": "0.0.0.0",
-  "seedNodes": ["autho.pinkmahi.com:3000"],
+  "seedNodes": ["autho.pinkmahi.com:3000", "autho.cartpathcleaning.com"],
   "dataDir": "./gateway-data",
   "cache": {
     "enabled": true,

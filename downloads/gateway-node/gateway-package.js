@@ -9,7 +9,6 @@
 
 const express = require('express');
 const WebSocket = require('ws');
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -75,57 +74,12 @@ class GatewayNode {
     this.uiCacheDir = path.join(CONFIG.dataDir, 'ui-cache');
     this.operatorHeadCache = new Map();
     this.quorumHeadCache = null;
-    this.operatorConnections = new Map();
-    this.discoveredOperators = [];
+    this.operatorConnections = new Map(); // Map of operatorId -> WebSocket
+    this.discoveredOperators = []; // List of operators from /api/network/operators
     this.lastOperatorDiscovery = 0;
     
     this.setupMiddleware();
     this.setupRoutes();
-  }
-
-  sha256Hex(s) {
-    return crypto.createHash('sha256').update(String(s || ''), 'utf8').digest('hex');
-  }
-
-  async getPowChallenge(operatorUrl, resource) {
-    const url = `${operatorUrl}/api/pow/challenge?resource=${encodeURIComponent(resource)}`;
-    const resp = await fetch(url, { method: 'GET' });
-    const text = await resp.text();
-    if (!resp.ok) throw new Error(`PoW challenge failed: ${resp.status}`);
-    const json = JSON.parse(text);
-    if (!json || json.enabled !== true) return null;
-    if (!json.challengeId || !json.salt || !json.difficulty) return null;
-    return json;
-  }
-
-  solvePow(params) {
-    const maxMs = (() => {
-      const n = Number(process.env.AUTHO_GATEWAY_POW_MAX_MS);
-      return Number.isFinite(n) && n > 0 ? Math.min(30_000, Math.floor(n)) : 1500;
-    })();
-
-    const maxIters = (() => {
-      const n = Number(process.env.AUTHO_GATEWAY_POW_MAX_ITERS);
-      return Number.isFinite(n) && n > 0 ? Math.min(50_000_000, Math.floor(n)) : 5_000_000;
-    })();
-
-    const start = Date.now();
-    const salt = String(params.salt || '');
-    const resource = String(params.resource || '');
-    const difficulty = Math.max(4, Math.min(32, Math.floor(Number(params.difficulty || 0))));
-    const leadingNibbles = Math.floor(difficulty / 4);
-
-    let i = 0;
-    while (i < maxIters) {
-      if ((Date.now() - start) > maxMs) return null;
-      const nonce = `${crypto.randomBytes(8).toString('hex')}${i.toString(16)}`;
-      const digest = this.sha256Hex(`${salt}:${resource}:${nonce}`);
-      if (digest.startsWith('0'.repeat(leadingNibbles))) {
-        return nonce;
-      }
-      i++;
-    }
-    return null;
   }
 
   getOperatorUrls() {
@@ -229,13 +183,78 @@ class GatewayNode {
     return path.join(this.uiCacheDir, withHtml);
   }
 
+  async solvePow(operatorUrl, resource) {
+    const crypto = require('crypto');
+    const challengeResp = await fetch(`${operatorUrl}/api/pow/challenge?resource=${encodeURIComponent(resource)}`);
+    if (!challengeResp.ok) {
+      throw new Error(`Failed to get PoW challenge: ${challengeResp.status}`);
+    }
+    const challenge = await challengeResp.json();
+    if (!challenge.enabled) {
+      return null;
+    }
+
+    const { challengeId, salt, difficulty, resource: challengeResource } = challenge;
+    const leadingZeros = Math.floor(difficulty / 4);
+    const target = '0'.repeat(leadingZeros);
+    
+    let nonce = 0;
+    const startTime = Date.now();
+    
+    while (true) {
+      const hash = crypto.createHash('sha256')
+        .update(`${salt}:${challengeResource}:${nonce}`)
+        .digest('hex');
+      
+      if (hash.startsWith(target)) {
+        const elapsed = Date.now() - startTime;
+        console.log(`✓ PoW solved in ${elapsed}ms (difficulty: ${difficulty}, nonce: ${nonce})`);
+        return { challengeId, nonce, resource: challengeResource };
+      }
+      
+      nonce++;
+      if (nonce % 100000 === 0) {
+        console.log(`  Solving PoW... ${nonce} attempts`);
+      }
+    }
+  }
+
+  async fetchWithPow(url, options = {}) {
+    const urlObj = new URL(url);
+    const operatorUrl = urlObj.origin;
+    const resource = `${options.method || 'GET'}:${urlObj.pathname}`;
+    
+    let resp = await fetch(url, options);
+    
+    if (resp.status === 402) {
+      const errorData = await resp.json();
+      if (errorData.error === 'pow_required' || errorData.error === 'pow_invalid') {
+        console.log(`⚡ PoW required for ${resource}, solving...`);
+        const solution = await this.solvePow(operatorUrl, resource);
+        
+        if (solution) {
+          const newHeaders = {
+            ...(options.headers || {}),
+            'x-autho-pow-challenge': solution.challengeId,
+            'x-autho-pow-nonce': String(solution.nonce),
+            'x-autho-pow-resource': solution.resource,
+          };
+          
+          resp = await fetch(url, { ...options, headers: newHeaders });
+        }
+      }
+    }
+    
+    return resp;
+  }
+
   async ensureOperatorHead(operatorUrl) {
     const cached = this.operatorHeadCache.get(operatorUrl);
     if (cached && (Date.now() - cached.timestamp) < 2000) {
       return cached;
     }
 
-    const resp = await fetch(`${operatorUrl}/api/registry/head`, {
+    const resp = await this.fetchWithPow(`${operatorUrl}/api/registry/head`, {
       method: 'GET',
       headers: { 'Accept': 'application/json' }
     });
@@ -431,53 +450,11 @@ class GatewayNode {
       }
     }
 
-    const doSolvePow = String(process.env.AUTHO_GATEWAY_POW_SOLVE || '').trim() === '1';
-    const hasPowHeaders = Boolean(
-      init.headers['x-autho-pow-challenge'] ||
-      init.headers['x-autho-pow-nonce'] ||
-      init.headers['x-autho-pow-resource']
-    );
+    const resp = await this.fetchWithPow(targetUrl, init);
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const contentType = resp.headers.get('content-type');
 
-    const resp1 = await fetch(targetUrl, init);
-    const buf1 = Buffer.from(await resp1.arrayBuffer());
-    const contentType1 = resp1.headers.get('content-type');
-
-    if (doSolvePow && !hasPowHeaders && resp1.status === 402) {
-      let parsed = null;
-      try {
-        parsed = JSON.parse(buf1.toString('utf8'));
-      } catch {}
-
-      const errCode = parsed && typeof parsed.error === 'string' ? parsed.error : '';
-      if (errCode === 'pow_required' || errCode === 'pow_invalid') {
-        try {
-          const pathOnly = String(req.path || req.originalUrl || '').split('?')[0];
-          const resource = `${String(req.method || 'GET').toUpperCase()}:${pathOnly}`;
-          const challenge = await this.getPowChallenge(operatorUrl, resource);
-          if (challenge) {
-            const nonce = this.solvePow(challenge);
-            if (nonce) {
-              const init2 = {
-                ...init,
-                headers: {
-                  ...init.headers,
-                  'x-autho-pow-challenge': String(challenge.challengeId),
-                  'x-autho-pow-resource': String(challenge.resource || resource),
-                  'x-autho-pow-nonce': String(nonce),
-                },
-              };
-
-              const resp2 = await fetch(targetUrl, init2);
-              const buf2 = Buffer.from(await resp2.arrayBuffer());
-              const contentType2 = resp2.headers.get('content-type');
-              return { resp: resp2, buf: buf2, contentType: contentType2 };
-            }
-          }
-        } catch {}
-      }
-    }
-
-    return { resp: resp1, buf: buf1, contentType: contentType1 };
+    return { resp, buf, contentType };
   }
 
   async proxyApi(req, res) {
@@ -692,42 +669,6 @@ class GatewayNode {
       res.json(stats);
     });
 
-    // Bitcoin anchoring / time-source endpoints (explicitly exposed for gateway clients)
-    this.app.get('/api/anchors/time', (req, res) => {
-      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
-        console.error('❌ Gateway proxy error:', e);
-        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
-      });
-    });
-
-    this.app.get('/api/anchors/checkpoints', (req, res) => {
-      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
-        console.error('❌ Gateway proxy error:', e);
-        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
-      });
-    });
-
-    this.app.get('/api/anchors/commits', (req, res) => {
-      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
-        console.error('❌ Gateway proxy error:', e);
-        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
-      });
-    });
-
-    this.app.get('/api/anchors/checkpoints/:checkpointRoot/verify', (req, res) => {
-      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
-        console.error('❌ Gateway proxy error:', e);
-        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
-      });
-    });
-
-    this.app.get('/api/anchors/checkpoints/:checkpointRoot/commitment', (req, res) => {
-      Promise.resolve(this.proxyApi(req, res)).catch((e) => {
-        console.error('❌ Gateway proxy error:', e);
-        res.status(500).json({ error: 'Gateway proxy error', message: e?.message || String(e) });
-      });
-    });
-
     // Registry endpoints
     this.app.get('/api/registry/state', (req, res) => {
       const cacheKey = 'registry_state';
@@ -916,23 +857,65 @@ class GatewayNode {
     }
   }
 
-  seedToWsUrl(seed) {
-    const [host, port] = String(seed).split(':');
-    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
-    const protocol = isLocal ? 'ws' : 'wss';
-    return isLocal
-      ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
-      : `${protocol}://${host}`;
+  connectToSeeds() {
+    const seeds = this.getSeedNodes();
+    console.log(' Connecting to ALL seed nodes simultaneously...');
+    console.log(`   Seeds: ${seeds.join(', ')}`);
+    
+    for (const seed of seeds) {
+      this.connectToSingleSeed(seed);
+    }
   }
 
-  seedToHttpUrl(seed) {
+  connectToSingleSeed(seed) {
     const [host, port] = String(seed).split(':');
+    console.log(` Connecting to seed: ${seed}`);
+
     const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
-    const isOnion = host.toLowerCase().endsWith('.onion');
-    const protocol = (isLocal || isOnion) ? 'http' : 'https';
-    return isLocal
-      ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
-      : `${protocol}://${host}`;
+    const protocol = (() => {
+      if (isLocal) return 'ws';
+      const p = String(port || '').trim();
+      if (p && p !== '443') return 'ws';
+      return 'wss';
+    })();
+    const wsUrl = port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+
+      ws.on('open', () => {
+        console.log(` Connected to seed: ${seed}`);
+        this.isConnectedToSeed = true;
+        
+        ws.send(JSON.stringify({
+          type: 'sync_request',
+          nodeId: 'gateway-package',
+          platform: os.platform(),
+          timestamp: Date.now()
+        }));
+      });
+
+      ws.on('message', (data) => {
+        try {
+          const message = JSON.parse(data.toString());
+          this.handleSeedMessage(seed, message);
+        } catch (error) {
+          console.error(` Invalid message from seed ${seed}:`, error);
+        }
+      });
+
+      ws.on('close', () => {
+        console.log(` Disconnected from seed: ${seed}`);
+        setTimeout(() => this.connectToSingleSeed(seed), 10000);
+      });
+
+      ws.on('error', (error) => {
+        console.error(` WebSocket error for seed ${seed}:`, error.message || error);
+      });
+    } catch (error) {
+      console.error(` Failed to connect to seed ${seed}:`, error && error.message ? error.message : error);
+      setTimeout(() => this.connectToSingleSeed(seed), 10000);
+    }
   }
 
   async discoverOperators() {
@@ -941,53 +924,79 @@ class GatewayNode {
       return this.discoveredOperators;
     }
 
+    console.log('🔍 Discovering active operators...');
+    
     const seeds = this.getSeedNodes();
     for (const seed of seeds) {
       try {
-        const httpUrl = this.seedToHttpUrl(seed);
-        const resp = await fetch(`${httpUrl}/api/network/operators`, { method: 'GET' });
-        if (!resp.ok) continue;
-        const data = await resp.json();
+        const [host, port] = String(seed).split(':');
+        const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+        const isOnion = host.toLowerCase().endsWith('.onion');
+        const protocol = (isLocal || isOnion) ? 'http' : 'https';
+        const httpUrl = isLocal
+          ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
+          : `${protocol}://${host}`;
+
+        const response = await fetch(`${httpUrl}/api/network/operators`);
+        const data = await response.json();
+
         if (data && data.success && Array.isArray(data.operators)) {
           this.discoveredOperators = data.operators;
           this.lastOperatorDiscovery = now;
+          console.log(`✅ Discovered ${data.operators.length} active operators`);
           return this.discoveredOperators;
         }
-      } catch {}
+      } catch (error) {
+        console.log(`⚠️  Failed to discover operators from ${seed}: ${error.message}`);
+      }
     }
 
+    console.log('⚠️  Operator discovery failed, using hardcoded seeds');
     return [];
   }
 
   async connectToOperators() {
     await this.discoverOperators();
 
-    const operators = this.discoveredOperators.length > 0
-      ? this.discoveredOperators
+    const operators = this.discoveredOperators.length > 0 
+      ? this.discoveredOperators 
       : this.getSeedNodes().map((seed, idx) => ({
           operatorId: `seed-${idx}`,
           wsUrl: this.seedToWsUrl(seed),
         }));
 
+    console.log(`🌐 Connecting to ${operators.length} operators...`);
+
     for (const op of operators) {
-      if (!op || !op.wsUrl) continue;
+      if (!op.wsUrl) continue;
       if (!this.isTorEnabled() && this.isOnionUrl(op.wsUrl)) continue;
-      const operatorId = String(op.operatorId || op.wsUrl);
-      if (this.operatorConnections.has(operatorId)) {
-        const existing = this.operatorConnections.get(operatorId);
-        if (existing && existing.ws && existing.ws.readyState === WebSocket.OPEN) {
+      
+      if (this.operatorConnections.has(op.operatorId)) {
+        const existing = this.operatorConnections.get(op.operatorId);
+        if (existing.ws && existing.ws.readyState === WebSocket.OPEN) {
           continue;
         }
       }
-      this.connectToOperator({ operatorId, wsUrl: op.wsUrl });
+
+      this.connectToOperator(op);
     }
   }
 
-  connectToOperator(operator) {
-    const operatorId = String(operator?.operatorId || '').trim();
-    const wsUrl = String(operator?.wsUrl || '').trim();
-    if (!operatorId || !wsUrl) return;
+  seedToWsUrl(seed) {
+    const [host, port] = String(seed).split(':');
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = (() => {
+      if (isLocal) return 'ws';
+      const p = String(port || '').trim();
+      if (p && p !== '443') return 'ws';
+      return 'wss';
+    })();
+    return port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
+  }
 
+  connectToOperator(operator) {
+    const { operatorId, wsUrl } = operator;
+    
     try {
       const ws = new WebSocket(wsUrl);
       const connectionInfo = {
@@ -999,6 +1008,7 @@ class GatewayNode {
       };
 
       ws.on('open', () => {
+        console.log(`✅ Connected to operator: ${operatorId}`);
         connectionInfo.connectedAt = Date.now();
         connectionInfo.lastSeen = Date.now();
         this.isConnectedToSeed = true;
@@ -1016,112 +1026,47 @@ class GatewayNode {
           connectionInfo.lastSeen = Date.now();
           const message = JSON.parse(data.toString());
           this.handleSeedMessage(operatorId, message);
-        } catch {}
+        } catch (error) {
+          console.error(`❌ Invalid message from operator ${operatorId}:`, error);
+        }
       });
 
       ws.on('close', () => {
+        console.log(`❌ Disconnected from operator: ${operatorId}`);
         this.operatorConnections.delete(operatorId);
-
+        
         const hasActiveConnection = Array.from(this.operatorConnections.values())
-          .some(conn => conn && conn.ws && conn.ws.readyState === WebSocket.OPEN);
-
+          .some(conn => conn.ws && conn.ws.readyState === WebSocket.OPEN);
+        
         if (!hasActiveConnection) {
           this.isConnectedToSeed = false;
         }
 
         setTimeout(() => {
-          this.connectToOperator({ operatorId, wsUrl });
+          this.connectToOperator(operator);
         }, 10000);
       });
 
-      ws.on('error', () => {});
+      ws.on('error', (error) => {
+        console.error(`❌ WebSocket error for operator ${operatorId}:`, error.message);
+      });
 
       this.operatorConnections.set(operatorId, connectionInfo);
-    } catch {}
-  }
-
-  connectToSeeds() {
-    const seeds = this.getSeedNodes();
-
-    const attempt = async () => {
-      const current = this.seedWs;
-      if (current) {
-        try { current.terminate(); } catch {}
-        this.seedWs = null;
-      }
-      this.connectedSeed = null;
-      this.isConnectedToSeed = false;
-
-      for (const seed of seeds) {
-        const wsUrl = this.seedToWsUrl(seed);
-        try {
-          const ws = await new Promise((resolve, reject) => {
-            const sock = new WebSocket(wsUrl);
-            const timer = setTimeout(() => {
-              try { sock.terminate(); } catch {}
-              reject(new Error('connect timeout'));
-            }, 6000);
-
-            sock.once('open', () => {
-              clearTimeout(timer);
-              resolve(sock);
-            });
-
-            sock.once('error', (e) => {
-              clearTimeout(timer);
-              try { sock.terminate(); } catch {}
-              reject(e);
-            });
-          });
-
-          this.seedWs = ws;
-          this.connectedSeed = seed;
-          this.isConnectedToSeed = true;
-
-          ws.on('message', (data) => {
-            try {
-              const message = JSON.parse(data.toString());
-              this.handleSeedMessage(seed, message);
-            } catch {}
-          });
-
-          ws.on('close', () => {
-            if (this.connectedSeed === seed) {
-              this.isConnectedToSeed = false;
-              this.connectedSeed = null;
-              this.seedWs = null;
-              setTimeout(() => {
-                attempt().catch(() => {});
-              }, 5000);
-            }
-          });
-
-          ws.on('error', () => {});
-
-          ws.send(JSON.stringify({
-            type: 'sync_request',
-            nodeId: 'gateway-package',
-            platform: os.platform(),
-            timestamp: Date.now()
-          }));
-
-          return;
-        } catch {}
-      }
-
-      setTimeout(() => {
-        attempt().catch(() => {});
-      }, 10000);
-    };
-
-    attempt().catch(() => {});
+    } catch (error) {
+      console.error(`❌ Failed to connect to operator ${operatorId}:`, error.message);
+    }
   }
 
   handleSeedMessage(seed, message) {
     switch (message.type) {
       case 'sync_response':
         console.log(`📥 Received sync data from seed: ${seed}`);
-        this.registryData = message.data || {};
+        this.registryData = message.state || message.data || {};
+        break;
+
+      case 'sync_data':
+        console.log(`📥 Received sync data from seed: ${seed}`);
+        this.registryData = message.state || message.data || {};
         break;
       
       case 'registry_update':
@@ -1133,6 +1078,11 @@ class GatewayNode {
           };
         }
         this.broadcastToPeers(message);
+        break;
+      
+      case 'state_verification':
+        // Gateway acknowledges consensus verification from network
+        console.log(`✓ State verification from ${message.nodeId} (seq: ${message.sequenceNumber})`);
         break;
       
       default:
@@ -1225,13 +1175,19 @@ class GatewayNode {
     // Setup WebSocket
     this.setupWebSocket();
 
+    // Connect to operators with discovery
     await this.connectToOperators();
+
+    // Fallback: also try legacy seed connection
     this.connectToSeeds();
 
+    // Periodic operator discovery refresh (every 5 minutes)
     setInterval(async () => {
       try {
         await this.connectToOperators();
-      } catch {}
+      } catch (error) {
+        console.error('❌ Operator discovery refresh failed:', error);
+      }
     }, 300000);
 
     // Periodic data save

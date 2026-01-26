@@ -359,6 +359,98 @@
             transition: all 0.3s;
         }
 
+        .network-node.clickable {
+            cursor: pointer;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            width: 100%;
+            max-width: 720px;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            box-shadow: 0 20px 80px rgba(212, 175, 55, 0.25);
+            padding: 22px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .modal-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal-close {
+            border: 1px solid #d4af37;
+            background: transparent;
+            color: #d4af37;
+            border-radius: 10px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .modal-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .modal-row {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 12px;
+            align-items: start;
+            padding: 10px 12px;
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            border-radius: 12px;
+            background: rgba(0,0,0,0.25);
+        }
+
+        .modal-label {
+            color: #999;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .modal-value {
+            color: #d4af37;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.95rem;
+        }
+
         .network-node:hover {
             border-color: #f4d03f;
             box-shadow: 0 5px 20px rgba(212, 175, 55, 0.2);
@@ -685,7 +777,7 @@
                 <div class="stat-card">
                     <div class="stat-icon">🔗</div>
                     <div class="stat-label">Quorum Status</div>
-                    <div class="stat-value" id="quorumStatus">—</div>
+                    <div class="stat-value" id="quorumStatus">3-of-5</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon">✅</div>
@@ -697,16 +789,22 @@
                     <div class="stat-label">Transactions Validated</div>
                     <div class="stat-value" id="txValidated">0</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔐</div>
+                    <div class="stat-label">Consensus</div>
+                    <div class="stat-value" id="consensusStatus">—</div>
+                    <div style="color:#999; font-size:0.9rem; margin-top:6px;" id="consensusDetail">—</div>
+                </div>
+            </div>
+
+            <div id="networkOverviewPanel" style="margin-bottom: 30px;">
+                <div class="empty-state">Loading network overview...</div>
             </div>
 
             <h3 style="margin-bottom: 15px;">Operator Nodes</h3>
             <div id="operatorNodes">
-                <div class="network-node">
-                    <div>
-                        <strong>Operator 1 (You)</strong>
-                        <div style="color: #666; font-size: 0.9rem;">Main Node</div>
-                    </div>
-                    <span class="status-badge status-online">Online</span>
+                <div style="color: #666; padding: 20px; text-align: center;">
+                    Loading operator nodes...
                 </div>
             </div>
 
@@ -721,6 +819,16 @@
                 <div style="color: #666; padding: 20px; text-align: center;">
                     Loading gateway nodes...
                 </div>
+            </div>
+        </div>
+
+        <div id="nodeDetailsOverlay" class="modal-overlay" onclick="closeNodeDetails(event)">
+            <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <div class="modal-title" id="nodeDetailsTitle">Node Details</div>
+                    <button class="modal-close" onclick="closeNodeDetails()">Close</button>
+                </div>
+                <div class="modal-grid" id="nodeDetailsGrid"></div>
             </div>
         </div>
 
@@ -2276,16 +2384,15 @@
                     document.getElementById('totalAuthentications').textContent = stats.totalAuthentications;
                     document.getElementById('itemsRegistered').textContent = stats.totalItems;
                     document.getElementById('itemsTracked').textContent = stats.totalItems;
+
+                    const txValidatedEl = document.getElementById('txValidated');
+                    if (txValidatedEl) {
+                        const txCount = Number(stats.totalTransfers || 0) + Number(stats.totalAuthentications || 0);
+                        txValidatedEl.textContent = String(txCount);
+                    }
                 }
 
-                // Load gateway nodes count
-                const gatewayResponse = await fetch('/api/network/gateways');
-                const gatewayData = await gatewayResponse.json();
-                if (gatewayData.success) {
-                    // Total network nodes = 1 operator + connected gateways
-                    const totalNodes = 1 + gatewayData.totalGateways;
-                    document.getElementById('networkNodes').textContent = totalNodes;
-                }
+                await loadNetworkConnections();
             } catch (error) {
                 console.error('Failed to load stats:', error);
             }
@@ -2293,81 +2400,257 @@
 
         loadStats();
 
-        // Load gateway nodes
-        async function loadGatewayNodes() {
-            try {
-                const response = await fetch('/api/network/gateways');
-                const data = await response.json();
-                
-                const container = document.getElementById('gatewayNodesList');
-                
-                if (data.success && data.gateways.length > 0) {
-                    container.innerHTML = data.gateways.map((gateway, index) => `
-                        <div class="network-node">
-                            <div>
-                                <strong>Gateway Node ${index + 1}</strong>
-                                <div style="color: #666; font-size: 0.9rem;">Read-only Registry Replica</div>
-                            </div>
-                            <span class="status-badge ${gateway.connected ? 'status-online' : 'status-offline'}">
-                                ${gateway.connected ? 'Connected' : 'Disconnected'}
-                            </span>
-                        </div>
-                    `).join('');
-                } else {
-                    container.innerHTML = `
-                        <div style="color: #666; padding: 20px; text-align: center; background: #f5f5f5; border-radius: 10px;">
-                            No gateway nodes connected yet. 
-                            <a href="/install-gateway.html" style="color: #d4af37; text-decoration: underline;">Install a gateway node</a>
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Failed to load gateway nodes:', error);
-                document.getElementById('gatewayNodesList').innerHTML = `
-                    <div style="color: #999; padding: 20px; text-align: center;">
-                        Unable to load gateway nodes
-                    </div>
-                `;
-            }
+        function formatDuration(ms) {
+            const s = Math.floor((Number(ms || 0)) / 1000);
+            const days = Math.floor(s / 86400);
+            const hours = Math.floor((s % 86400) / 3600);
+            const mins = Math.floor((s % 3600) / 60);
+            const secs = s % 60;
+            const parts = [];
+            if (days) parts.push(`${days}d`);
+            if (hours || days) parts.push(`${hours}h`);
+            if (mins || hours || days) parts.push(`${mins}m`);
+            parts.push(`${secs}s`);
+            return parts.join(' ');
         }
 
-        // Load gateway nodes initially and refresh every 10 seconds
-        loadGatewayNodes();
-        setInterval(loadGatewayNodes, 10000);
+        function safeText(v) {
+            const s = String(v ?? '').trim();
+            return s.length ? s : '—';
+        }
+
+        function shortText(v, n = 18) {
+            const s = String(v ?? '').trim();
+            if (!s) return '—';
+            if (s.length <= n * 2) return s;
+            return `${s.slice(0, n)}…${s.slice(-n)}`;
+        }
+
+        function statusBadge(connected) {
+            return `<span class="status-badge ${connected ? 'status-online' : 'status-offline'}">${connected ? 'Connected' : 'Disconnected'}</span>`;
+        }
+
+        function nodeRow(label, subLabel, connected, onClick) {
+            const clickAttr = onClick ? ` onclick="${onClick}"` : '';
+            const cls = onClick ? 'network-node clickable' : 'network-node';
+            return `
+                <div class="${cls}"${clickAttr}>
+                    <div>
+                        <strong>${label}</strong>
+                        <div style="color: #666; font-size: 0.9rem;">${subLabel}</div>
+                    </div>
+                    ${statusBadge(connected)}
+                </div>
+            `;
+        }
+
+        let __networkConnections = { operators: [], gateways: [] };
+
+        function showNodeDetails(kind, idx) {
+            const overlay = document.getElementById('nodeDetailsOverlay');
+            const title = document.getElementById('nodeDetailsTitle');
+            const grid = document.getElementById('nodeDetailsGrid');
+
+            const item = kind === 'operator'
+                ? (__networkConnections.operators || [])[idx]
+                : (__networkConnections.gateways || [])[idx];
+
+            if (!item) return;
+
+            const rows = [];
+            const connectedAt = Number(item.connectedAt || 0);
+            const lastSeen = Number(item.lastSeen || 0);
+            const uptimeMs = Number(item.uptimeMs || 0);
+
+            if (kind === 'operator') {
+                const op = item.operator || null;
+                title.textContent = `Operator: ${safeText(item.operatorId || op?.operatorId)}`;
+                rows.push({ k: 'Type', v: 'Operator' });
+                rows.push({ k: 'Operator ID', v: safeText(item.operatorId || op?.operatorId) });
+                rows.push({ k: 'Status', v: safeText(op?.status) });
+                rows.push({ k: 'URL', v: safeText(op?.operatorUrl || op?.operatorURL || op?.url) });
+                rows.push({ k: 'BTC Address', v: safeText(op?.btcAddress) });
+                rows.push({ k: 'Public Key', v: safeText(op?.publicKey) });
+            } else {
+                title.textContent = `Gateway: ${safeText(item.id)}`;
+                rows.push({ k: 'Type', v: 'Gateway' });
+                rows.push({ k: 'Gateway ID', v: safeText(item.id) });
+            }
+
+            rows.push({ k: 'Connected', v: item.connected ? 'Yes' : 'No' });
+            rows.push({ k: 'Connected Since', v: connectedAt ? new Date(connectedAt).toLocaleString() : '—' });
+            rows.push({ k: 'Uptime', v: formatDuration(uptimeMs) });
+            rows.push({ k: 'Last Seen', v: lastSeen ? new Date(lastSeen).toLocaleString() : '—' });
+            rows.push({ k: 'IP', v: safeText(item.ip) });
+
+            grid.innerHTML = rows.map(r => `
+                <div class="modal-row">
+                    <div class="modal-label">${r.k}</div>
+                    <div class="modal-value">${r.v}</div>
+                </div>
+            `).join('');
+
+            overlay.classList.add('active');
+        }
+
+        function closeNodeDetails(evt) {
+            const overlay = document.getElementById('nodeDetailsOverlay');
+            if (!overlay) return;
+            if (evt && evt.target && evt.target !== overlay) return;
+            overlay.classList.remove('active');
+        }
 
         async function loadNetworkConnections() {
             try {
-                const r = await fetch('/api/network/connections', { cache: 'no-store' });
-                const data = await r.json().catch(() => ({}));
+                const response = await fetch('/api/network/connections');
+                const data = await response.json();
 
-                if (!r.ok || !data || data.success !== true) {
-                    return;
+                if (!data || data.success !== true) {
+                    throw new Error(data?.error || 'Failed to load network connections');
                 }
 
                 const operators = data.operators || {};
                 const gateways = data.gateways || {};
                 const network = data.network || {};
+                
+                __networkConnections = {
+                    operators: Array.isArray(operators.connected) ? operators.connected : [],
+                    gateways: Array.isArray(gateways.connected) ? gateways.connected : [],
+                };
 
-                const connectedOps = Array.isArray(operators.connected)
-                    ? operators.connected.filter((o) => Boolean(o && o.connected)).length
-                    : 0;
-                const connectedGws = Array.isArray(gateways.connected)
-                    ? gateways.connected.filter((g) => Boolean(g && g.connected)).length
-                    : 0;
+                const opContainer = document.getElementById('operatorNodes');
+                const gwContainer = document.getElementById('gatewayNodesList');
 
+                const ops = __networkConnections.operators;
+                if (ops.length > 0) {
+                    opContainer.innerHTML = ops.map((o, idx) => {
+                        const label = `Operator ${idx + 1}`;
+                        const sub = o.operator?.operatorUrl ? `URL: ${o.operator.operatorUrl}` : (o.operatorId ? `ID: ${o.operatorId}` : 'Connected operator');
+                        return nodeRow(label, sub, Boolean(o.connected), `showNodeDetails('operator', ${idx})`);
+                    }).join('');
+                } else {
+                    opContainer.innerHTML = `
+                        <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                            No operator nodes connected yet.
+                        </div>
+                    `;
+                }
+
+                const gws = __networkConnections.gateways;
+                if (gws.length > 0) {
+                    gwContainer.innerHTML = gws.map((g, idx) => {
+                        const label = `Gateway Node ${idx + 1}`;
+                        const sub = 'Read-only Registry Replica';
+                        return nodeRow(label, sub, Boolean(g.connected), `showNodeDetails('gateway', ${idx})`);
+                    }).join('');
+                } else {
+                    gwContainer.innerHTML = `
+                        <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                            No gateway nodes connected yet.
+                            <a href="/install-gateway.html" style="color: #d4af37; text-decoration: underline;">Install a gateway node</a>
+                        </div>
+                    `;
+                }
+
+                const totalNodes = 1 + (Number(operators.total || 0)) + (Number(gateways.total || 0));
+                const networkNodesEl = document.getElementById('networkNodes');
+                if (networkNodesEl) networkNodesEl.textContent = totalNodes;
+
+                const connectedOps = (ops || []).filter(o => Boolean(o.connected)).length;
+                const connectedGws = (gws || []).filter(g => Boolean(g.connected)).length;
                 const nodesOnlineEl = document.getElementById('nodesOnline');
                 if (nodesOnlineEl) nodesOnlineEl.textContent = String(1 + connectedOps + connectedGws);
 
                 const quorumStatusEl = document.getElementById('quorumStatus');
                 if (quorumStatusEl) {
-                    const activeOperators = Number((network && network.activeOperators) || 0);
-                    const n = Number.isFinite(activeOperators) && activeOperators > 0 ? activeOperators : (1 + connectedOps);
+                    const n = Math.max(0, Math.floor(Number(operators.total || 0)));
+                    const online = Math.max(0, Math.floor(Number(operators.online || 0)));
                     const required = (n <= 1) ? 1 : (n === 2 ? 2 : Math.ceil((2 * n) / 3));
-                    const online = Math.min(n, (1 + connectedOps));
-                    quorumStatusEl.textContent = `${online}-of-${required}`;
+                    quorumStatusEl.textContent = `${Math.min(online, n)}-of-${required}`;
                 }
-            } catch {}
+
+                const overviewEl = document.getElementById('networkOverviewPanel');
+                if (overviewEl) {
+                    overviewEl.innerHTML = `
+                        <div style="background: rgba(20,20,20,0.95); border: 1px solid rgba(212,175,55,0.25); padding: 18px; border-radius: 12px;">
+                            <h3 style="margin-bottom: 12px; color: #d4af37;">📊 Network Overview</h3>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Metric</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>Current Sequence</td><td style="font-family: monospace; font-weight: 700;">#${Number(network.currentSequence || 0)}</td></tr>
+                                    <tr><td>Current Hash</td><td style="font-family: monospace; font-size: 0.85rem;">${safeText(network.currentHash || 'N/A')}</td></tr>
+                                    <tr><td>Active Operators</td><td><span style="color: #4cd964; font-weight: 700;">${Number(operators.online || 0)}</span> / ${Number(operators.total || 0)}</td></tr>
+                                    <tr><td>Connected Gateways</td><td style="font-weight: 700;">${Number(gateways.total || 0)}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                try {
+                    const token = sessionStorage.getItem('admin_token');
+                    if (token) {
+                        const cr = await fetch('/api/admin/consensus/status', {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            cache: 'no-store'
+                        });
+                        const c = await cr.json().catch(() => ({}));
+
+                        const csEl = document.getElementById('consensusStatus');
+                        const cdEl = document.getElementById('consensusDetail');
+
+                        if (cr.ok && c && c.success === true && c.enabled) {
+                            const ok = !!c.consensusAchieved;
+                            const pct = Number(c.agreementPercentage || 0);
+                            const nodes = Number(c.totalNodes || 0);
+                            csEl.textContent = ok ? '✅ OK' : '⚠️ WARN';
+                            csEl.style.color = ok ? '#34c759' : '#ff9f0a';
+                            const lastTs = Number(c.lastVerification || 0);
+                            const ageSec = lastTs ? Math.max(0, Math.floor((Date.now() - lastTs) / 1000)) : 0;
+                            const ageTxt = lastTs ? `${ageSec}s ago` : '—';
+                            cdEl.textContent = `${pct.toFixed(1)}% · ${nodes} nodes · ${ageTxt}`;
+                        } else {
+                            csEl.textContent = '—';
+                            csEl.style.color = '';
+                            cdEl.textContent = 'Unavailable';
+                        }
+                    }
+                } catch (e) {
+                    const csEl = document.getElementById('consensusStatus');
+                    const cdEl = document.getElementById('consensusDetail');
+                    if (csEl) { csEl.textContent = '—'; csEl.style.color = ''; }
+                    if (cdEl) cdEl.textContent = 'Unavailable';
+                }
+            } catch (error) {
+                console.error('Failed to load network connections:', error);
+                const gw = document.getElementById('gatewayNodesList');
+                const op = document.getElementById('operatorNodes');
+                const overviewEl = document.getElementById('networkOverviewPanel');
+                if (overviewEl) overviewEl.innerHTML = '<div class="empty-state">Unable to load network overview</div>';
+                if (gw) {
+                    gw.innerHTML = `
+                        <div style="color: #999; padding: 20px; text-align: center;">
+                            Unable to load gateway nodes
+                        </div>
+                    `;
+                }
+                if (op) {
+                    op.innerHTML = `
+                        <div style="color: #999; padding: 20px; text-align: center;">
+                            Unable to load operator nodes
+                        </div>
+                    `;
+                }
+            }
         }
+
+        window.showNodeDetails = showNodeDetails;
+        window.closeNodeDetails = closeNodeDetails;
 
         loadNetworkConnections();
         setInterval(loadNetworkConnections, 10000);

@@ -1,6 +1,6 @@
 {
   "name": "autho-gateway-node",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Autho Gateway Node - Pre-packaged decentralized registry node",
   "main": "gateway-package.js",
   "bin": {

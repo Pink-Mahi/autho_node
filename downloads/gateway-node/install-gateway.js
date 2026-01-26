@@ -98,7 +98,7 @@ console.log(`✅ Created start script: ${startScript}`);
 const config = {
   port: 3001,
   host: '0.0.0.0',
-  seedNodes: ['autho.pinkmahi.com:3000'],
+  seedNodes: ['autho.pinkmahi.com:3000', 'autho.cartpathcleaning.com'],
   dataDir: './gateway-data'
 };
 
@@ -126,7 +126,7 @@ console.log('');
 console.log('📊 Check status:');
 console.log('   http://localhost:3001/health');
 console.log('');
-console.log('🔒 Seed nodes are hardcoded to autho.pinkmahi.com');
+console.log('🔒 Seed nodes are hardcoded (multi-seed)');
 console.log('🎯 Connected to the Autho network!');
 console.log('');
 console.log('📖 For more information, see:');

@@ -48,7 +48,7 @@ call npm install --silent
 REM Create start script
 echo @echo off > start.bat
 echo cd /d "%%~dp0" >> start.bat
-echo set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com >> start.bat
+echo set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com >> start.bat
 echo node gateway-package.js >> start.bat
 
 echo.

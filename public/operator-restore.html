@@ -412,7 +412,7 @@
 
                 if (response.ok) {
                     alert('✅ Operator wallet restored and configured!\n\nYou can now start your operator node.');
-                    window.location.href = '/dashboard';
+                    window.location.href = '/operator/dashboard';
                 } else {
                     showError('Error: ' + (data.error || 'Failed to save configuration'));
                 }

@@ -323,7 +323,7 @@
         <div class="section" id="anchoring-section">
             <h2 class="section-title">⚓ Bitcoin Anchoring</h2>
             <p class="muted" style="margin-bottom: 20px;">
-                Anchor checkpoints to Bitcoin blockchain for immutable proof of ledger state.
+                Anchor checkpoints to Bitcoin blockchain for immutable proof of ledger state. 
                 <strong>Operators who anchor more frequently receive higher weight in fee distribution!</strong>
             </p>
 
@@ -558,9 +558,6 @@
                 loadNodeStatus();
             } else if (tab === 'security') {
                 loadSecurity();
-            } else if (tab === 'anchoring') {
-                loadUnanchoredCheckpoints();
-                loadAnchorStats();
             }
         }
 
@@ -1566,7 +1563,7 @@
             const gateways = data.gateways || {};
             const connectedOps = Array.isArray(operators.connected) ? operators.connected : [];
             const connectedGws = Array.isArray(gateways.connected) ? gateways.connected : [];
-            const mainSeedConnected = data.mainSeedConnected === true;
+            const mainSeedConnected = (typeof data.mainSeedConnected === 'boolean') ? data.mainSeedConnected : null;
 
             function formatUptime(ms) {
                 const seconds = Math.floor(ms / 1000);
@@ -1602,7 +1599,7 @@
                             <tbody>
                                 <tr><td>Current Sequence</td><td style="font-family: monospace; font-weight: 700;">#${Number(network.currentSequence || 0)}</td></tr>
                                 <tr><td>Current Hash</td><td style="font-family: monospace; font-size: 0.85rem;">${String(network.currentHash || 'N/A')}</td></tr>
-                                <tr><td>Main Node Connection</td><td>${mainSeedConnected ? '<span style="color: #4cd964; font-weight: 700;">🟢 CONNECTED</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DISCONNECTED</span>'}</td></tr>
+                                <tr><td>Main Node Connection</td><td>${mainSeedConnected === null ? 'N/A' : (mainSeedConnected ? '<span style="color: #4cd964; font-weight: 700;">🟢 CONNECTED</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DISCONNECTED</span>')}</td></tr>
                                 <tr><td>Active Operators</td><td><span style="color: #4cd964; font-weight: 700;">${Number(operators.online || 0)}</span> / ${Number(operators.total || 0)}</td></tr>
                                 <tr><td>Offline Operators</td><td><span style="color: #ff9f0a; font-weight: 700;">${Number(operators.offline || 0)}</span></td></tr>
                                 <tr><td>Connected Gateways</td><td style="font-weight: 700;">${Number(gateways.total || 0)}</td></tr>
@@ -1806,7 +1803,7 @@
             }
 
             const unanchored = Array.isArray(data.unanchored) ? data.unanchored : [];
-
+            
             // Update stats
             document.getElementById('totalCheckpoints').textContent = Number(data.total || 0);
             document.getElementById('anchoredCount').textContent = Number(data.anchored || 0);
@@ -1815,7 +1812,7 @@
             // Populate checkpoint dropdown
             const select = document.getElementById('checkpointSelect');
             if (select) {
-                select.innerHTML = '<option value="">Select checkpoint...</option>' +
+                select.innerHTML = '<option value="">Select checkpoint...</option>' + 
                     unanchored.map(cp => {
                         const root = String(cp.checkpointRoot || '');
                         const date = new Date(cp.hourStartMs || cp.createdAt).toLocaleString();
@@ -1873,10 +1870,10 @@
             }
 
             showEl('anchoringSuccess', true, '✅ Bitcoin anchor committed successfully!');
-
+            
             // Clear form
             document.getElementById('anchorForm').reset();
-
+            
             // Reload data
             await loadUnanchoredCheckpoints();
             await loadAnchorStats();
@@ -1896,10 +1893,11 @@
             const operators = Array.isArray(data.operators) ? data.operators : [];
             const myOperatorId = String(data.myOperatorId || '');
             const myAnchorCount = Number(data.myAnchorCount || 0);
+            const totalAnchors = Number(data.totalAnchors || 0);
 
             // Update my stats
             document.getElementById('myAnchorCount').textContent = myAnchorCount;
-
+            
             // Calculate my weight
             const myOp = operators.find(op => op.operatorId === myOperatorId);
             const myWeight = myOp ? (myOp.weight * 100).toFixed(1) : '0.0';
@@ -1912,7 +1910,7 @@
                 } else {
                     // Sort by anchor count descending
                     operators.sort((a, b) => (b.anchorCount || 0) - (a.anchorCount || 0));
-
+                    
                     el.innerHTML = `
                         <table>
                             <thead>
@@ -1927,7 +1925,7 @@
                                 ${operators.map(op => {
                                     const isMe = op.operatorId === myOperatorId;
                                     const weight = (op.weight * 100).toFixed(1);
-                                    const feeShare = (op.weight * 40).toFixed(1);
+                                    const feeShare = (op.weight * 40).toFixed(1); // 40% of 1% goes to operators
                                     return `
                                         <tr style="${isMe ? 'background: rgba(212, 175, 55, 0.1);' : ''}">
                                             <td style="font-family: monospace; font-size: 0.85rem;">
@@ -1943,7 +1941,7 @@
                             </tbody>
                         </table>
                         <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                            💡 <strong>How it works:</strong> Operators receive 40% of the 1% title-update fee.
+                            💡 <strong>How it works:</strong> Operators receive 40% of the 1% title-update fee. 
                             Your share is weighted by your anchor contributions. More anchors = more fees!
                         </p>
                     `;

@@ -82,7 +82,7 @@ echo    Logs: %INSTALL_DIR%\gateway-node.log
 echo.
 
 REM Start in a visible window so failures don't disappear instantly
-start "Autho Gateway Node" cmd /k "cd /d \"%INSTALL_DIR%\" ^&^& set GATEWAY_PORT=3001 ^&^& set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com ^&^& node gateway-package.js 1^> gateway-node.log 2^>^&1"
+start "Autho Gateway Node" cmd /k "cd /d \"%INSTALL_DIR%\" ^&^& set GATEWAY_PORT=3001 ^&^& set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com ^&^& node gateway-package.js 1^> gateway-node.log 2^>^&1"
 
 REM Give it a moment then open the UI
 timeout /t 4 /nobreak >nul

@@ -74,7 +74,7 @@ Create `gateway-config.json`:
   "nodeId": "gateway-retail-1",
   "port": 3001,
   "host": "0.0.0.0",
-  "seedNodes": ["autho.pinkmahi.com:3000"],
+  "seedNodes": ["autho.pinkmahi.com:3000", "autho.cartpathcleaning.com"],
   "dataDir": "./gateway-data",
   "cache": {
     "enabled": true,
@@ -87,6 +87,28 @@ Create `gateway-config.json`:
   }
 }
 ```
+
+## 🌱 Seed List (Multi-Seed)
+
+The gateway download package ships with a **baked-in multi-seed list** so it can still bootstrap if any single domain goes offline.
+
+### **Emergency override (no rebuild)**
+
+You can override the seed list at runtime by setting:
+
+```bash
+GATEWAY_SEEDS=autho.pinkmahi.com:3000,autho.cartpathcleaning.com
+```
+
+or:
+
+```bash
+AUTHO_GATEWAY_SEEDS=autho.pinkmahi.com:3000,autho.cartpathcleaning.com
+```
+
+### **Updating the baked-in list (current approach)**
+
+For now, the baked-in seed list is updated by periodically updating this repo’s gateway distribution files (the downloadable `downloads/gateway-node/*` package and the gateway TS sources under `src/gateway/*`) and redeploying.
 
 ## 🌐 API Endpoints
 
@@ -113,18 +135,6 @@ Once running, your gateway node provides these HTTP endpoints:
 ### **Network**
 - `GET /api/network/stats` - Network statistics
 - `GET /api/network/peers` - Connected peers
-
-## 🧾 Release Notes
-
-### 1.0.1
-
-- Adds gateway proxy endpoints for Bitcoin anchoring and time source:
-  - `GET /api/anchors/time`
-  - `GET /api/anchors/checkpoints`
-  - `GET /api/anchors/commits`
-  - `GET /api/anchors/checkpoints/:checkpointRoot/verify`
-  - `GET /api/anchors/checkpoints/:checkpointRoot/commitment`
-- Optional gateway-side PoW solving when operators require it (disabled by default)
 
 ## 🏪 Retail Store Setup
 

@@ -653,7 +653,7 @@ Operator Node Wallet Backup
 
                 if (response.ok) {
                     alert('✅ Operator wallet setup complete!\n\n⚠️ Make sure you have saved your seed phrase!\n\nYou can now start your operator node.');
-                    window.location.href = '/dashboard';
+                    window.location.href = '/operator/dashboard';
                 } else {
                     alert('Error: ' + (data.error || 'Failed to save operator configuration'));
                 }

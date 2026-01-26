@@ -66,7 +66,7 @@ echo {
 echo   "nodeId": "gateway-%RANDOM%",
 echo   "port": 3001,
 echo   "host": "0.0.0.0",
-echo   "seedNodes": ["autho.pinkmahi.com:3000"],
+echo   "seedNodes": ["autho.pinkmahi.com:3000", "autho.cartpathcleaning.com"],
 echo   "dataDir": "./gateway-data",
 echo   "cache": {
 echo     "enabled": true,

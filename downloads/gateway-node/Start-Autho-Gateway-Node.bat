@@ -47,7 +47,7 @@ echo Starting gateway node on port %PORT%...
 echo A new window will open with the node logs.
 echo.
 
-start "Autho Gateway Node" cmd /k "cd /d \"%SCRIPT_DIR%\" ^&^& set GATEWAY_PORT=%PORT% ^&^& set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com ^&^& node gateway-package.js"
+start "Autho Gateway Node" cmd /k "cd /d \"%SCRIPT_DIR%\" ^&^& set GATEWAY_PORT=%PORT% ^&^& set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com ^&^& node gateway-package.js"
 
 timeout /t 2 /nobreak >nul
 start "" "http://localhost:%PORT%/m"

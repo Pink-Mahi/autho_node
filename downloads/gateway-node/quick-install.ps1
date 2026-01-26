@@ -66,7 +66,7 @@ Pop-Location
 $startScript = @"
 @echo off
 cd /d "%~dp0"
-set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com
+set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com
 node gateway-package.js
 pause
 "@
@@ -77,7 +77,7 @@ Write-Host "✅ Created start script" -ForegroundColor Green
 # Create PowerShell start script
 $psStartScript = @"
 Set-Location `$PSScriptRoot
-`$env:AUTHO_OPERATOR_URLS = 'http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com'
+`$env:AUTHO_OPERATOR_URLS = 'http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com'
 node gateway-package.js
 "@
 
