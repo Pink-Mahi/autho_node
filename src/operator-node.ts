@@ -1,4 +1,4 @@
-﻿import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response } from 'express';
 import * as http from 'http';
 import WebSocket from 'ws';
 import * as fs from 'fs';
@@ -2124,10 +2124,50 @@ export class OperatorNode extends EventEmitter {
       console.log(`[Operator] Sync complete. Accounts: ${this.state.accounts.size}, Items: ${this.state.items.size}`);
 
       await this.persistState();
+      this.consecutiveSyncFailures = 0;
     } catch (error: any) {
       console.error('[Operator] Sync error:', error.message);
+      if (String(error?.message || '').includes('Invalid event hash')) {
+        this.consecutiveSyncFailures++;
+        if (this.consecutiveSyncFailures >= 3) {
+          console.log('[Operator] 🔄 Resetting event store after 3 consecutive sync failures...');
+          await this.resetEventStore();
+          this.consecutiveSyncFailures = 0;
+        }
+      }
     } finally {
       this.syncInProgress = false;
+    }
+  }
+
+  private async resetEventStore(): Promise<void> {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const eventsDir = path.join(this.config.dataDir, 'events');
+      const stateFile = path.join(this.config.dataDir, 'event-store-state.json');
+      
+      if (fs.existsSync(eventsDir)) {
+        const files = fs.readdirSync(eventsDir);
+        for (const file of files) {
+          fs.unlinkSync(path.join(eventsDir, file));
+        }
+      }
+      
+      if (fs.existsSync(stateFile)) {
+        fs.unlinkSync(stateFile);
+      }
+      
+      this.canonicalEventStore = new (require('./event-store').EventStore)(this.config.dataDir);
+      this.canonicalStateBuilder = new (require('./event-store').StateBuilder)(this.canonicalEventStore);
+      
+      this.state.lastSyncedSequence = 0;
+      this.state.lastSyncedHash = '';
+      this.state.lastSyncedAt = 0;
+      
+      console.log('[Operator] ✅ Event store reset complete - will resync from main node');
+    } catch (err: any) {
+      console.error('[Operator] Failed to reset event store:', err.message);
     }
   }
 
