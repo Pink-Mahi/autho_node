@@ -48,6 +48,8 @@ export class OperatorNode extends EventEmitter {
   private isConnectedToMain: boolean = false;
   private reconnectTimer?: NodeJS.Timeout;
   private syncInProgress: boolean = false;
+  private lastMismatchSyncAt: number = 0;
+  private consecutiveSyncFailures: number = 0;
   private gatewayConnections: Map<WebSocket, { connectedAt: number; lastSeen: number; ip?: string }> = new Map();
   private heartbeatManager?: HeartbeatManager;
   private lastMainNodeHeartbeat: number = Date.now();
