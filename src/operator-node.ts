@@ -11,6 +11,13 @@ import { EventStore, EventType, QuorumSignature } from './event-store';
 import { StateBuilder } from './event-store';
 import { verifySignature } from './crypto';
 import { OperatorPeerDiscovery, OperatorPeerInfo, connectToOperatorPeer } from './operator-peer-discovery';
+import { 
+  ConsensusNode, 
+  MempoolEvent, 
+  FinalizedCheckpoint,
+  ConsensusMessage,
+  StateProviderAdapter 
+} from './consensus';
 
 interface OperatorConfig {
   operatorId: string;
@@ -63,6 +70,10 @@ export class OperatorNode extends EventEmitter {
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
   private operatorApplyChallenges: Map<string, { challengeId: string; accountId: string; nonce: string; createdAt: number; expiresAt: number; used: boolean }> = new Map();
 
+  // Decentralized consensus components
+  private consensusNode?: ConsensusNode;
+  private stateProviderAdapter?: StateProviderAdapter;
+
   constructor(config: OperatorConfig) {
     super();
     this.config = config;
@@ -87,6 +98,185 @@ export class OperatorNode extends EventEmitter {
     this.setupRoutes();
 
     this.startOperatorHeartbeat();
+    this.initializeConsensus();
+  }
+
+  /**
+   * Initialize the decentralized consensus system
+   */
+  private initializeConsensus(): void {
+    // Create state provider adapter
+    this.stateProviderAdapter = new StateProviderAdapter({
+      accounts: this.state.accounts,
+      items: this.state.items,
+      operators: this.state.operators,
+      settlements: this.state.settlements,
+      consignments: this.state.consignments,
+      offers: new Map(),
+      operatorCandidates: new Map(),
+    });
+
+    // Create consensus node
+    this.consensusNode = new ConsensusNode(
+      {
+        nodeId: this.config.operatorId,
+        isOperator: true,
+        privateKey: this.config.privateKey,
+        publicKey: this.config.publicKey,
+        checkpointInterval: 30000, // 30 seconds
+      },
+      this.stateProviderAdapter
+    );
+
+    // Set up consensus event handlers
+    this.consensusNode.setHandlers({
+      onEventAccepted: (event) => this.handleConsensusEventAccepted(event),
+      onEventRejected: (event, reason) => this.handleConsensusEventRejected(event, reason),
+      onCheckpointFinalized: (checkpoint) => this.handleCheckpointFinalized(checkpoint),
+      onStateChanged: () => this.handleConsensusStateChanged(),
+    });
+
+    console.log(`[Consensus] Initialized for operator ${this.config.operatorId}`);
+  }
+
+  /**
+   * Handle event accepted by consensus
+   */
+  private handleConsensusEventAccepted(event: MempoolEvent): void {
+    console.log(`[Consensus] Event accepted: ${event.type} (${event.eventId})`);
+    // Broadcast to all peers
+    this.broadcastConsensusMessage({
+      type: 'mempool_event',
+      payload: event,
+      senderId: this.config.operatorId,
+      timestamp: Date.now(),
+      signature: '',
+    });
+  }
+
+  /**
+   * Handle event rejected by consensus
+   */
+  private handleConsensusEventRejected(event: MempoolEvent, reason: string): void {
+    console.log(`[Consensus] Event rejected: ${event.type} - ${reason}`);
+  }
+
+  /**
+   * Handle checkpoint finalized
+   */
+  private async handleCheckpointFinalized(checkpoint: FinalizedCheckpoint): Promise<void> {
+    console.log(`[Consensus] Checkpoint #${checkpoint.checkpointNumber} finalized with ${checkpoint.events.length} events`);
+    
+    // Apply checkpoint events to the canonical event store
+    for (const mempoolEvent of checkpoint.events) {
+      try {
+        // Convert mempool event to canonical event format
+        const signatures: QuorumSignature[] = [{
+          operatorId: mempoolEvent.creatorId,
+          publicKey: '',
+          signature: mempoolEvent.creatorSignature,
+        }];
+
+        await this.canonicalEventStore.appendEvent(
+          {
+            type: mempoolEvent.type,
+            timestamp: mempoolEvent.timestamp,
+            ...mempoolEvent.payload,
+          } as any,
+          signatures
+        );
+      } catch (e: any) {
+        // Event might already exist
+        if (!String(e?.message || '').includes('already exists')) {
+          console.error(`[Consensus] Failed to apply event ${mempoolEvent.eventId}:`, e?.message);
+        }
+      }
+    }
+
+    // Rebuild state
+    await this.rebuildLocalStateFromCanonical();
+    await this.persistState();
+
+    // Broadcast checkpoint to peers
+    this.broadcastConsensusMessage({
+      type: 'checkpoint_finalized',
+      payload: checkpoint,
+      senderId: this.config.operatorId,
+      timestamp: Date.now(),
+      signature: '',
+    });
+
+    // Broadcast registry update
+    this.broadcastRegistryUpdate();
+  }
+
+  /**
+   * Handle consensus state changed
+   */
+  private handleConsensusStateChanged(): void {
+    // Update state provider with latest state
+    if (this.stateProviderAdapter) {
+      this.stateProviderAdapter.updateState({
+        accounts: this.state.accounts,
+        items: this.state.items,
+        operators: this.state.operators,
+        settlements: this.state.settlements,
+        consignments: this.state.consignments,
+        offers: new Map(),
+        operatorCandidates: new Map(),
+      });
+    }
+  }
+
+  /**
+   * Broadcast a consensus message to all peers
+   */
+  private broadcastConsensusMessage(message: ConsensusMessage): void {
+    const msgStr = JSON.stringify(message);
+
+    // Send to main seed
+    if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+      try {
+        this.mainSeedWs.send(msgStr);
+      } catch {}
+    }
+
+    // Send to operator peers
+    for (const peer of this.operatorPeerConnections.values()) {
+      if (peer.ws.readyState === WebSocket.OPEN) {
+        try {
+          peer.ws.send(msgStr);
+        } catch {}
+      }
+    }
+
+    // Send to gateway connections
+    for (const [ws] of this.gatewayConnections) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(msgStr);
+        } catch {}
+      }
+    }
+  }
+
+  /**
+   * Submit an event through the consensus system
+   * This is the new way to create events - they go to mempool first
+   */
+  async submitConsensusEvent(
+    type: string,
+    payload: Record<string, any>
+  ): Promise<{ success: boolean; eventId?: string; error?: string }> {
+    if (!this.consensusNode) {
+      return { success: false, error: 'Consensus not initialized' };
+    }
+
+    const signature = createHash('sha256')
+      .update(`${this.config.privateKey}:${type}:${Date.now()}`)
+      .digest('hex');
+
+    return this.consensusNode.submitEvent(type, payload, signature);
   }
 
   private async rebuildLocalStateFromCanonical(): Promise<void> {
@@ -1463,12 +1653,11 @@ export class OperatorNode extends EventEmitter {
         const requiredYesVotes = eligibleVoterCount > 0 ? Math.ceil((2 / 3) * eligibleVoterCount) : undefined;
         const eligibleVotingAt = now + 30 * 24 * 60 * 60 * 1000;
 
-        // DECENTRALIZED: Send event request to main seed via WebSocket
-        // Main seed creates the authoritative event and broadcasts via sync
-        // This ensures all nodes have identical ledgers with matching hashes
+        // DECENTRALIZED CONSENSUS: Submit event through mempool
+        // Event goes to local mempool → validated → broadcast to peers → checkpoint finalized
+        // This works even if main seed is offline - true Bitcoin-style decentralization
         const eventPayload = {
           type: EventType.OPERATOR_CANDIDATE_REQUESTED,
-          timestamp: now,
           nonce: eventNonce,
           candidateId: String(operatorId),
           gatewayNodeId: String(url),
@@ -1482,6 +1671,27 @@ export class OperatorNode extends EventEmitter {
           eligibleVotingAt,
         };
 
+        // Submit through consensus system
+        const result = await this.submitConsensusEvent(
+          EventType.OPERATOR_CANDIDATE_REQUESTED,
+          eventPayload
+        );
+
+        if (result.success) {
+          console.log(`[Operator] 📋 Submitted operator application to consensus: ${operatorId} (eventId: ${result.eventId})`);
+          res.json({
+            success: true,
+            message: 'Operator application submitted to network consensus',
+            candidateId: String(operatorId),
+            operatorUrl: String(url),
+            eventId: result.eventId,
+          });
+          return;
+        }
+
+        // Consensus submission failed - fall back to direct append for resilience
+        console.log(`[Operator] ⚠️ Consensus failed (${result.error}), creating event locally for resilience`);
+        
         const signatures: QuorumSignature[] = [
           {
             operatorId: this.config.operatorId,
@@ -1489,45 +1699,6 @@ export class OperatorNode extends EventEmitter {
             signature: createHash('sha256').update(`OPERATOR_CANDIDATE_REQUESTED:${operatorId}:${now}`).digest('hex'),
           },
         ];
-
-        // Send via WebSocket to main seed (preferred - no HTTP dependency)
-        if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-          const requestId = `apply_${Date.now()}_${randomBytes(4).toString('hex')}`;
-          
-          this.mainSeedWs.send(JSON.stringify({
-            type: 'append_event',
-            requestId,
-            operatorId: this.config.operatorId,
-            payload: eventPayload,
-            signatures,
-          }));
-          
-          console.log(`[Operator] 📤 Sent operator application to main seed via WebSocket: ${operatorId}`);
-
-          // Request sync to get the new event
-          setTimeout(() => {
-            if (this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-              this.mainSeedWs.send(JSON.stringify({
-                type: 'sync_request',
-                operatorId: this.config.operatorId,
-                networkId: this.computeNetworkId(),
-                lastSequence: this.state.lastSyncedSequence,
-              }));
-            }
-          }, 500);
-
-          res.json({
-            success: true,
-            message: 'Operator application submitted to network',
-            candidateId: String(operatorId),
-            operatorUrl: String(url),
-          });
-          return;
-        }
-
-        // Fallback: If main seed not connected, create locally for resilience
-        // This event will sync when main comes back online
-        console.log(`[Operator] ⚠️ Main seed not connected, creating event locally for resilience`);
         
         const event = await this.canonicalEventStore.appendEvent(eventPayload as any, signatures);
 
@@ -2432,6 +2603,31 @@ export class OperatorNode extends EventEmitter {
 
       case 'new_event_ack':
         // Acknowledgment from peer that they received our event
+        break;
+
+      // CONSENSUS MESSAGES - Route to consensus node
+      case 'mempool_event':
+        if (this.consensusNode) {
+          await this.consensusNode.handleIncomingEvent(message.payload, peerId);
+        }
+        break;
+
+      case 'checkpoint_proposal':
+        if (this.consensusNode) {
+          await this.consensusNode.handleMessage(message, peerId);
+        }
+        break;
+
+      case 'checkpoint_vote':
+        if (this.consensusNode) {
+          await this.consensusNode.handleMessage(message, peerId);
+        }
+        break;
+
+      case 'checkpoint_finalized':
+        if (this.consensusNode) {
+          await this.consensusNode.handleMessage(message, peerId);
+        }
         break;
 
       case 'ping':

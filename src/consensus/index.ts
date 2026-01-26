@@ -9,3 +9,4 @@ export * from './event-mempool';
 export * from './event-validator';
 export * from './checkpoint-manager';
 export * from './consensus-node';
+export * from './state-provider-adapter';
