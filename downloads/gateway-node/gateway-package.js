@@ -78,6 +78,19 @@ class GatewayNode {
     this.discoveredOperators = []; // List of operators from /api/network/operators
     this.lastOperatorDiscovery = 0;
     
+    // Useful work tracking - gateways contribute to network security
+    this.operatorHealth = new Map(); // operatorId -> health info
+    this.verificationResults = []; // Recent verification results
+    this.usefulWorkStats = {
+      consistencyChecks: 0,
+      consistencyPassed: 0,
+      consistencyFailed: 0,
+      healthChecks: 0,
+      operatorsOnline: 0,
+      operatorsOffline: 0,
+      lastWorkAt: 0,
+    };
+    
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -664,9 +677,41 @@ class GatewayNode {
         hardcodedSeeds: CONFIG.seedNodes,
         dataDir: CONFIG.dataDir,
         platform: os.platform(),
-        nodeVersion: process.version
+        nodeVersion: process.version,
+        usefulWork: this.usefulWorkStats,
       };
       res.json(stats);
+    });
+
+    // Useful work endpoints - gateways contribute to network security
+    this.app.get('/api/work/stats', (req, res) => {
+      res.json({
+        success: true,
+        stats: this.usefulWorkStats,
+        operatorHealth: Array.from(this.operatorHealth.values()),
+        recentVerifications: this.verificationResults.slice(-20),
+      });
+    });
+
+    this.app.get('/api/work/operators', (req, res) => {
+      res.json({
+        success: true,
+        operators: this.getCandidateOperatorUrls(),
+        health: Array.from(this.operatorHealth.values()),
+      });
+    });
+
+    this.app.get('/api/work/consistency', (req, res) => {
+      const consistencyResults = this.verificationResults
+        .filter(r => r.type === 'consistency')
+        .slice(-50);
+      res.json({
+        success: true,
+        checks: this.usefulWorkStats.consistencyChecks,
+        passed: this.usefulWorkStats.consistencyPassed,
+        failed: this.usefulWorkStats.consistencyFailed,
+        results: consistencyResults,
+      });
     });
 
     // Registry endpoints
@@ -1181,6 +1226,9 @@ class GatewayNode {
     // Fallback: also try legacy seed connection
     this.connectToSeeds();
 
+    // Start useful work (network verification)
+    this.startUsefulWork();
+
     // Periodic operator discovery refresh (every 5 minutes)
     setInterval(async () => {
       try {
@@ -1225,6 +1273,150 @@ class GatewayNode {
     }
     
     console.log('✅ Gateway Node stopped');
+  }
+
+  /**
+   * Start useful work loops
+   * Gateways contribute to network security by performing verification work
+   */
+  startUsefulWork() {
+    console.log('🔧 Starting useful work loops...');
+
+    // Health check every 2 minutes
+    setInterval(() => this.performHealthChecks(), 2 * 60 * 1000);
+
+    // Consistency check every 3 minutes
+    setInterval(() => this.performConsistencyCheck(), 3 * 60 * 1000);
+
+    // Initial checks after 30 seconds
+    setTimeout(() => {
+      this.performHealthChecks();
+      this.performConsistencyCheck();
+    }, 30000);
+  }
+
+  /**
+   * Perform health checks on all known operators
+   */
+  async performHealthChecks() {
+    const operators = this.getCandidateOperatorUrls();
+    if (operators.length === 0) return;
+
+    console.log('🏥 Performing operator health checks...');
+    this.usefulWorkStats.healthChecks++;
+    this.usefulWorkStats.lastWorkAt = Date.now();
+
+    let online = 0;
+    let offline = 0;
+
+    for (const operatorUrl of operators) {
+      const startTime = Date.now();
+      try {
+        const response = await fetch(`${operatorUrl}/api/consensus/status`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        
+        const latency = Date.now() - startTime;
+        
+        if (response.ok) {
+          const data = await response.json();
+          this.operatorHealth.set(operatorUrl, {
+            url: operatorUrl,
+            status: 'online',
+            latencyMs: latency,
+            lastChecked: Date.now(),
+            sequence: data.currentSequence || 0,
+            hash: data.currentHash || '',
+          });
+          online++;
+        } else {
+          this.operatorHealth.set(operatorUrl, {
+            url: operatorUrl,
+            status: 'degraded',
+            latencyMs: latency,
+            lastChecked: Date.now(),
+            sequence: 0,
+            hash: '',
+          });
+          offline++;
+        }
+      } catch (error) {
+        this.operatorHealth.set(operatorUrl, {
+          url: operatorUrl,
+          status: 'offline',
+          latencyMs: -1,
+          lastChecked: Date.now(),
+          sequence: 0,
+          hash: '',
+        });
+        offline++;
+      }
+    }
+
+    this.usefulWorkStats.operatorsOnline = online;
+    this.usefulWorkStats.operatorsOffline = offline;
+
+    console.log(`🏥 Health check complete: ${online} online, ${offline} offline`);
+
+    this.verificationResults.push({
+      timestamp: Date.now(),
+      type: 'health',
+      success: offline === 0,
+      details: { online, offline, total: operators.length },
+    });
+
+    if (this.verificationResults.length > 100) {
+      this.verificationResults = this.verificationResults.slice(-100);
+    }
+  }
+
+  /**
+   * Perform cross-operator consistency check
+   */
+  async performConsistencyCheck() {
+    const onlineOperators = Array.from(this.operatorHealth.values())
+      .filter(op => op.status === 'online');
+
+    if (onlineOperators.length < 2) return;
+
+    console.log('🔍 Performing cross-operator consistency check...');
+    this.usefulWorkStats.consistencyChecks++;
+    this.usefulWorkStats.lastWorkAt = Date.now();
+
+    const sequences = new Set();
+    const hashes = new Set();
+
+    for (const op of onlineOperators) {
+      if (op.sequence > 0) sequences.add(op.sequence);
+      if (op.hash) hashes.add(op.hash);
+    }
+
+    const sequenceConsistent = sequences.size <= 1;
+    const hashConsistent = hashes.size <= 1;
+    const isConsistent = sequenceConsistent && hashConsistent;
+
+    if (isConsistent) {
+      this.usefulWorkStats.consistencyPassed++;
+      console.log('✅ Consistency check PASSED - all operators in sync');
+    } else {
+      this.usefulWorkStats.consistencyFailed++;
+      console.log('⚠️ Consistency check FAILED - operators have divergent state');
+    }
+
+    this.verificationResults.push({
+      timestamp: Date.now(),
+      type: 'consistency',
+      success: isConsistent,
+      details: {
+        operatorsChecked: onlineOperators.length,
+        sequences: Array.from(sequences),
+        hashes: Array.from(hashes),
+      },
+    });
+
+    if (this.verificationResults.length > 100) {
+      this.verificationResults = this.verificationResults.slice(-100);
+    }
   }
 }
 
