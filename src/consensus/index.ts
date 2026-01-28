@@ -10,3 +10,6 @@ export * from './event-validator';
 export * from './checkpoint-manager';
 export * from './consensus-node';
 export * from './state-provider-adapter';
+export * from './heartbeat-manager';
+export * from './state-verifier';
+export * from './peer-resilience';
