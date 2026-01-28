@@ -20,6 +20,7 @@ import {
   StateProviderAdapter 
 } from './consensus';
 import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
+import { ItemProvenanceService } from './provenance';
 
 interface OperatorConfig {
   operatorId: string;
@@ -98,6 +99,9 @@ export class OperatorNode extends EventEmitter {
   
   // Item search engine for ledger lookups
   private itemSearchEngine?: ItemSearchEngine;
+  
+  // Item provenance service for history tracking
+  private itemProvenanceService?: ItemProvenanceService;
 
   constructor(config: OperatorConfig) {
     super();
@@ -2561,6 +2565,194 @@ export class OperatorNode extends EventEmitter {
 
     // ============================================================
     // END ITEM SEARCH API
+    // ============================================================
+
+    // ============================================================
+    // ITEM PROVENANCE API - Complete history and risk analysis
+    // ============================================================
+
+    // Get complete provenance for an item (ownership history, price history, risk indicators)
+    this.app.get('/api/provenance/:itemId', async (req: Request, res: Response) => {
+      try {
+        if (!this.itemProvenanceService) {
+          this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+        }
+
+        const provenance = await this.itemProvenanceService.getItemProvenance(req.params.itemId);
+        
+        if (!provenance) {
+          res.status(404).json({ success: false, error: 'Item not found' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          provenance,
+          summary: {
+            totalOwners: provenance.totalOwners,
+            averageHoldDays: provenance.averageHoldDays,
+            lastSalePrice: provenance.lastSalePrice,
+            priceChange: provenance.priceChange,
+            isVerified: provenance.isVerified,
+            manufacturerVerified: provenance.manufacturerVerified,
+            riskScore: provenance.riskScore,
+            riskLevel: provenance.riskScore > 50 ? 'high' : provenance.riskScore > 20 ? 'medium' : 'low',
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get ownership history only
+    this.app.get('/api/provenance/:itemId/ownership', async (req: Request, res: Response) => {
+      try {
+        if (!this.itemProvenanceService) {
+          this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+        }
+
+        const provenance = await this.itemProvenanceService.getItemProvenance(req.params.itemId);
+        
+        if (!provenance) {
+          res.status(404).json({ success: false, error: 'Item not found' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          itemId: req.params.itemId,
+          currentOwner: provenance.currentOwner,
+          ownershipHistory: provenance.ownershipHistory,
+          totalOwners: provenance.totalOwners,
+          averageHoldDays: provenance.averageHoldDays,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get price history only
+    this.app.get('/api/provenance/:itemId/prices', async (req: Request, res: Response) => {
+      try {
+        if (!this.itemProvenanceService) {
+          this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+        }
+
+        const provenance = await this.itemProvenanceService.getItemProvenance(req.params.itemId);
+        
+        if (!provenance) {
+          res.status(404).json({ success: false, error: 'Item not found' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          itemId: req.params.itemId,
+          priceHistory: provenance.priceHistory,
+          lastSalePrice: provenance.lastSalePrice,
+          highestPrice: provenance.highestPrice,
+          lowestPrice: provenance.lowestPrice,
+          averagePrice: provenance.averagePrice,
+          priceChange: provenance.priceChange,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get risk analysis for an item
+    this.app.get('/api/provenance/:itemId/risk', async (req: Request, res: Response) => {
+      try {
+        if (!this.itemProvenanceService) {
+          this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+        }
+
+        const provenance = await this.itemProvenanceService.getItemProvenance(req.params.itemId);
+        
+        if (!provenance) {
+          res.status(404).json({ success: false, error: 'Item not found' });
+          return;
+        }
+
+        const riskLevel = provenance.riskScore > 50 ? 'high' : provenance.riskScore > 20 ? 'medium' : 'low';
+
+        res.json({
+          success: true,
+          itemId: req.params.itemId,
+          riskScore: provenance.riskScore,
+          riskLevel,
+          riskIndicators: provenance.riskIndicators,
+          isVerified: provenance.isVerified,
+          manufacturerVerified: provenance.manufacturerVerified,
+          recommendation: riskLevel === 'high' 
+            ? '⚠️ HIGH RISK - Proceed with extreme caution, consider additional verification'
+            : riskLevel === 'medium'
+            ? '⚡ MODERATE RISK - Review risk indicators before purchasing'
+            : '✅ LOW RISK - Item appears to have clean history',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get market stats for a manufacturer/category
+    this.app.get('/api/market/stats', async (req: Request, res: Response) => {
+      try {
+        if (!this.itemProvenanceService) {
+          this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+        }
+
+        const manufacturer = req.query.manufacturer as string;
+        const category = req.query.category as string;
+
+        if (!manufacturer) {
+          res.status(400).json({ success: false, error: 'manufacturer query parameter required' });
+          return;
+        }
+
+        const stats = await this.itemProvenanceService.getMarketStats(manufacturer, category);
+
+        res.json({
+          success: true,
+          stats,
+          insights: {
+            averagePriceFormatted: `${stats.averagePrice.toLocaleString()} sats`,
+            volumeFormatted: `${stats.volumeLast30Days.toLocaleString()} sats`,
+            marketActivity: stats.totalSales > 10 ? 'active' : stats.totalSales > 3 ? 'moderate' : 'low',
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get event timeline for an item
+    this.app.get('/api/provenance/:itemId/timeline', async (req: Request, res: Response) => {
+      try {
+        if (!this.itemProvenanceService) {
+          this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+        }
+
+        const provenance = await this.itemProvenanceService.getItemProvenance(req.params.itemId);
+        
+        if (!provenance) {
+          res.status(404).json({ success: false, error: 'Item not found' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          itemId: req.params.itemId,
+          timeline: provenance.events,
+          totalEvents: provenance.events.length,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // END ITEM PROVENANCE API
     // ============================================================
 
     this.app.get('/api/offers/user/:address', (req: Request, res: Response) => {
