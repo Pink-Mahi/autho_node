@@ -1896,6 +1896,65 @@ export class OperatorNode extends EventEmitter {
       res.json({ success: true, ...status });
     });
 
+    // Storage durability stats (Bitcoin-level reliability metrics)
+    this.app.get('/api/storage/stats', async (req: Request, res: Response) => {
+      try {
+        const storageStats = this.canonicalEventStore.getStorageStats();
+        const pruningStats = await this.canonicalEventStore.getPruningStats();
+        
+        res.json({
+          success: true,
+          storage: {
+            eventCount: storageStats.eventCount,
+            indexEntries: storageStats.indexEntries,
+            headHash: storageStats.headHash,
+            sequenceNumber: storageStats.sequenceNumber,
+            integrityVerified: storageStats.integrityVerified,
+          },
+          pruning: {
+            totalEvents: pruningStats.totalEvents,
+            oldestEventAgeDays: pruningStats.oldestEventAge,
+            newestEventAgeDays: pruningStats.newestEventAge,
+            checkpointCount: pruningStats.checkpointCount,
+            estimatedPrunableEvents: pruningStats.estimatedPrunableEvents,
+            diskUsageBytes: pruningStats.diskUsageBytes,
+            diskUsageMB: Math.round(pruningStats.diskUsageBytes / 1024 / 1024 * 100) / 100,
+          },
+          durability: {
+            atomicWrites: true,
+            checksumVerification: true,
+            backupRecovery: true,
+            writeAheadLog: true,
+            merkleProofs: true,
+            bitcoinAnchoring: true,
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Generate Merkle proof for an event (SPV-style verification)
+    this.app.get('/api/storage/proof/:eventHash', async (req: Request, res: Response) => {
+      try {
+        const { eventHash } = req.params;
+        const proof = await this.canonicalEventStore.generateCompactEventProof(eventHash);
+        
+        if (!proof) {
+          res.status(404).json({ success: false, error: 'Event not found' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          proof,
+          verificationInstructions: 'Verify by reconstructing Merkle root from leaf hash and sibling path',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/operator/status', async (req: Request, res: Response) => {
       await this.proxyToSeed(req, res);
     });
