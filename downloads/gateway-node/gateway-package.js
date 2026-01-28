@@ -1320,13 +1320,17 @@ class GatewayNode {
         
         if (response.ok) {
           const data = await response.json();
+          // Parse sequence and hash from various possible field locations
+          const sequence = data.ledger?.sequenceNumber || data.ledgerSequence || data.currentSequence || data.sequenceNumber || 0;
+          const hash = data.ledger?.lastEventHash || data.currentHash || data.lastEventHash || '';
+          
           this.operatorHealth.set(operatorUrl, {
             url: operatorUrl,
-            status: 'online',
+            status: data.success !== false ? 'online' : 'degraded',
             latencyMs: latency,
             lastChecked: Date.now(),
-            sequence: data.currentSequence || 0,
-            hash: data.currentHash || '',
+            sequence: sequence,
+            hash: hash,
           });
           online++;
         } else {
