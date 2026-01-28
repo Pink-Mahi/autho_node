@@ -61,3 +61,22 @@ export function generateNonce(): string {
 export function generateId(): string {
   return crypto.randomBytes(16).toString('hex');
 }
+
+// Re-export Merkle tree functions and types
+export {
+  buildMerkleTree,
+  generateMerkleProof,
+  verifyMerkleProof,
+  compactifyProof,
+  expandProof,
+  verifyCompactProof,
+  generateMultipleProofs,
+  calculateTreeHeight,
+  verifyProofConsistency,
+  formatForOpReturn,
+  parseOpReturn,
+  MerkleProof,
+  CompactMerkleProof,
+  MerkleTreeResult,
+  BitcoinAnchorableProof,
+} from './merkle-tree';
