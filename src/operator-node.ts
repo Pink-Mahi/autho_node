@@ -2755,6 +2755,189 @@ export class OperatorNode extends EventEmitter {
     // END ITEM PROVENANCE API
     // ============================================================
 
+    // ============================================================
+    // USER TRANSACTION HISTORY API
+    // ============================================================
+
+    // Get complete transaction history for a user (purchases, sales, mints)
+    this.app.get('/api/history/:address', async (req: Request, res: Response) => {
+      try {
+        const address = req.params.address;
+        const allEvents = await this.canonicalEventStore.getAllEvents();
+        
+        const transactions: any[] = [];
+
+        for (const event of allEvents) {
+          const payload = event.payload as any;
+          
+          // Items minted by this user
+          if (payload.type === 'ITEM_REGISTERED' && payload.initialOwner === address) {
+            const item = this.state.items.get(payload.itemId);
+            transactions.push({
+              type: 'mint',
+              timestamp: payload.timestamp,
+              itemId: payload.itemId,
+              itemName: item?.metadata?.name || payload.metadata?.name || 'Unknown Item',
+              manufacturerName: payload.manufacturerName || payload.manufacturerId,
+              role: payload.issuerRole || 'user',
+            });
+          }
+
+          // Items purchased by this user
+          if (payload.type === 'OWNERSHIP_TRANSFERRED' && payload.toOwner === address) {
+            const item = this.state.items.get(payload.itemId);
+            transactions.push({
+              type: 'purchase',
+              timestamp: payload.timestamp,
+              itemId: payload.itemId,
+              itemName: item?.metadata?.name || 'Unknown Item',
+              manufacturerName: (item as any)?.manufacturerName || item?.manufacturerId,
+              price: payload.price,
+              from: payload.fromOwner,
+              txid: payload.paymentTxHash,
+            });
+          }
+
+          // Items sold by this user
+          if (payload.type === 'OWNERSHIP_TRANSFERRED' && payload.fromOwner === address) {
+            const item = this.state.items.get(payload.itemId);
+            transactions.push({
+              type: 'sale',
+              timestamp: payload.timestamp,
+              itemId: payload.itemId,
+              itemName: item?.metadata?.name || 'Unknown Item',
+              manufacturerName: (item as any)?.manufacturerName || item?.manufacturerId,
+              price: payload.price,
+              to: payload.toOwner,
+              txid: payload.paymentTxHash,
+            });
+          }
+
+          // Verification requests created by this user
+          if (payload.type === 'VERIFICATION_REQUEST_CREATED' && payload.ownerWallet === address) {
+            const item = this.state.items.get(payload.itemId);
+            transactions.push({
+              type: 'verification_requested',
+              timestamp: payload.timestamp,
+              itemId: payload.itemId,
+              itemName: item?.metadata?.name || 'Unknown Item',
+              authenticatorId: payload.authenticatorId,
+              fee: payload.serviceFeeSats,
+            });
+          }
+
+          // Authentications performed by this user (if authenticator)
+          if ((payload.type === 'AUTHENTICATION_PERFORMED' || payload.type === 'VERIFICATION_REQUEST_COMPLETED') 
+              && payload.authenticatorId === address) {
+            const item = this.state.items.get(payload.itemId);
+            transactions.push({
+              type: 'authentication_performed',
+              timestamp: payload.timestamp || payload.completedAt,
+              itemId: payload.itemId,
+              itemName: item?.metadata?.name || 'Unknown Item',
+              isAuthentic: payload.isAuthentic,
+              fee: payload.serviceFeeSats,
+            });
+          }
+        }
+
+        // Sort by timestamp descending (newest first)
+        transactions.sort((a, b) => b.timestamp - a.timestamp);
+
+        // Calculate summary stats
+        const purchases = transactions.filter(t => t.type === 'purchase');
+        const sales = transactions.filter(t => t.type === 'sale');
+        const mints = transactions.filter(t => t.type === 'mint');
+
+        const totalSpent = purchases.reduce((sum, t) => sum + (t.price || 0), 0);
+        const totalEarned = sales.reduce((sum, t) => sum + (t.price || 0), 0);
+
+        res.json({
+          success: true,
+          address,
+          transactions,
+          summary: {
+            totalTransactions: transactions.length,
+            purchases: purchases.length,
+            sales: sales.length,
+            mints: mints.length,
+            totalSpentSats: totalSpent,
+            totalEarnedSats: totalEarned,
+            netPositionSats: totalEarned - totalSpent,
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get portfolio summary for a user (current holdings with values)
+    this.app.get('/api/portfolio/:address', async (req: Request, res: Response) => {
+      try {
+        const address = req.params.address;
+        
+        // Get all items owned by this address
+        const ownedItems = Array.from(this.state.items.values())
+          .filter((item: any) => item.currentOwner === address);
+
+        // Calculate portfolio stats
+        let totalAcquisitionCost = 0;
+        let totalEstimatedValue = 0;
+        const holdings: any[] = [];
+
+        for (const item of ownedItems) {
+          // Get provenance for each item
+          if (!this.itemProvenanceService) {
+            this.itemProvenanceService = new ItemProvenanceService(this.canonicalEventStore);
+          }
+          const provenance = await this.itemProvenanceService.getItemProvenance(item.itemId);
+          
+          const lastOwnerRecord = provenance?.ownershipHistory.find(
+            (r: any) => r.owner === address && !r.soldAt
+          );
+          const acquisitionPrice = lastOwnerRecord?.acquiredPrice || 0;
+          const estimatedValue = provenance?.lastSalePrice || acquisitionPrice;
+
+          totalAcquisitionCost += acquisitionPrice;
+          totalEstimatedValue += estimatedValue;
+
+          holdings.push({
+            itemId: item.itemId,
+            name: item.metadata?.name || 'Unknown Item',
+            manufacturerName: (item as any).manufacturerName || item.manufacturerId,
+            category: item.metadata?.category,
+            acquisitionPrice,
+            estimatedValue,
+            isVerified: provenance?.isVerified || false,
+            manufacturerVerified: provenance?.manufacturerVerified || false,
+            riskScore: provenance?.riskScore || 0,
+            holdDays: lastOwnerRecord?.holdDurationDays || 0,
+          });
+        }
+
+        res.json({
+          success: true,
+          address,
+          portfolio: {
+            totalItems: holdings.length,
+            totalAcquisitionCostSats: totalAcquisitionCost,
+            totalEstimatedValueSats: totalEstimatedValue,
+            unrealizedGainSats: totalEstimatedValue - totalAcquisitionCost,
+            unrealizedGainPercent: totalAcquisitionCost > 0 
+              ? Math.round(((totalEstimatedValue - totalAcquisitionCost) / totalAcquisitionCost) * 100)
+              : 0,
+          },
+          holdings: holdings.sort((a, b) => b.estimatedValue - a.estimatedValue),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // END USER TRANSACTION HISTORY API
+    // ============================================================
+
     this.app.get('/api/offers/user/:address', (req: Request, res: Response) => {
       const addr = String(req.params.address || '').trim();
       const offers = Array.from(this.state.settlements.values())
