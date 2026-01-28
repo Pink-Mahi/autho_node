@@ -514,6 +514,8 @@ export class EventStore {
     };
 
     if (!fs.existsSync(this.eventsDir)) {
+      // Save empty index
+      atomicWriteJSON(this.indexFile, index);
       return index;
     }
 
@@ -537,7 +539,8 @@ export class EventStore {
     }
 
     index.lastUpdated = Date.now();
-    this.saveIndex();
+    // Save index directly (this.sequenceIndex may not be set yet)
+    atomicWriteJSON(this.indexFile, index);
     console.log(`[EventStore] Built index with ${count} entries`);
     return index;
   }
