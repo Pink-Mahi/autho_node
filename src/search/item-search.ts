@@ -380,6 +380,18 @@ export class ItemSearchEngine {
         if (!hasAuth) continue;
       }
 
+      // Filter by manufacturer verification (authenticator confirmed the brand claim)
+      if (query.verifiedOnly) {
+        const isVerified = (item as any).manufacturerVerified === true ||
+          item.authentications?.some(a => (a as any).manufacturerVerified === true);
+        if (!isVerified) continue;
+      }
+
+      // Filter by official manufacturer minting
+      if (query.officialOnly) {
+        if (!(item as any).mintedByOfficialManufacturer) continue;
+      }
+
       if (query.minConfidence) {
         const confidenceOrder = { low: 1, medium: 2, high: 3 };
         const minLevel = confidenceOrder[query.minConfidence];

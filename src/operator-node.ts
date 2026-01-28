@@ -2360,6 +2360,8 @@ export class OperatorNode extends EventEmitter {
           imageHash: req.query.imageHash as string,
           owner: req.query.owner as string,
           authenticatedOnly: req.query.authenticated === 'true',
+          verifiedOnly: req.query.verified === 'true',
+          officialOnly: req.query.official === 'true',
           minConfidence: req.query.minConfidence as 'low' | 'medium' | 'high',
           limit: parseInt(req.query.limit as string) || 50,
           offset: parseInt(req.query.offset as string) || 0,
