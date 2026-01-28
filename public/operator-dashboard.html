@@ -282,6 +282,7 @@
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
                 <button class="nav-tab" onclick="switchTab('mempool')">📦 Mempool</button>
                 <button class="nav-tab" onclick="switchTab('anchoring')">⚓ Bitcoin Anchoring</button>
+                <button class="nav-tab" onclick="switchTab('opcandidates')">🧑‍💼 Operator Candidates</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
         </div>
@@ -579,6 +580,28 @@
                 <a href="/mempool.html" target="_blank" class="btn btn-secondary" style="text-decoration: none;">Open Full Mempool Visualizer ↗</a>
             </div>
         </div>
+
+        <div class="section" id="opcandidates-section">
+            <h2 class="section-title">🧑‍💼 Operator Candidates</h2>
+            <p class="muted" style="margin-bottom: 20px;">
+                Review and vote on pending operator applications. Candidates require 2/3 supermajority approval from active operators.
+                <strong>Note:</strong> Voting is only enabled after the 30-day founder window expires.
+            </p>
+
+            <div class="error-message" id="opCandidatesError"></div>
+            <div class="success-message" id="opCandidatesSuccess"></div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom: 20px;">
+                <button class="btn" type="button" onclick="loadOperatorCandidates()">Refresh</button>
+                <select id="opCandidatesStatusFilter" onchange="loadOperatorCandidates()" style="padding: 12px 16px; border-radius: 12px; background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.35); color: #d4af37;">
+                    <option value="all" selected>All</option>
+                    <option value="open">Open (Founder Window)</option>
+                    <option value="voting">Voting Enabled</option>
+                </select>
+            </div>
+
+            <div id="opCandidatesList" class="empty-state">Click Refresh to load operator candidates.</div>
+        </div>
     </div>
 
     <script>
@@ -622,6 +645,8 @@
                 loadSecurity();
             } else if (tab === 'mempool') {
                 loadMempool();
+            } else if (tab === 'opcandidates') {
+                loadOperatorCandidates();
             }
         }
 
@@ -2173,6 +2198,164 @@
         }
 
         setInterval(updateMempoolProgress, 100);
+
+        // ==================== OPERATOR CANDIDATES ====================
+        async function loadOperatorCandidates() {
+            showEl('opCandidatesError', false);
+            showEl('opCandidatesSuccess', false);
+            const el = document.getElementById('opCandidatesList');
+            if (!el) return;
+            el.innerHTML = '<div class="empty-state">Loading operator candidates...</div>';
+
+            const status = document.getElementById('opCandidatesStatusFilter')?.value || 'all';
+            const url = `/api/operators/candidates?status=${encodeURIComponent(status)}`;
+
+            try {
+                const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    showEl('opCandidatesError', true, data?.error || 'Failed to load operator candidates');
+                    el.innerHTML = '<div class="empty-state">Failed to load candidates.</div>';
+                    return;
+                }
+
+                const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+                if (candidates.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No operator candidates found.</div>';
+                    return;
+                }
+
+                renderOperatorCandidates(candidates);
+            } catch (err) {
+                showEl('opCandidatesError', true, 'Network error: ' + err.message);
+                el.innerHTML = '<div class="empty-state">Network error.</div>';
+            }
+        }
+
+        function renderOperatorCandidates(candidates) {
+            const el = document.getElementById('opCandidatesList');
+            if (!el) return;
+
+            const now = Date.now();
+            const rows = candidates.map(c => {
+                const candidateId = String(c.operatorId || c.candidateId || '');
+                const operatorUrl = String(c.operatorUrl || '');
+                const btcAddress = String(c.btcAddress || '');
+                const sponsorId = String(c.sponsorId || '');
+                const requestedAt = Number(c.candidateRequestedAt || 0);
+                const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+                const eligibleVoterCount = Number(c.eligibleVoterCount || 0);
+                const requiredYesVotes = Number(c.requiredYesVotes || 0);
+                const voteCount = c.voteCount || { approve: 0, reject: 0 };
+
+                const votingEnabled = now >= eligibleVotingAt;
+                const votingStartsIn = eligibleVotingAt > now ? Math.ceil((eligibleVotingAt - now) / (24 * 60 * 60 * 1000)) : 0;
+
+                const statusBadge = votingEnabled
+                    ? '<span style="background: #22c55e; color: #000; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">VOTING OPEN</span>'
+                    : `<span style="background: #f59e0b; color: #000; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">FOUNDER WINDOW (${votingStartsIn}d)</span>`;
+
+                const voteButtons = votingEnabled
+                    ? `<div style="display:flex; gap:8px; margin-top:12px;">
+                        <button class="btn" onclick="voteOnCandidate('${candidateId}', 'approve')" style="background: #22c55e; border-color: #22c55e;">✓ Approve</button>
+                        <button class="btn" onclick="voteOnCandidate('${candidateId}', 'reject')" style="background: #ef4444; border-color: #ef4444;">✗ Reject</button>
+                        <button class="btn btn-secondary" onclick="finalizeCandidate('${candidateId}')">Finalize</button>
+                       </div>`
+                    : '<div style="color: #999; margin-top: 12px; font-size: 0.85rem;">Voting not yet enabled</div>';
+
+                return `
+                    <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #d4af37; margin-bottom: 8px;">
+                                    ${candidateId}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">
+                                    <strong>URL:</strong> ${operatorUrl || '(none)'}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">
+                                    <strong>BTC Address:</strong> <span style="font-family: monospace;">${btcAddress.substring(0, 20)}...</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #999; margin-bottom: 4px;">
+                                    <strong>Sponsor:</strong> <span style="font-family: monospace;">${sponsorId.substring(0, 20)}...</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #999;">
+                                    <strong>Applied:</strong> ${requestedAt ? new Date(requestedAt).toLocaleDateString() : 'Unknown'}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                ${statusBadge}
+                                <div style="margin-top: 10px; font-size: 0.85rem; color: #999;">
+                                    <strong>Votes:</strong> ${voteCount.approve || 0} approve / ${voteCount.reject || 0} reject
+                                </div>
+                                <div style="font-size: 0.85rem; color: #999;">
+                                    <strong>Required:</strong> ${requiredYesVotes} of ${eligibleVoterCount} voters
+                                </div>
+                            </div>
+                        </div>
+                        ${voteButtons}
+                    </div>
+                `;
+            }).join('');
+
+            el.innerHTML = rows;
+        }
+
+        async function voteOnCandidate(candidateId, vote) {
+            showEl('opCandidatesError', false);
+            showEl('opCandidatesSuccess', false);
+
+            const reason = prompt(`Reason for ${vote} (optional):`);
+
+            try {
+                const r = await fetch(`/api/operators/candidates/${encodeURIComponent(candidateId)}/vote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                    body: JSON.stringify({ vote, reason: reason || undefined })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    showEl('opCandidatesError', true, data?.error || 'Failed to submit vote');
+                    return;
+                }
+
+                showEl('opCandidatesSuccess', true, `Vote recorded: ${vote}`);
+                await loadOperatorCandidates();
+            } catch (err) {
+                showEl('opCandidatesError', true, 'Network error: ' + err.message);
+            }
+        }
+
+        async function finalizeCandidate(candidateId) {
+            showEl('opCandidatesError', false);
+            showEl('opCandidatesSuccess', false);
+
+            if (!confirm(`Finalize voting for candidate ${candidateId}? This will admit or reject them based on current votes.`)) {
+                return;
+            }
+
+            try {
+                const r = await fetch(`/api/operators/candidates/${encodeURIComponent(candidateId)}/finalize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                    body: JSON.stringify({})
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    showEl('opCandidatesError', true, data?.error || 'Failed to finalize candidate');
+                    return;
+                }
+
+                const decision = data.decision || 'unknown';
+                showEl('opCandidatesSuccess', true, `Candidate ${candidateId} finalized: ${decision.toUpperCase()}`);
+                await loadOperatorCandidates();
+            } catch (err) {
+                showEl('opCandidatesError', true, 'Network error: ' + err.message);
+            }
+        }
 
         window.addEventListener('load', async () => {
             await requireOperatorAuth();
