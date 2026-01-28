@@ -1955,6 +1955,82 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // Verify hash chain integrity (like Bitcoin's -checkblocks)
+    this.app.post('/api/storage/verify', async (req: Request, res: Response) => {
+      try {
+        const startTime = Date.now();
+        const isValid = await this.canonicalEventStore.verifyHashChain();
+        const elapsed = Date.now() - startTime;
+        const stats = this.canonicalEventStore.getStorageStats();
+
+        res.json({
+          success: true,
+          verification: {
+            hashChainValid: isValid,
+            eventsVerified: stats.eventCount,
+            verificationTimeMs: elapsed,
+            headHash: stats.headHash,
+            sequenceNumber: stats.sequenceNumber,
+          },
+          message: isValid 
+            ? `✅ Hash chain verified - ${stats.eventCount} events in ${elapsed}ms`
+            : '❌ Hash chain verification FAILED - possible corruption detected',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Trigger reindex (like Bitcoin's -reindex)
+    this.app.post('/api/storage/reindex', async (req: Request, res: Response) => {
+      try {
+        const startTime = Date.now();
+        await this.canonicalEventStore.reindex();
+        const elapsed = Date.now() - startTime;
+        const stats = this.canonicalEventStore.getStorageStats();
+
+        res.json({
+          success: true,
+          reindex: {
+            completed: true,
+            eventsIndexed: stats.eventCount,
+            reindexTimeMs: elapsed,
+          },
+          message: `✅ Reindex complete - ${stats.eventCount} events indexed in ${elapsed}ms`,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Create checkpoint for Bitcoin anchoring
+    this.app.post('/api/storage/checkpoint', async (req: Request, res: Response) => {
+      try {
+        const checkpoint = await this.canonicalEventStore.createEnhancedCheckpoint();
+        const opReturn = await this.canonicalEventStore.getOpReturnCommitment();
+
+        res.json({
+          success: true,
+          checkpoint: {
+            checkpointRoot: checkpoint.checkpointRoot,
+            merkleRoot: checkpoint.merkleRoot,
+            fromSequence: checkpoint.fromSequence,
+            toSequence: checkpoint.toSequence,
+            eventCount: checkpoint.eventCount,
+            treeHeight: checkpoint.tree.treeHeight,
+            createdAt: checkpoint.createdAt,
+          },
+          bitcoinAnchoring: {
+            opReturnHex: opReturn.toString('hex'),
+            opReturnSize: opReturn.length,
+            instructions: 'Broadcast this OP_RETURN data in a Bitcoin transaction to anchor the checkpoint',
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/operator/status', async (req: Request, res: Response) => {
       await this.proxyToSeed(req, res);
     });
