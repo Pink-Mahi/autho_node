@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import { createHash, pbkdf2Sync, timingSafeEqual, randomBytes } from 'crypto';
 import { HeartbeatManager } from './consensus/heartbeat-manager';
 import { StateVerifier, LedgerState } from './consensus/state-verifier';
+import { PeerResilienceManager, autoRepairFromMajority } from './consensus/peer-resilience';
 import { EventStore, EventType, QuorumSignature } from './event-store';
 import { StateBuilder } from './event-store';
 import { verifySignature } from './crypto';
@@ -77,6 +78,7 @@ export class OperatorNode extends EventEmitter {
   private peerDiscoveryTimer?: NodeJS.Timeout;
   private peerDiscovery?: OperatorPeerDiscovery;
   private heartbeatManager?: HeartbeatManager;
+  private peerResilienceManager?: PeerResilienceManager;
   private lastMainNodeHeartbeat: number = Date.now();
   private operatorHeartbeatTimer: any;
   /** Index of current seed being tried (for fallback rotation) */
@@ -118,6 +120,85 @@ export class OperatorNode extends EventEmitter {
 
     this.startOperatorHeartbeat();
     this.initializeConsensus();
+    this.initializePeerResilience();
+  }
+
+  /**
+   * Initialize peer resilience for 250-year stability
+   */
+  private initializePeerResilience(): void {
+    const myOperatorId = this.config.operatorId;
+    if (!myOperatorId) return;
+
+    this.peerResilienceManager = new PeerResilienceManager({
+      myOperatorId,
+      healthCheckIntervalMs: 30000, // 30 seconds
+      peerTimeoutMs: 120000, // 2 minutes
+      mainNodeFailoverDelayMs: 300000, // 5 minutes before electing backup leader
+      minPeersForConsensus: 2,
+      isMainNode: false, // Will be determined dynamically
+    });
+
+    // Handle main node going offline
+    this.peerResilienceManager.on('main_node_offline', () => {
+      console.log('[Operator] 🔄 Main node offline - will sync from peers');
+      this.requestSyncFromBestPeer();
+    });
+
+    // Handle leader election
+    this.peerResilienceManager.on('leader_elected', (result: any) => {
+      console.log(`[Operator] 🗳️ New leader elected: ${result.leaderId}`);
+      if (result.leaderId === myOperatorId) {
+        console.log('[Operator] ✅ I am now the backup leader - accepting new events');
+      }
+    });
+
+    // Handle consistency issues
+    this.peerResilienceManager.on('consistency_issue', async (report: any) => {
+      console.log(`[Operator] ⚠️ Consistency issue - ${report.divergentPeers.length} divergent peers`);
+      // Auto-repair by syncing from majority
+      await autoRepairFromMajority(this.peerResilienceManager!, async (peerId, fromSeq) => {
+        await this.requestSyncFromPeer(peerId, fromSeq);
+      });
+    });
+
+    // Start the resilience manager
+    this.peerResilienceManager.start();
+  }
+
+  /**
+   * Request sync from the best available peer
+   */
+  private async requestSyncFromBestPeer(): Promise<void> {
+    if (!this.peerResilienceManager) return;
+
+    const syncStatus = this.peerResilienceManager.needsSync();
+    if (!syncStatus.needsSync || !syncStatus.syncFrom) {
+      return;
+    }
+
+    console.log(`[Operator] Requesting sync from peer ${syncStatus.syncFrom.operatorId} (behind by ${syncStatus.behindBy} events)`);
+    await this.requestSyncFromPeer(syncStatus.syncFrom.operatorId, this.state.lastSyncedSequence);
+  }
+
+  /**
+   * Request sync from a specific peer
+   */
+  private async requestSyncFromPeer(peerId: string, fromSequence: number): Promise<void> {
+    const peer = this.operatorPeerConnections.get(peerId);
+    if (!peer || peer.ws.readyState !== WebSocket.OPEN) {
+      console.log(`[Operator] Cannot sync from peer ${peerId} - not connected`);
+      return;
+    }
+
+    peer.ws.send(JSON.stringify({
+      type: 'sync_request',
+      operatorId: this.config.operatorId,
+      networkId: this.computeNetworkId(),
+      lastSequence: fromSequence,
+      timestamp: Date.now(),
+      reason: 'peer_resilience',
+    }));
   }
 
   /**
@@ -2778,6 +2859,16 @@ export class OperatorNode extends EventEmitter {
     if (meta) meta.lastSeen = Date.now();
     const ws = meta?.ws;
 
+    // Update peer resilience manager with peer state
+    if (this.peerResilienceManager && message?.sequenceNumber !== undefined) {
+      this.peerResilienceManager.updatePeerState(
+        peerId,
+        Number(message.sequenceNumber || 0),
+        String(message.headHash || message.stateHash || ''),
+        String(message.stateHash || ''),
+      );
+    }
+
     switch (message?.type) {
       case 'operator_handshake_ack':
         break;
@@ -2788,6 +2879,15 @@ export class OperatorNode extends EventEmitter {
           const response = this.heartbeatManager.handleVerificationMessage(message);
           if (response && ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(response));
+          }
+          // Update resilience manager
+          if (this.peerResilienceManager) {
+            this.peerResilienceManager.updatePeerState(
+              peerId,
+              Number(message.sequenceNumber || 0),
+              String(message.stateHash || ''),
+              String(message.stateHash || ''),
+            );
           }
         } catch {}
         break;
