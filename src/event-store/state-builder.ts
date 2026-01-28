@@ -10,9 +10,43 @@ import { Event, EventType, PlatformFeePayoutSnapshot } from './types';
 
 export interface ItemState {
   itemId: string;
-  manufacturerId: string;
-  issuerRole?: 'manufacturer' | 'authenticator' | 'user';
-  issuerAccountId?: string;
+  
+  /**
+   * The claimed manufacturer/brand name (e.g., "Rolex", "Nike", "Pokemon")
+   * This is what the minter CLAIMS the item is - authentication validates this.
+   */
+  manufacturerName: string;
+  
+  /**
+   * Optional: If minted by a registered manufacturer account, their account ID.
+   * Empty if minted by a user or authenticator on behalf of someone.
+   */
+  manufacturerId?: string;
+  
+  /**
+   * Who minted this item:
+   * - 'manufacturer': Official manufacturer account
+   * - 'authenticator': An authenticator minted on behalf of someone
+   * - 'user': A regular user minted their own item
+   */
+  issuerRole: 'manufacturer' | 'authenticator' | 'user';
+  
+  /** The account ID of whoever actually minted this item */
+  issuerAccountId: string;
+  
+  /**
+   * Whether the manufacturer claim has been verified by an authenticator.
+   * - true: An authenticator confirmed this is a genuine [manufacturerName] product
+   * - false: An authenticator determined this is NOT genuine
+   * - undefined: Not yet authenticated
+   */
+  manufacturerVerified?: boolean;
+  
+  /**
+   * If minted by official manufacturer account, automatically verified.
+   */
+  mintedByOfficialManufacturer: boolean;
+  
   serialNumberHash: string;
   serialNumberDisplay?: string;
   metadataHash: string;
@@ -27,9 +61,13 @@ export interface ItemState {
   authentications: Array<{
     attestationId?: string;
     authenticatorId: string;
+    authenticatorName?: string;
     performedAt?: number;
     recordedAt?: number;
+    /** Whether the authenticator verified the item is genuine */
     isAuthentic?: boolean;
+    /** Whether the authenticator verified the manufacturer claim */
+    manufacturerVerified?: boolean;
     confidence?: 'high' | 'medium' | 'low';
     notes?: string;
     images?: any[];
@@ -697,11 +735,20 @@ export class StateBuilder {
   private applyItemRegistered(state: RegistryState, event: Event): void {
     const payload = event.payload as any;
 
+    // Determine if minted by official manufacturer
+    // An item is "officially minted" if issuerRole is 'manufacturer' and manufacturerId is set
+    const mintedByOfficialManufacturer = payload.issuerRole === 'manufacturer' && !!payload.manufacturerId;
+
     const item: ItemState = {
       itemId: payload.itemId,
+      // Support both old 'manufacturerId' field and new 'manufacturerName' field for backwards compatibility
+      manufacturerName: payload.manufacturerName || payload.manufacturerId || 'Unknown',
       manufacturerId: payload.manufacturerId,
-      issuerRole: payload.issuerRole,
-      issuerAccountId: payload.issuerAccountId,
+      issuerRole: payload.issuerRole || 'user',
+      issuerAccountId: payload.issuerAccountId || payload.initialOwner,
+      // If minted by official manufacturer, automatically verified
+      manufacturerVerified: mintedByOfficialManufacturer ? true : undefined,
+      mintedByOfficialManufacturer,
       serialNumberHash: payload.serialNumberHash,
       serialNumberDisplay: payload.serialNumberDisplay,
       metadataHash: payload.metadataHash,

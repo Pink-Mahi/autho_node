@@ -16,7 +16,18 @@ import { sha256 } from '../crypto';
 
 export interface SearchableItem {
   itemId: string;
-  manufacturerId: string;
+  /** The claimed manufacturer/brand name (e.g., "Rolex", "Nike") */
+  manufacturerName: string;
+  /** Optional: Official manufacturer account ID if minted by manufacturer */
+  manufacturerId?: string;
+  /** Who minted this item */
+  issuerRole: 'manufacturer' | 'authenticator' | 'user';
+  /** Account ID of whoever minted this item */
+  issuerAccountId: string;
+  /** Whether manufacturer claim has been verified by authenticator */
+  manufacturerVerified?: boolean;
+  /** If minted by official manufacturer account */
+  mintedByOfficialManufacturer: boolean;
   serialNumberHash: string;
   serialNumberDisplay?: string;
   metadataHash: string;
@@ -36,6 +47,7 @@ export interface SearchableItem {
   authentications?: Array<{
     authenticatorId: string;
     isAuthentic?: boolean;
+    manufacturerVerified?: boolean;
     confidence?: string;
   }>;
 }
@@ -43,8 +55,12 @@ export interface SearchableItem {
 export interface SearchQuery {
   /** Full-text search across name, description, model */
   text?: string;
-  /** Exact or partial manufacturer ID */
+  /** Exact or partial manufacturer name (e.g., "Rolex", "Nike") */
   manufacturer?: string;
+  /** Only return items verified by authenticator */
+  verifiedOnly?: boolean;
+  /** Only return items minted by official manufacturer */
+  officialOnly?: boolean;
   /** Exact or partial model name */
   model?: string;
   /** Serial number (will be hashed for comparison) */
@@ -125,9 +141,10 @@ export class ItemSearchEngine {
    * Index a single item
    */
   private indexItem(itemId: string, item: SearchableItem): void {
-    // Manufacturer index
-    if (item.manufacturerId) {
-      const key = item.manufacturerId.toLowerCase();
+    // Manufacturer name index (the claimed brand, e.g., "Rolex", "Nike")
+    const manufacturerName = (item as any).manufacturerName || (item as any).manufacturerId;
+    if (manufacturerName) {
+      const key = manufacturerName.toLowerCase();
       if (!this.manufacturerIndex.has(key)) {
         this.manufacturerIndex.set(key, new Set());
       }
@@ -406,7 +423,8 @@ export class ItemSearchEngine {
       matchedFields.push('serialNumberHash');
     }
 
-    if (query.manufacturer && item.manufacturerId?.toLowerCase().includes(query.manufacturer.toLowerCase())) {
+    const manufacturerName = (item as any).manufacturerName || (item as any).manufacturerId || '';
+    if (query.manufacturer && manufacturerName.toLowerCase().includes(query.manufacturer.toLowerCase())) {
       score += 50;
       matchedFields.push('manufacturer');
     }
@@ -460,12 +478,16 @@ export class ItemSearchEngine {
       return [item.itemId];
     }
 
-    // Filter to same manufacturer
+    // Filter to same manufacturer name (the claimed brand)
+    const itemManufacturerName = ((item as any).manufacturerName || (item as any).manufacturerId || '').toLowerCase();
     const duplicates: string[] = [];
     for (const candidateId of serialMatches) {
       const candidate = this.items.get(candidateId);
-      if (candidate && candidate.manufacturerId === item.manufacturerId) {
-        duplicates.push(candidateId);
+      if (candidate) {
+        const candidateManufacturerName = ((candidate as any).manufacturerName || (candidate as any).manufacturerId || '').toLowerCase();
+        if (candidateManufacturerName === itemManufacturerName) {
+          duplicates.push(candidateId);
+        }
       }
     }
 
@@ -476,25 +498,29 @@ export class ItemSearchEngine {
    * Check if an item would be a duplicate before registration
    */
   checkForDuplicates(
-    manufacturerId: string,
+    manufacturerName: string,
     serialNumber: string,
     imageHashes?: string[]
   ): DuplicateCheckResult {
     const serialHash = sha256(serialNumber);
     const existingItems: DuplicateCheckResult['existingItems'] = [];
+    const manufacturerNameLower = manufacturerName.toLowerCase();
 
-    // Check serial number + manufacturer combination
+    // Check serial number + manufacturer name combination
     const serialMatches = this.serialHashIndex.get(serialHash);
     if (serialMatches) {
       for (const itemId of serialMatches) {
         const item = this.items.get(itemId);
-        if (item && item.manufacturerId === manufacturerId) {
-          existingItems.push({
-            itemId,
-            registeredAt: item.registeredAt,
-            currentOwner: item.currentOwner,
-            matchType: 'serial_manufacturer',
-          });
+        if (item) {
+          const itemManufacturerName = ((item as any).manufacturerName || (item as any).manufacturerId || '').toLowerCase();
+          if (itemManufacturerName === manufacturerNameLower) {
+            existingItems.push({
+              itemId,
+              registeredAt: item.registeredAt,
+              currentOwner: item.currentOwner,
+              matchType: 'serial_manufacturer',
+            });
+          }
         }
       }
     }

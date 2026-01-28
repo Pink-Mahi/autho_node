@@ -159,9 +159,32 @@ export interface ItemMetadata {
 export interface ItemRegisteredPayload extends BaseEventPayload {
   type: EventType.ITEM_REGISTERED;
   itemId: string;
-  manufacturerId: string;
-  issuerRole?: 'manufacturer' | 'authenticator' | 'user';
-  issuerAccountId?: string;
+  
+  /**
+   * The claimed manufacturer/brand name (e.g., "Rolex", "Nike", "Pokemon")
+   * This is what the minter CLAIMS the item is - not necessarily verified.
+   * Authentication by an authenticator validates this claim.
+   */
+  manufacturerName: string;
+  
+  /**
+   * Optional: If the minter is a registered manufacturer account, this links to their account.
+   * If a user mints their own Rolex, this would be empty.
+   * If Rolex (the company) mints it, this would be their manufacturer account ID.
+   */
+  manufacturerId?: string;
+  
+  /**
+   * Who minted this item:
+   * - 'manufacturer': Official manufacturer account (manufacturerId matches a verified manufacturer)
+   * - 'authenticator': An authenticator minted on behalf of someone
+   * - 'user': A regular user minted their own item
+   */
+  issuerRole: 'manufacturer' | 'authenticator' | 'user';
+  
+  /** The account ID of whoever actually minted this item */
+  issuerAccountId: string;
+  
   serialNumberHash: string;
   serialNumberDisplay?: string;
   metadataHash: string;
