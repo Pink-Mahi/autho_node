@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sha256 } from '../crypto';
 import { canonicalCborEncode } from '../crypto/canonical-cbor';
+import { AtomicStorage, atomicWriteJSON, atomicReadJSONWithRecovery } from '../storage/atomic-storage';
 import {
   Event,
   EventPayload,
@@ -100,21 +101,29 @@ export class EventStore {
   }
 
   /**
-   * Get event by hash
+   * Get event by hash with checksum verification
    */
   async getEvent(eventHash: string): Promise<Event | null> {
     const eventFile = path.join(this.eventsDir, `${eventHash}.json`);
     
-    if (!fs.existsSync(eventFile)) {
+    if (!AtomicStorage.exists(eventFile)) {
       return null;
     }
 
-    const data = fs.readFileSync(eventFile, 'utf8');
-    return JSON.parse(data);
+    const result = atomicReadJSONWithRecovery<Event>(eventFile);
+    if (result.success && result.data) {
+      if (result.recoveredFromBackup) {
+        console.warn(`[EventStore] Event ${eventHash} recovered from backup`);
+      }
+      return result.data;
+    }
+    
+    console.error(`[EventStore] Failed to read event ${eventHash}:`, result.error);
+    return null;
   }
 
   /**
-   * Get events by sequence range
+   * Get events by sequence range with checksum verification
    */
   async getEventsBySequence(
     fromSequence: number,
@@ -126,12 +135,18 @@ export class EventStore {
     const files = fs.readdirSync(this.eventsDir);
     
     for (const file of files) {
-      if (!file.endsWith('.json')) continue;
+      // Skip temp and backup files
+      if (!file.endsWith('.json') || file.endsWith('.tmp') || file.endsWith('.bak')) continue;
       
       const eventFile = path.join(this.eventsDir, file);
-      const data = fs.readFileSync(eventFile, 'utf8');
-      const event: Event = JSON.parse(data);
+      const result = atomicReadJSONWithRecovery<Event>(eventFile);
       
+      if (!result.success || !result.data) {
+        console.warn(`[EventStore] Skipping corrupted event file: ${file}`);
+        continue;
+      }
+      
+      const event = result.data;
       if (event.sequenceNumber >= fromSequence && event.sequenceNumber <= toSequence) {
         events.push(event);
       }
@@ -220,9 +235,9 @@ export class EventStore {
       createdAt: Date.now(),
     };
 
-    // Save checkpoint
+    // Save checkpoint using atomic write
     const checkpointFile = path.join(this.dataDir, `checkpoint-${checkpoint.checkpointRoot}.json`);
-    fs.writeFileSync(checkpointFile, JSON.stringify(checkpoint, null, 2));
+    atomicWriteJSON(checkpointFile, checkpoint);
 
     this.state.lastCheckpointHash = checkpoint.checkpointRoot;
     this.state.lastCheckpointAt = checkpoint.createdAt;
@@ -274,20 +289,35 @@ export class EventStore {
   }
 
   /**
-   * Persist event to disk
+   * Persist event to disk using atomic write
+   * This ensures crash-safety - either the full event is written or nothing
    */
   private async persistEvent(event: Event): Promise<void> {
     const eventFile = path.join(this.eventsDir, `${event.eventHash}.json`);
-    fs.writeFileSync(eventFile, JSON.stringify(event, null, 2));
+    atomicWriteJSON(eventFile, event);
   }
 
   /**
-   * Load state from disk
+   * Load state from disk with atomic recovery
+   * If main file is corrupted, automatically recovers from backup
    */
   private loadState(): EventStoreState {
-    if (fs.existsSync(this.stateFile)) {
-      const data = fs.readFileSync(this.stateFile, 'utf8');
-      return JSON.parse(data);
+    // Clean up any orphaned temp files from interrupted writes
+    AtomicStorage.cleanupTempFiles(this.dataDir);
+    AtomicStorage.cleanupTempFiles(this.eventsDir);
+
+    if (AtomicStorage.exists(this.stateFile)) {
+      const result = atomicReadJSONWithRecovery<EventStoreState>(this.stateFile);
+      
+      if (result.success && result.data) {
+        if (result.recoveredFromBackup) {
+          console.warn('[EventStore] State recovered from backup file');
+        }
+        return result.data;
+      }
+      
+      console.error('[EventStore] Failed to load state:', result.error);
+      console.error('[EventStore] Starting with genesis state - DATA MAY BE LOST');
     }
 
     // Initialize genesis state
@@ -299,10 +329,11 @@ export class EventStore {
   }
 
   /**
-   * Save state to disk
+   * Save state to disk using atomic write
+   * This is the most critical file - if corrupted, we lose track of the chain head
    */
   private saveState(): void {
-    fs.writeFileSync(this.stateFile, JSON.stringify(this.state, null, 2));
+    atomicWriteJSON(this.stateFile, this.state);
   }
 
   /**
