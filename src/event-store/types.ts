@@ -117,6 +117,45 @@ export interface LedgerImage {
   h: number;
 }
 
+/**
+ * Standard item metadata schema for searchable items.
+ * Image hashes are stored on the ledger (not the images themselves).
+ */
+export interface ItemMetadata {
+  /** Display name of the item */
+  name: string;
+  /** Detailed description */
+  description?: string;
+  /** Model number/name (e.g., "Air Jordan 1 Retro High OG") */
+  model?: string;
+  /** Brand name (e.g., "Nike", "Rolex", "Pokemon") */
+  brand?: string;
+  /** Category for filtering (e.g., "sneaker", "watch", "trading_card", "collectible") */
+  category?: string;
+  /** Year of manufacture/release */
+  year?: number;
+  /** Condition (e.g., "mint", "near_mint", "excellent", "good", "fair", "poor") */
+  condition?: string;
+  /** Edition info (e.g., "1st Edition", "Limited Release") */
+  edition?: string;
+  /** Rarity level (e.g., "common", "uncommon", "rare", "ultra_rare", "legendary") */
+  rarity?: string;
+  /** Color/colorway */
+  color?: string;
+  /** Size (for apparel/shoes) */
+  size?: string;
+  /** Material composition */
+  material?: string;
+  /** Legacy image URL (deprecated - use images with hashes) */
+  imageUrl?: string;
+  /** Images with SHA-256 hashes stored on ledger */
+  images?: LedgerImage[];
+  /** Additional image hashes (for images stored externally) */
+  imageHashes?: string[];
+  /** Any additional custom fields */
+  [key: string]: any;
+}
+
 export interface ItemRegisteredPayload extends BaseEventPayload {
   type: EventType.ITEM_REGISTERED;
   itemId: string;
@@ -126,13 +165,7 @@ export interface ItemRegisteredPayload extends BaseEventPayload {
   serialNumberHash: string;
   serialNumberDisplay?: string;
   metadataHash: string;
-  metadata?: {
-    name: string;
-    description?: string;
-    imageUrl?: string;
-    images?: LedgerImage[];
-    [key: string]: any;
-  };
+  metadata?: ItemMetadata;
   initialOwner: string; // Bitcoin address
 
   // Per-mint fee + Bitcoin anchor
