@@ -1857,6 +1857,39 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
+    // Peer resilience status for 250-year stability monitoring
+    this.app.get('/api/network/resilience', (req: Request, res: Response) => {
+      if (!this.peerResilienceManager) {
+        res.json({ success: false, error: 'Resilience manager not initialized' });
+        return;
+      }
+
+      const status = this.peerResilienceManager.getStatus();
+      const consistency = this.peerResilienceManager.generateConsistencyReport();
+
+      res.json({
+        success: true,
+        resilience: {
+          ...status,
+          mainNodeDowntimeMs: status.isMainNodeOnline ? 0 : Date.now() - status.mainNodeLastSeen,
+        },
+        consistency: {
+          totalPeers: consistency.totalPeers,
+          onlinePeers: consistency.onlinePeers,
+          consistentPeers: consistency.consistentPeers,
+          divergentPeers: consistency.divergentPeers,
+          majoritySequence: consistency.majoritySequence,
+          needsRepair: consistency.needsRepair,
+        },
+        peerConnections: Array.from(this.operatorPeerConnections.entries()).map(([id, peer]) => ({
+          operatorId: id,
+          connected: peer.ws.readyState === WebSocket.OPEN,
+          lastSeenMs: Date.now() - peer.lastSeen,
+          uptimeMs: Date.now() - peer.connectedAt,
+        })),
+      });
+    });
+
     // Heartbeat-style consensus verification status (separate from mempool consensus)
     this.app.get('/api/consensus/verification', (req: Request, res: Response) => {
       const status = this.getConsensusStatus();
