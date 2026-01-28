@@ -839,4 +839,227 @@ export class EventStore {
     const checkpointId = sha256(`${this.state.headHash}:${tree.root}:${Date.now()}`);
     return formatForOpReturn(tree.root, checkpointId);
   }
+
+  // ============================================================
+  // EVENT PRUNING (like Bitcoin's pruned node mode)
+  // ============================================================
+
+  /**
+   * Prune old events while preserving checkpoints
+   * 
+   * Like Bitcoin's pruned mode:
+   * - Keeps recent events (configurable retention period)
+   * - Preserves ALL checkpoints forever
+   * - Maintains hash chain integrity via checkpoint anchors
+   * - Allows verification of pruned events via Merkle proofs
+   * 
+   * @param retentionDays - Keep events from the last N days
+   * @param preserveCheckpoints - Always keep checkpoint-related events
+   * @returns Number of events pruned
+   */
+  async pruneOldEvents(
+    retentionDays: number = 365 * 7, // Default: 7 years like Autho spec
+    preserveCheckpoints: boolean = true
+  ): Promise<{ pruned: number; preserved: number; errors: string[] }> {
+    const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+    const errors: string[] = [];
+    let pruned = 0;
+    let preserved = 0;
+
+    // Get all checkpoint sequence numbers to preserve
+    const checkpointSequences = new Set<number>();
+    if (preserveCheckpoints) {
+      const checkpointFiles = fs.readdirSync(this.dataDir)
+        .filter(f => f.startsWith('checkpoint-') && f.endsWith('.json'));
+      
+      for (const file of checkpointFiles) {
+        try {
+          const checkpointPath = path.join(this.dataDir, file);
+          const result = atomicReadJSONWithRecovery<CheckpointData>(checkpointPath);
+          if (result.success && result.data) {
+            // Preserve events at checkpoint boundaries
+            checkpointSequences.add(result.data.fromSequence);
+            checkpointSequences.add(result.data.toSequence);
+          }
+        } catch (err) {
+          errors.push(`Failed to read checkpoint ${file}`);
+        }
+      }
+    }
+
+    // Scan events directory
+    const eventFiles = fs.readdirSync(this.eventsDir)
+      .filter(f => f.endsWith('.json') && !f.endsWith('.tmp') && !f.endsWith('.bak'));
+
+    for (const file of eventFiles) {
+      try {
+        const eventPath = path.join(this.eventsDir, file);
+        const result = atomicReadJSONWithRecovery<Event>(eventPath);
+        
+        if (!result.success || !result.data) {
+          continue;
+        }
+
+        const event = result.data;
+
+        // Never prune if within retention period
+        if (event.createdAt >= cutoffTime) {
+          preserved++;
+          continue;
+        }
+
+        // Never prune checkpoint boundary events
+        if (preserveCheckpoints && checkpointSequences.has(event.sequenceNumber)) {
+          preserved++;
+          continue;
+        }
+
+        // Never prune the head event
+        if (event.eventHash === this.state.headHash) {
+          preserved++;
+          continue;
+        }
+
+        // Safe to prune - delete the event file
+        AtomicStorage.deleteFile(eventPath);
+        
+        // Remove from sequence index
+        delete this.sequenceIndex.entries[event.sequenceNumber];
+        
+        pruned++;
+
+      } catch (err: any) {
+        errors.push(`Failed to process ${file}: ${err.message}`);
+      }
+    }
+
+    // Save updated index
+    if (pruned > 0) {
+      this.sequenceIndex.lastUpdated = Date.now();
+      this.saveIndex();
+      console.log(`[EventStore] Pruned ${pruned} events, preserved ${preserved}`);
+    }
+
+    return { pruned, preserved, errors };
+  }
+
+  /**
+   * Get pruning statistics
+   */
+  async getPruningStats(): Promise<{
+    totalEvents: number;
+    oldestEventAge: number;
+    newestEventAge: number;
+    checkpointCount: number;
+    estimatedPrunableEvents: number;
+    diskUsageBytes: number;
+  }> {
+    const events = await this.getAllEvents();
+    const now = Date.now();
+
+    let oldestTime = now;
+    let newestTime = 0;
+    let diskUsage = 0;
+
+    for (const event of events) {
+      if (event.createdAt < oldestTime) oldestTime = event.createdAt;
+      if (event.createdAt > newestTime) newestTime = event.createdAt;
+    }
+
+    // Count checkpoints
+    const checkpointFiles = fs.readdirSync(this.dataDir)
+      .filter(f => f.startsWith('checkpoint-') && f.endsWith('.json'));
+
+    // Estimate disk usage
+    const eventFiles = fs.readdirSync(this.eventsDir)
+      .filter(f => f.endsWith('.json') && !f.endsWith('.tmp') && !f.endsWith('.bak'));
+    
+    for (const file of eventFiles) {
+      try {
+        const stats = fs.statSync(path.join(this.eventsDir, file));
+        diskUsage += stats.size;
+      } catch {}
+    }
+
+    // Estimate prunable (older than 7 years)
+    const sevenYearsAgo = now - (7 * 365 * 24 * 60 * 60 * 1000);
+    const prunableEvents = events.filter(e => e.createdAt < sevenYearsAgo).length;
+
+    return {
+      totalEvents: events.length,
+      oldestEventAge: Math.floor((now - oldestTime) / (24 * 60 * 60 * 1000)), // days
+      newestEventAge: Math.floor((now - newestTime) / (24 * 60 * 60 * 1000)), // days
+      checkpointCount: checkpointFiles.length,
+      estimatedPrunableEvents: prunableEvents,
+      diskUsageBytes: diskUsage,
+    };
+  }
+
+  /**
+   * Archive events to cold storage before pruning
+   * Returns archive data that can be stored on IPFS/Arweave
+   */
+  async createArchive(
+    fromSequence: number,
+    toSequence: number
+  ): Promise<{
+    archiveId: string;
+    events: Event[];
+    merkleRoot: string;
+    checksum: string;
+    createdAt: number;
+  }> {
+    const events = await this.getEventsBySequence(fromSequence, toSequence);
+    const eventHashes = events.map(e => e.eventHash);
+    const tree = buildMerkleTree(eventHashes);
+
+    const archiveData = {
+      version: 1,
+      fromSequence,
+      toSequence,
+      events,
+      merkleRoot: tree.root,
+    };
+
+    const archiveJson = JSON.stringify(archiveData);
+    const checksum = sha256(archiveJson);
+    const archiveId = sha256(`archive:${fromSequence}:${toSequence}:${Date.now()}`);
+
+    // Save archive locally
+    const archiveFile = path.join(this.dataDir, `archive-${archiveId.slice(0, 16)}.json`);
+    atomicWriteJSON(archiveFile, {
+      ...archiveData,
+      archiveId,
+      checksum,
+      createdAt: Date.now(),
+    });
+
+    console.log(`[EventStore] Created archive ${archiveId.slice(0, 16)} with ${events.length} events`);
+
+    return {
+      archiveId,
+      events,
+      merkleRoot: tree.root,
+      checksum,
+      createdAt: Date.now(),
+    };
+  }
+
+  /**
+   * Verify an archived event using its Merkle proof
+   * Works even after the event has been pruned
+   */
+  verifyArchivedEvent(
+    eventHash: string,
+    proof: MerkleProof,
+    expectedMerkleRoot: string
+  ): boolean {
+    if (proof.leafHash !== eventHash) {
+      return false;
+    }
+    if (proof.root !== expectedMerkleRoot) {
+      return false;
+    }
+    return verifyMerkleProof(proof);
+  }
 }
