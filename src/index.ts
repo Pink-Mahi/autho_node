@@ -8,29 +8,48 @@ async function main() {
   console.log('Starting operator node...\n');
 
   // Validate required environment variables
+  // SEED_URL is the new name, MAIN_SEED_URL is supported for backwards compatibility
+  // Any active operator can be used as a seed - the network is fully decentralized
   const requiredEnvVars = [
     'OPERATOR_ID',
     'OPERATOR_PUBLIC_KEY',
     'OPERATOR_PRIVATE_KEY',
     'OPERATOR_BTC_ADDRESS',
-    'MAIN_SEED_URL'
   ];
+
+  // Check for seed URL (new or legacy name)
+  const seedUrl = process.env.SEED_URL || process.env.MAIN_SEED_URL;
+  if (!seedUrl) {
+    requiredEnvVars.push('SEED_URL'); // Will trigger error message
+  }
 
   const missing = requiredEnvVars.filter(v => !process.env[v]);
   if (missing.length > 0) {
     console.error('ERROR: Missing required environment variables:');
     missing.forEach(v => console.error(`  - ${v}`));
     console.error('\nPlease configure these in your .env file.');
-    console.error('Run "npm run generate-keys" to generate operator keys.\n');
+    console.error('Run "npm run generate-keys" to generate operator keys.');
+    console.error('\nNote: SEED_URL can be ANY active operator in the Autho network.');
+    console.error('Examples:');
+    console.error('  SEED_URL=wss://autho.pinkmahi.com');
+    console.error('  SEED_URL=wss://autho.cartpathcleaning.com');
+    console.error('  SEED_URL=wss://autho.steveschickens.com\n');
     process.exit(1);
   }
+
+  // Parse fallback seed URLs (comma-separated)
+  const fallbackSeeds = (process.env.FALLBACK_SEED_URLS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 
   const config = {
     operatorId: process.env.OPERATOR_ID!,
     publicKey: process.env.OPERATOR_PUBLIC_KEY!,
     privateKey: process.env.OPERATOR_PRIVATE_KEY!,
     btcAddress: process.env.OPERATOR_BTC_ADDRESS!,
-    mainSeedUrl: process.env.MAIN_SEED_URL!,
+    mainSeedUrl: seedUrl!, // Keep internal name for compatibility
+    fallbackSeedUrls: fallbackSeeds,
     port: parseInt(process.env.PORT || '3000', 10),
     wsPort: parseInt(process.env.WS_PORT || '4001', 10),
     dataDir: process.env.DATA_DIR || './data',
@@ -43,7 +62,10 @@ async function main() {
   console.log(`  Operator ID: ${config.operatorId}`);
   console.log(`  Bitcoin Address: ${config.btcAddress}`);
   console.log(`  Network: ${config.network}`);
-  console.log(`  Main Seed: ${config.mainSeedUrl}`);
+  console.log(`  Seed URL: ${config.mainSeedUrl}`);
+  if (fallbackSeeds.length > 0) {
+    console.log(`  Fallback Seeds: ${fallbackSeeds.join(', ')}`);
+  }
   console.log(`  HTTP Port: ${config.port}`);
   console.log(`  WebSocket Port: ${config.wsPort}`);
   console.log(`  Data Directory: ${config.dataDir}\n`);

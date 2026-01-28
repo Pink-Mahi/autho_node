@@ -24,7 +24,10 @@ interface OperatorConfig {
   publicKey: string;
   privateKey: string;
   btcAddress: string;
+  /** Primary seed URL - can be ANY active operator in the network */
   mainSeedUrl: string;
+  /** Fallback seed URLs - tried if primary fails */
+  fallbackSeedUrls?: string[];
   port: number;
   wsPort: number;
   dataDir: string;
@@ -76,6 +79,12 @@ export class OperatorNode extends EventEmitter {
   private heartbeatManager?: HeartbeatManager;
   private lastMainNodeHeartbeat: number = Date.now();
   private operatorHeartbeatTimer: any;
+  /** Index of current seed being tried (for fallback rotation) */
+  private currentSeedIndex: number = 0;
+  /** All available seed URLs (primary + fallbacks + discovered peers) */
+  private allSeedUrls: string[] = [];
+  /** Last successful seed URL */
+  private lastSuccessfulSeedUrl?: string;
 
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
   private operatorApplyChallenges: Map<string, { challengeId: string; accountId: string; nonce: string; createdAt: number; expiresAt: number; used: boolean }> = new Map();
@@ -3009,16 +3018,73 @@ export class OperatorNode extends EventEmitter {
     console.log('[Operator] Stopped');
   }
 
+  /**
+   * Build list of all available seed URLs
+   * Order: last successful > primary > fallbacks > discovered peers
+   */
+  private buildSeedUrlList(): string[] {
+    const urls: string[] = [];
+    
+    // Last successful seed first (if we have one)
+    if (this.lastSuccessfulSeedUrl) {
+      urls.push(this.lastSuccessfulSeedUrl);
+    }
+    
+    // Primary seed
+    if (this.config.mainSeedUrl) {
+      urls.push(this.config.mainSeedUrl);
+    }
+    
+    // Configured fallbacks
+    if (this.config.fallbackSeedUrls) {
+      urls.push(...this.config.fallbackSeedUrls);
+    }
+    
+    // Discovered peer WebSocket URLs
+    for (const [, peer] of this.operatorPeerConnections) {
+      if (peer.wsUrl) {
+        urls.push(peer.wsUrl);
+      }
+    }
+    
+    // Deduplicate while preserving order
+    return [...new Set(urls)];
+  }
+
+  /**
+   * Get the next seed URL to try (rotates through available seeds)
+   */
+  private getNextSeedUrl(): string {
+    this.allSeedUrls = this.buildSeedUrlList();
+    
+    if (this.allSeedUrls.length === 0) {
+      return this.config.mainSeedUrl; // Fallback to config
+    }
+    
+    // Rotate to next seed
+    this.currentSeedIndex = this.currentSeedIndex % this.allSeedUrls.length;
+    const seedUrl = this.allSeedUrls[this.currentSeedIndex];
+    this.currentSeedIndex++;
+    
+    return seedUrl;
+  }
+
   private async connectToMainSeed(): Promise<void> {
-    console.log(`[Operator] Connecting to main seed: ${this.config.mainSeedUrl}`);
+    const seedUrl = this.getNextSeedUrl();
+    console.log(`[Operator] Connecting to seed: ${seedUrl}`);
+    if (this.allSeedUrls.length > 1) {
+      console.log(`[Operator] (${this.allSeedUrls.length} seeds available for failover)`);
+    }
 
     try {
-      this.mainSeedWs = new WebSocket(this.config.mainSeedUrl);
+      this.mainSeedWs = new WebSocket(seedUrl);
 
       this.mainSeedWs.on('open', () => {
-        console.log('[Operator] Connected to Autho Network');
+        console.log(`[Operator] ✅ Connected to Autho Network via ${seedUrl}`);
         this.isConnectedToMain = true;
         this.lastMainNodeHeartbeat = Date.now();
+        this.lastSuccessfulSeedUrl = seedUrl;
+        this.currentSeedIndex = 0; // Reset rotation on success
 
         // Send sync request
         this.mainSeedWs!.send(JSON.stringify({
@@ -3052,17 +3118,18 @@ export class OperatorNode extends EventEmitter {
       });
 
       this.mainSeedWs.on('close', () => {
-        console.log('[Operator] Disconnected from main seed');
+        console.log('[Operator] Disconnected from seed');
         this.isConnectedToMain = false;
         this.scheduleReconnect();
       });
 
       this.mainSeedWs.on('error', (error: Error) => {
-        console.error('[Operator] WebSocket error:', error.message);
+        console.error(`[Operator] WebSocket error with ${seedUrl}:`, error.message);
+        // Will try next seed on reconnect
       });
 
     } catch (error: any) {
-      console.error('[Operator] Failed to connect to main seed:', error.message);
+      console.error(`[Operator] Failed to connect to seed ${seedUrl}:`, error.message);
       this.scheduleReconnect();
     }
   }
@@ -3070,11 +3137,12 @@ export class OperatorNode extends EventEmitter {
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
 
-    console.log('[Operator] Will reconnect in 10 seconds...');
+    const delay = this.allSeedUrls.length > 1 ? 5000 : 10000; // Faster retry with multiple seeds
+    console.log(`[Operator] Will try next seed in ${delay/1000} seconds...`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       this.connectToMainSeed();
-    }, 10000);
+    }, delay);
   }
 
   private async handleMainSeedMessage(message: any): Promise<void> {

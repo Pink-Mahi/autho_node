@@ -73,11 +73,20 @@ OPERATOR_PUBLIC_KEY=your-public-key-hex
 # Bitcoin address for fee payouts
 OPERATOR_BTC_ADDRESS=bc1q...
 
-# Main node seed URL (do not change unless instructed)
-MAIN_SEED_URL=wss://autho.pinkmahi.com:4001
+# Seed URL - ANY active operator in the Autho network
+# The network is fully decentralized - you can connect to any operator
+# Examples:
+#   SEED_URL=wss://autho.pinkmahi.com
+#   SEED_URL=wss://autho.cartpathcleaning.com
+#   SEED_URL=wss://autho.steveschickens.com
+SEED_URL=wss://autho.pinkmahi.com
+
+# Optional: Fallback seed URLs (comma-separated)
+# If primary seed is down, these will be tried in order
+# FALLBACK_SEED_URLS=wss://autho.cartpathcleaning.com,wss://autho2.cartpathcleaning.com
 
 # Network (mainnet or testnet)
-BITCOIN_NETWORK=testnet
+BITCOIN_NETWORK=mainnet
 
 # API port (default: 3000)
 PORT=3000
