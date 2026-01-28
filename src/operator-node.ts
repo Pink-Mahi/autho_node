@@ -19,6 +19,7 @@ import {
   ConsensusMessage,
   StateProviderAdapter 
 } from './consensus';
+import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
 
 interface OperatorConfig {
   operatorId: string;
@@ -94,6 +95,9 @@ export class OperatorNode extends EventEmitter {
   // Decentralized consensus components
   private consensusNode?: ConsensusNode;
   private stateProviderAdapter?: StateProviderAdapter;
+  
+  // Item search engine for ledger lookups
+  private itemSearchEngine?: ItemSearchEngine;
 
   constructor(config: OperatorConfig) {
     super();
@@ -2333,6 +2337,229 @@ export class OperatorNode extends EventEmitter {
         .filter((item: any) => item.currentOwner === req.params.address);
       res.json({ items });
     });
+
+    // ============================================================
+    // ITEM SEARCH API - Makes Autho the definitive title protocol
+    // ============================================================
+
+    // Full-text and filtered search for items
+    this.app.get('/api/search/items', (req: Request, res: Response) => {
+      try {
+        if (!this.itemSearchEngine) {
+          this.itemSearchEngine = new ItemSearchEngine(this.state.items);
+        }
+
+        const query = {
+          text: req.query.q as string,
+          manufacturer: req.query.manufacturer as string,
+          model: req.query.model as string,
+          brand: req.query.brand as string,
+          category: req.query.category as string,
+          serialNumber: req.query.serial as string,
+          serialNumberHash: req.query.serialHash as string,
+          imageHash: req.query.imageHash as string,
+          owner: req.query.owner as string,
+          authenticatedOnly: req.query.authenticated === 'true',
+          minConfidence: req.query.minConfidence as 'low' | 'medium' | 'high',
+          limit: parseInt(req.query.limit as string) || 50,
+          offset: parseInt(req.query.offset as string) || 0,
+        };
+
+        const results = this.itemSearchEngine.search(query);
+        const stats = this.itemSearchEngine.getStats();
+
+        res.json({
+          success: true,
+          query,
+          results: results.map(r => ({
+            item: r.item,
+            score: r.score,
+            matchedFields: r.matchedFields,
+            isDuplicate: r.isDuplicate,
+            duplicateOf: r.duplicateOf,
+          })),
+          total: results.length,
+          stats,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Check for duplicates before registration (customer verification)
+    this.app.get('/api/search/duplicates', (req: Request, res: Response) => {
+      try {
+        if (!this.itemSearchEngine) {
+          this.itemSearchEngine = new ItemSearchEngine(this.state.items);
+        }
+
+        const manufacturer = req.query.manufacturer as string;
+        const serial = req.query.serial as string;
+        const imageHashes = req.query.imageHashes 
+          ? (req.query.imageHashes as string).split(',')
+          : undefined;
+
+        if (!manufacturer || !serial) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'manufacturer and serial are required' 
+          });
+          return;
+        }
+
+        const result = this.itemSearchEngine.checkForDuplicates(
+          manufacturer,
+          serial,
+          imageHashes
+        );
+
+        res.json({
+          success: true,
+          hasDuplicates: result.hasDuplicates,
+          existingItems: result.existingItems,
+          message: result.hasDuplicates
+            ? `⚠️ Found ${result.existingItems.length} existing item(s) with same serial/manufacturer`
+            : '✅ No duplicates found - safe to register',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Find items by image hash (verify image authenticity)
+    this.app.get('/api/search/image/:imageHash', (req: Request, res: Response) => {
+      try {
+        if (!this.itemSearchEngine) {
+          this.itemSearchEngine = new ItemSearchEngine(this.state.items);
+        }
+
+        const items = this.itemSearchEngine.findByImageHash(req.params.imageHash);
+
+        res.json({
+          success: true,
+          imageHash: req.params.imageHash,
+          matchingItems: items,
+          count: items.length,
+          message: items.length > 0
+            ? `Found ${items.length} item(s) with this image`
+            : 'No items found with this image hash',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get all items from a manufacturer
+    this.app.get('/api/search/manufacturer/:manufacturerId', (req: Request, res: Response) => {
+      try {
+        if (!this.itemSearchEngine) {
+          this.itemSearchEngine = new ItemSearchEngine(this.state.items);
+        }
+
+        const items = this.itemSearchEngine.getByManufacturer(req.params.manufacturerId);
+
+        res.json({
+          success: true,
+          manufacturerId: req.params.manufacturerId,
+          items,
+          count: items.length,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Hash an image (utility endpoint)
+    this.app.post('/api/search/hash-image', express.raw({ type: ['image/*'], limit: '10mb' }), (req: Request, res: Response) => {
+      try {
+        if (!req.body || req.body.length === 0) {
+          res.status(400).json({ success: false, error: 'No image data provided' });
+          return;
+        }
+
+        const hash = hashImage(req.body);
+
+        res.json({
+          success: true,
+          imageHash: hash,
+          size: req.body.length,
+          message: 'Store this hash on the ledger with your item registration',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Verify an image matches a stored hash
+    this.app.post('/api/search/verify-image', express.raw({ type: ['image/*'], limit: '10mb' }), (req: Request, res: Response) => {
+      try {
+        const expectedHash = req.query.hash as string;
+        if (!expectedHash) {
+          res.status(400).json({ success: false, error: 'hash query parameter required' });
+          return;
+        }
+
+        if (!req.body || req.body.length === 0) {
+          res.status(400).json({ success: false, error: 'No image data provided' });
+          return;
+        }
+
+        const isValid = verifyImageHash(req.body, expectedHash);
+        const actualHash = hashImage(req.body);
+
+        res.json({
+          success: true,
+          isValid,
+          expectedHash,
+          actualHash,
+          message: isValid
+            ? '✅ Image matches the stored hash - authentic'
+            : '❌ Image does NOT match - possible tampering or different image',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Search index stats
+    this.app.get('/api/search/stats', (req: Request, res: Response) => {
+      try {
+        if (!this.itemSearchEngine) {
+          this.itemSearchEngine = new ItemSearchEngine(this.state.items);
+        }
+
+        const stats = this.itemSearchEngine.getStats();
+
+        res.json({
+          success: true,
+          stats,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Rebuild search index (admin)
+    this.app.post('/api/search/reindex', (req: Request, res: Response) => {
+      try {
+        const startTime = Date.now();
+        this.itemSearchEngine = new ItemSearchEngine(this.state.items);
+        const elapsed = Date.now() - startTime;
+        const stats = this.itemSearchEngine.getStats();
+
+        res.json({
+          success: true,
+          message: `Search index rebuilt in ${elapsed}ms`,
+          stats,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // END ITEM SEARCH API
+    // ============================================================
 
     this.app.get('/api/offers/user/:address', (req: Request, res: Response) => {
       const addr = String(req.params.address || '').trim();
