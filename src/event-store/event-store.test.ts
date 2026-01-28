@@ -498,6 +498,94 @@ async function testConcurrency() {
   cleanup(testDir);
 }
 
+async function testMerkleProofs() {
+  console.log('\n🌳 Merkle Proof Tests (SPV-style verification)');
+  
+  const testDir = path.join(TEST_DATA_DIR, 'merkle');
+  cleanup(testDir);
+
+  await test('Build Merkle tree from events', async () => {
+    const store = new EventStore(testDir);
+    await store.appendEvent(createTestPayload('item-1'), createTestSignatures());
+    await store.appendEvent(createTestPayload('item-2'), createTestSignatures());
+    await store.appendEvent(createTestPayload('item-3'), createTestSignatures());
+    
+    const tree = await store.buildEventMerkleTree();
+    assert(tree.root.length === 64, 'Merkle root should be 64 chars');
+    assertEqual(tree.leafCount, 3, 'Should have 3 leaves');
+    assert(tree.treeHeight >= 2, 'Tree should have height >= 2');
+  })();
+
+  await test('Generate Merkle proof for event', async () => {
+    const store = new EventStore(testDir);
+    const state = store.getState();
+    
+    const proof = await store.generateEventProof(state.headHash);
+    assert(proof !== null, 'Should generate proof for existing event');
+    assertEqual(proof!.leafHash, state.headHash, 'Proof leaf should match event hash');
+    assert(proof!.siblings.length > 0, 'Proof should have siblings');
+  })();
+
+  await test('Verify Merkle proof is valid', async () => {
+    const store = new EventStore(testDir);
+    const state = store.getState();
+    
+    const proof = await store.generateEventProof(state.headHash);
+    assert(proof !== null, 'Should have proof');
+    
+    const isValid = store.verifyEventInclusion(proof!, proof!.root);
+    assert(isValid, 'Proof should verify correctly');
+  })();
+
+  await test('Compact proof format works', async () => {
+    const store = new EventStore(testDir);
+    const state = store.getState();
+    
+    const compactProof = await store.generateCompactEventProof(state.headHash);
+    assert(compactProof !== null, 'Should generate compact proof');
+    assert(compactProof!.path.length > 0, 'Compact proof should have path');
+    assert(typeof compactProof!.dirs === 'number', 'Dirs should be bit flags');
+  })();
+
+  await test('Bitcoin-anchorable proof generation', async () => {
+    const store = new EventStore(testDir);
+    const state = store.getState();
+    
+    const anchorProof = await store.generateBitcoinAnchorableProof(state.headHash);
+    assert(anchorProof !== null, 'Should generate anchorable proof');
+    assertEqual(anchorProof!.eventHash, state.headHash, 'Event hash should match');
+    assert(anchorProof!.merkleProof !== null, 'Should have Merkle proof');
+    assert(anchorProof!.checkpointSequence.to === state.sequenceNumber, 'Sequence should match');
+  })();
+
+  await test('Enhanced checkpoint with tree', async () => {
+    const store = new EventStore(testDir);
+    
+    const checkpoint = await store.createEnhancedCheckpoint();
+    assert(checkpoint.checkpointRoot.length === 64, 'Checkpoint root should be valid');
+    assert(checkpoint.merkleRoot.length === 64, 'Merkle root should be valid');
+    assert(checkpoint.tree.leafCount === 3, 'Tree should have 3 leaves');
+  })();
+
+  await test('OP_RETURN commitment format', async () => {
+    const store = new EventStore(testDir);
+    
+    const opReturn = await store.getOpReturnCommitment();
+    assertEqual(opReturn.length, 46, 'OP_RETURN should be 46 bytes');
+    assertEqual(opReturn.slice(0, 5).toString('ascii'), 'AUTHO', 'Should have AUTHO prefix');
+    assertEqual(opReturn[5], 0x01, 'Version should be 1');
+  })();
+
+  await test('Proof fails for non-existent event', async () => {
+    const store = new EventStore(testDir);
+    
+    const proof = await store.generateEventProof('nonexistent_hash_1234567890');
+    assert(proof === null, 'Should return null for non-existent event');
+  })();
+
+  cleanup(testDir);
+}
+
 // ============================================================
 // MAIN TEST RUNNER
 // ============================================================
@@ -519,6 +607,7 @@ async function runAllTests() {
     await testIntegrityVerification();
     await testEdgeCases();
     await testConcurrency();
+    await testMerkleProofs();
   } catch (error: any) {
     console.error('\n💥 Test suite crashed:', error.message);
   }

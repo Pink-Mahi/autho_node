@@ -10,6 +10,17 @@ import * as path from 'path';
 import { sha256 } from '../crypto';
 import { canonicalCborEncode } from '../crypto/canonical-cbor';
 import { AtomicStorage, atomicWriteJSON, atomicReadJSONWithRecovery } from '../storage/atomic-storage';
+import { 
+  buildMerkleTree, 
+  generateMerkleProof, 
+  verifyMerkleProof,
+  compactifyProof,
+  MerkleProof,
+  CompactMerkleProof,
+  MerkleTreeResult,
+  BitcoinAnchorableProof,
+  formatForOpReturn,
+} from '../crypto/merkle-tree';
 import {
   Event,
   EventPayload,
@@ -706,5 +717,126 @@ export class EventStore {
       integrityVerified: this.integrityVerified,
       dataDir: this.dataDir,
     };
+  }
+
+  // ============================================================
+  // MERKLE PROOF FEATURES (SPV-style lightweight verification)
+  // ============================================================
+
+  /**
+   * Build a Merkle tree from all events
+   * Used for checkpoint creation and proof generation
+   */
+  async buildEventMerkleTree(): Promise<MerkleTreeResult> {
+    const events = await this.getAllEvents();
+    const eventHashes = events.map(e => e.eventHash);
+    return buildMerkleTree(eventHashes);
+  }
+
+  /**
+   * Generate a Merkle proof for a specific event
+   * This allows lightweight clients to verify event inclusion
+   * without downloading the entire chain (like Bitcoin's SPV)
+   */
+  async generateEventProof(eventHash: string): Promise<MerkleProof | null> {
+    const events = await this.getAllEvents();
+    const eventHashes = events.map(e => e.eventHash);
+    
+    const leafIndex = eventHashes.indexOf(eventHash);
+    if (leafIndex === -1) {
+      return null; // Event not found
+    }
+
+    const tree = buildMerkleTree(eventHashes);
+    return generateMerkleProof(tree, leafIndex);
+  }
+
+  /**
+   * Generate a compact proof suitable for external transmission
+   */
+  async generateCompactEventProof(eventHash: string): Promise<CompactMerkleProof | null> {
+    const proof = await this.generateEventProof(eventHash);
+    if (!proof) return null;
+    return compactifyProof(proof);
+  }
+
+  /**
+   * Verify that an event is included in a given Merkle root
+   * This is the core SPV verification - no full chain needed
+   */
+  verifyEventInclusion(proof: MerkleProof, expectedRoot: string): boolean {
+    if (proof.root !== expectedRoot) {
+      return false;
+    }
+    return verifyMerkleProof(proof);
+  }
+
+  /**
+   * Generate a Bitcoin-anchorable proof for an event
+   * This proof can be verified against a Bitcoin transaction
+   */
+  async generateBitcoinAnchorableProof(
+    eventHash: string,
+    checkpointData?: CheckpointData
+  ): Promise<BitcoinAnchorableProof | null> {
+    const proof = await this.generateCompactEventProof(eventHash);
+    if (!proof) return null;
+
+    // Use provided checkpoint or current state
+    const checkpoint = checkpointData || {
+      checkpointRoot: proof.root,
+      fromSequence: 1,
+      toSequence: this.state.sequenceNumber,
+    };
+
+    return {
+      eventHash,
+      merkleProof: proof,
+      checkpointRoot: checkpoint.checkpointRoot,
+      checkpointSequence: {
+        from: checkpoint.fromSequence,
+        to: checkpoint.toSequence,
+      },
+      bitcoinTxid: checkpointData?.bitcoinTxid,
+      blockHeight: checkpointData?.blockHeight,
+    };
+  }
+
+  /**
+   * Create an enhanced checkpoint with Merkle tree for proof generation
+   */
+  async createEnhancedCheckpoint(): Promise<CheckpointData & { tree: MerkleTreeResult }> {
+    const events = await this.getAllEvents();
+    const eventHashes = events.map(e => e.eventHash);
+    const tree = buildMerkleTree(eventHashes);
+
+    const checkpoint: CheckpointData = {
+      checkpointRoot: sha256(`${this.state.headHash}:${tree.root}:${Date.now()}`),
+      fromSequence: 1,
+      toSequence: this.state.sequenceNumber,
+      eventCount: this.state.eventCount,
+      merkleRoot: tree.root,
+      createdAt: Date.now(),
+    };
+
+    // Save checkpoint
+    const checkpointFile = path.join(this.dataDir, `checkpoint-${checkpoint.checkpointRoot}.json`);
+    atomicWriteJSON(checkpointFile, { ...checkpoint, treeHeight: tree.treeHeight });
+
+    this.state.lastCheckpointHash = checkpoint.checkpointRoot;
+    this.state.lastCheckpointAt = checkpoint.createdAt;
+    this.saveState();
+
+    return { ...checkpoint, tree };
+  }
+
+  /**
+   * Get OP_RETURN data for Bitcoin anchoring
+   * This is the 46-byte commitment that goes into a Bitcoin transaction
+   */
+  async getOpReturnCommitment(): Promise<Buffer> {
+    const tree = await this.buildEventMerkleTree();
+    const checkpointId = sha256(`${this.state.headHash}:${tree.root}:${Date.now()}`);
+    return formatForOpReturn(tree.root, checkpointId);
   }
 }
