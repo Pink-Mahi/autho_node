@@ -286,7 +286,7 @@
             </div>
         </div>
 
-        <div class="section active" id="applications-section">
+        <div class="section" id="applications-section">
             <h2 class="section-title">🏭 Pending Role Applications</h2>
             <div class="error-message" id="appsError"></div>
             <div class="success-message" id="appsSuccess"></div>
@@ -1242,6 +1242,7 @@
                 }
 
                 document.getElementById('authModal').style.display = 'none';
+                switchTab('applications'); // Show default tab after auth
                 await loadApplications();
                 try { await loadNodeStatus(true); } catch {}
             } catch (e) {
