@@ -4680,7 +4680,7 @@ export class OperatorNode extends EventEmitter {
     console.log(`[Operator] WebSocket server listening on port ${this.config.port}`);
   }
 
-  private handleGatewayMessage(ws: WebSocket, message: any): void {
+  private async handleGatewayMessage(ws: WebSocket, message: any): Promise<void> {
     const conn = this.gatewayConnections.get(ws);
     if (conn) {
       conn.lastSeen = Date.now();
@@ -4726,6 +4726,46 @@ export class OperatorNode extends EventEmitter {
 
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        break;
+
+      // Handle append_event from operators - add to canonical ledger and broadcast
+      case 'append_event':
+        try {
+          const { requestId, payload, signatures, operatorId } = message;
+          
+          if (!payload || !signatures || !Array.isArray(signatures)) {
+            ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: 'Invalid payload or signatures' }));
+            break;
+          }
+
+          // Append to canonical event store (this IS the ledger)
+          const event = await this.canonicalEventStore.appendEvent(payload, signatures);
+          
+          console.log(`[Operator] Appended event from ${operatorId}: ${payload.type} (seq #${event.sequenceNumber})`);
+
+          // Send ack back to sender
+          ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: true, eventHash: event.eventHash, sequenceNumber: event.sequenceNumber }));
+
+          // Broadcast to all other connected operators/gateways (excluding sender)
+          const broadcastMsg = JSON.stringify({ type: 'new_event', event, sourceOperatorId: this.config.operatorId });
+          for (const [peerWs] of this.gatewayConnections) {
+            if (peerWs !== ws && peerWs.readyState === WebSocket.OPEN) {
+              try { peerWs.send(broadcastMsg); } catch {}
+            }
+          }
+          for (const peer of this.operatorPeerConnections.values()) {
+            if (peer.ws !== ws && peer.ws.readyState === WebSocket.OPEN) {
+              try { peer.ws.send(broadcastMsg); } catch {}
+            }
+          }
+
+          // Rebuild local state
+          await this.rebuildLocalStateFromCanonical();
+          this.broadcastRegistryUpdate();
+        } catch (e: any) {
+          const { requestId } = message || {};
+          ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: e?.message || String(e) }));
+        }
         break;
 
       default:
