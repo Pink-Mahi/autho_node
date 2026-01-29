@@ -2926,6 +2926,65 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
+        // Verify fee transaction pays to sponsor address with minimum 1000 sats
+        const sponsorAddress = process.env.SPONSOR_ADDRESS || '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U';
+        const minFeeSats = Number(process.env.USER_MINT_FEE_SATS || 1000);
+
+        try {
+          // Fetch transaction from blockchain API
+          const txRes = await fetch(`https://mempool.space/api/tx/${feeTxid}`);
+          if (!txRes.ok) {
+            res.status(400).json({ 
+              success: false, 
+              error: 'Fee transaction not found on blockchain' 
+            });
+            return;
+          }
+          const txData = await txRes.json() as { vout?: Array<{ scriptpubkey_address?: string; value?: number; scriptpubkey_type?: string; scriptpubkey_asm?: string }> };
+
+          // Check if any output pays to sponsor address with sufficient amount
+          const outputs = txData.vout || [];
+          let feePaidToSponsor = 0;
+          let hasCommitment = false;
+
+          for (const out of outputs) {
+            const addr = out.scriptpubkey_address;
+            const value = Number(out.value || 0);
+            
+            if (addr === sponsorAddress) {
+              feePaidToSponsor += value;
+            }
+            
+            // Check for OP_RETURN with commitment
+            if (out.scriptpubkey_type === 'op_return') {
+              const asmParts = String(out.scriptpubkey_asm || '').split(' ');
+              const pushData = asmParts.find((p: string) => p.length >= 64 && /^[0-9a-f]+$/i.test(p));
+              if (pushData && pushData.toLowerCase().includes(feeCommitmentHex.toLowerCase().substring(0, 32))) {
+                hasCommitment = true;
+              }
+            }
+          }
+
+          if (feePaidToSponsor < minFeeSats) {
+            res.status(400).json({ 
+              success: false, 
+              error: `Fee transaction must pay at least ${minFeeSats} sats to sponsor address ${sponsorAddress}. Found: ${feePaidToSponsor} sats` 
+            });
+            return;
+          }
+
+          // Note: We allow soft-confirm for small amounts, commitment check is advisory
+          console.log(`User item registration: feeTxid=${feeTxid}, feePaid=${feePaidToSponsor}, hasCommitment=${hasCommitment}`);
+
+        } catch (verifyErr: any) {
+          console.error('Fee verification error:', verifyErr);
+          res.status(400).json({ 
+            success: false, 
+            error: 'Failed to verify fee transaction: ' + (verifyErr.message || 'Unknown error')
+          });
+          return;
+        }
+
         // Generate unique item ID
         const itemId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const now = Date.now();
