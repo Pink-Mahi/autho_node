@@ -22,6 +22,7 @@ import {
 import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
 import { ItemProvenanceService } from './provenance';
 import { EntityRegistry, EntityType, EntityCategory, GlobalEntity } from './registry/entity-registry';
+import { BitcoinTransactionService } from './bitcoin/transaction-service';
 
 interface OperatorConfig {
   operatorId: string;
@@ -2058,6 +2059,302 @@ export class OperatorNode extends EventEmitter {
         res.status(500).json({ success: false, error: error.message });
       }
     });
+
+    // ==================== BITCOIN ANCHORING ENDPOINTS ====================
+
+    // Get unanchored checkpoints
+    this.app.get('/api/operator/anchors/unanchored', async (req: Request, res: Response) => {
+      try {
+        const events = await this.canonicalEventStore.getAllEvents();
+        
+        const checkpoints = events
+          .filter((e: any) => e?.payload?.type === EventType.CHECKPOINT_CREATED)
+          .map((e: any) => e.payload);
+        
+        const anchors = events
+          .filter((e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED)
+          .map((e: any) => e.payload);
+        
+        const anchoredRoots = new Set(anchors.map((a: any) => a.checkpointRoot));
+        const unanchored = checkpoints.filter((cp: any) => !anchoredRoots.has(cp.checkpointRoot));
+        
+        res.json({ success: true, unanchored, total: checkpoints.length, anchored: anchors.length });
+      } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
+    // Get anchor statistics for weighted fee distribution
+    this.app.get('/api/operator/anchors/stats', async (req: Request, res: Response) => {
+      try {
+        const events = await this.canonicalEventStore.getAllEvents();
+        const state = await this.canonicalStateBuilder.buildState();
+        
+        // Count anchors by operator
+        const anchorsByOperator = new Map<string, number>();
+        const anchorEvents = events.filter((e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED);
+        
+        for (const e of anchorEvents) {
+          const sigs = Array.isArray((e as any).signatures) ? (e as any).signatures : [];
+          for (const sig of sigs) {
+            const opId = String(sig?.operatorId || '').trim();
+            if (opId) {
+              anchorsByOperator.set(opId, (anchorsByOperator.get(opId) || 0) + 1);
+            }
+          }
+        }
+
+        // Calculate weights
+        const totalAnchors = Array.from(anchorsByOperator.values()).reduce((sum, count) => sum + count, 0);
+        const weights = new Map<string, number>();
+        
+        for (const [opId, count] of anchorsByOperator.entries()) {
+          weights.set(opId, totalAnchors > 0 ? count / totalAnchors : 0);
+        }
+
+        // Get active operators
+        const activeOperators = Array.from(state.operators.values())
+          .filter((op: any) => op.status === 'active')
+          .map((op: any) => ({
+            operatorId: op.operatorId,
+            publicKey: op.publicKey,
+            anchorCount: anchorsByOperator.get(op.operatorId) || 0,
+            weight: weights.get(op.operatorId) || 0,
+          }));
+
+        res.json({ 
+          success: true, 
+          totalAnchors,
+          operators: activeOperators,
+          myOperatorId: this.config.operatorId,
+          myAnchorCount: anchorsByOperator.get(this.config.operatorId) || 0,
+        });
+      } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
+    // Get anchor history for the current operator
+    this.app.get('/api/operator/anchors/history', async (req: Request, res: Response) => {
+      try {
+        const events = await this.canonicalEventStore.getAllEvents();
+        const myOperatorId = this.config.operatorId;
+        
+        // Find all anchor events where this operator participated
+        const anchorEvents = events
+          .filter((e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED)
+          .filter((e: any) => {
+            const sigs = Array.isArray(e.signatures) ? e.signatures : [];
+            return sigs.some((s: any) => String(s?.operatorId || '') === myOperatorId);
+          })
+          .map((e: any) => ({
+            checkpointRoot: String(e.payload?.checkpointRoot || ''),
+            txid: String(e.payload?.txid || ''),
+            blockHeight: Number(e.payload?.blockHeight || 0),
+            timestamp: Number(e.payload?.timestamp || e.timestamp || 0),
+            eventCount: Number(e.payload?.eventCount || 0),
+            sequenceNumber: Number(e.sequenceNumber || 0),
+          }))
+          .sort((a: any, b: any) => b.timestamp - a.timestamp);
+
+        res.json({
+          success: true,
+          operatorId: myOperatorId,
+          anchors: anchorEvents,
+          totalAnchors: anchorEvents.length,
+        });
+      } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
+    // Manual anchor commit (for pre-existing Bitcoin transactions)
+    this.app.post('/api/operator/anchors/commit', async (req: Request, res: Response) => {
+      try {
+        const checkpointRoot = String(req.body?.checkpointRoot || '').trim();
+        const txid = String(req.body?.txid || '').trim();
+        const blockHeight = Number(req.body?.blockHeight || 0);
+        
+        if (!checkpointRoot || !txid || !Number.isFinite(blockHeight) || blockHeight <= 0) {
+          res.status(400).json({ success: false, error: 'checkpointRoot, txid, blockHeight required' });
+          return;
+        }
+
+        const events = await this.canonicalEventStore.getAllEvents();
+        const checkpoint = events
+          .filter((e: any) => e?.payload?.type === EventType.CHECKPOINT_CREATED)
+          .map((e: any) => e.payload)
+          .find((p: any) => String(p?.checkpointRoot || '') === checkpointRoot);
+
+        if (!checkpoint) {
+          res.status(404).json({ success: false, error: 'Checkpoint not found' });
+          return;
+        }
+
+        const existingAnchors = events
+          .filter((e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED)
+          .map((e: any) => e.payload)
+          .filter((p: any) => String(p?.checkpointRoot || '') === checkpointRoot);
+        
+        if (existingAnchors.length) {
+          res.status(409).json({ success: false, error: 'Anchor already recorded for this checkpoint' });
+          return;
+        }
+
+        const nonce = randomBytes(32).toString('hex');
+        const now = Date.now();
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: this.config.operatorId,
+            publicKey: this.config.publicKey,
+            signature: createHash('sha256').update(`ANCHOR_COMMITTED:${checkpointRoot}:${txid}:${blockHeight}:${now}`).digest('hex'),
+          },
+        ];
+
+        const anchorEvent = await this.canonicalEventStore.appendEvent(
+          {
+            type: EventType.ANCHOR_COMMITTED,
+            timestamp: now,
+            nonce,
+            checkpointRoot,
+            eventCount: Number((checkpoint as any)?.eventCount || 0),
+            txid,
+            blockHeight,
+            quorumSignatures: [],
+          } as any,
+          signatures
+        );
+
+        res.json({ success: true, checkpointRoot, txid, blockHeight, sequenceNumber: anchorEvent.sequenceNumber });
+      } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
+    // ONE-CLICK AUTO-ANCHOR: Create and broadcast real Bitcoin OP_RETURN transaction
+    this.app.post('/api/operator/anchors/auto-anchor', async (req: Request, res: Response) => {
+      try {
+        let checkpointRoot = String(req.body?.checkpointRoot || '').trim();
+        
+        const events = await this.canonicalEventStore.getAllEvents();
+        
+        // Get all checkpoints and anchors
+        const checkpoints = events
+          .filter((e: any) => e?.payload?.type === EventType.CHECKPOINT_CREATED)
+          .map((e: any) => e.payload);
+        
+        const anchoredRoots = new Set(
+          events
+            .filter((e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED)
+            .map((e: any) => String(e.payload?.checkpointRoot || ''))
+        );
+        
+        // Find unanchored checkpoints
+        const unanchored = checkpoints.filter((cp: any) => !anchoredRoots.has(String(cp?.checkpointRoot || '')));
+        
+        if (unanchored.length === 0) {
+          res.status(400).json({ success: false, error: 'All checkpoints are already anchored' });
+          return;
+        }
+        
+        // If no checkpoint specified, use oldest unanchored
+        if (!checkpointRoot) {
+          unanchored.sort((a: any, b: any) => (a.hourStartMs || 0) - (b.hourStartMs || 0));
+          checkpointRoot = String(unanchored[0]?.checkpointRoot || '');
+        }
+        
+        // Verify checkpoint exists and is unanchored
+        const checkpoint = checkpoints.find((cp: any) => String(cp?.checkpointRoot || '') === checkpointRoot);
+        if (!checkpoint) {
+          res.status(404).json({ success: false, error: 'Checkpoint not found' });
+          return;
+        }
+        
+        if (anchoredRoots.has(checkpointRoot)) {
+          res.status(409).json({ success: false, error: 'Checkpoint already anchored' });
+          return;
+        }
+        
+        // Create OP_RETURN data: "AUTHO:" + first 32 bytes of checkpoint root
+        const opReturnData = `AUTHO:${checkpointRoot.substring(0, 64)}`;
+        
+        // Get operator's private key for signing the Bitcoin transaction
+        const operatorPrivateKey = this.config.privateKey;
+        if (!operatorPrivateKey) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Operator private key not configured.' 
+          });
+          return;
+        }
+
+        // Create and broadcast real Bitcoin OP_RETURN transaction
+        const btcService = new BitcoinTransactionService(this.config.network || 'mainnet');
+        const anchorResult = await btcService.createOpReturnAnchor(operatorPrivateKey, opReturnData);
+        
+        if (!anchorResult.success || !anchorResult.txid) {
+          res.status(400).json({ 
+            success: false, 
+            error: `Bitcoin anchor failed: ${anchorResult.error || 'Unknown error'}` 
+          });
+          return;
+        }
+
+        const realTxid = anchorResult.txid;
+        const feePaid = anchorResult.feeSats || 0;
+        
+        // Get current block height from mempool.space
+        let currentBlockHeight = 0;
+        try {
+          const blockHeightRes = await fetch('https://mempool.space/api/blocks/tip/height');
+          if (blockHeightRes.ok) {
+            currentBlockHeight = Number(await blockHeightRes.text()) || 0;
+          }
+        } catch (e) {
+          console.warn('[Auto-Anchor] Could not fetch current block height');
+        }
+        
+        // Record the anchor commitment
+        const nonce = randomBytes(32).toString('hex');
+        const now = Date.now();
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: this.config.operatorId,
+            publicKey: this.config.publicKey,
+            signature: createHash('sha256').update(`ANCHOR_COMMITTED:${checkpointRoot}:${realTxid}:${currentBlockHeight}:${now}`).digest('hex'),
+          },
+        ];
+
+        const anchorEvent = await this.canonicalEventStore.appendEvent(
+          {
+            type: EventType.ANCHOR_COMMITTED,
+            timestamp: now,
+            nonce,
+            checkpointRoot,
+            eventCount: Number((checkpoint as any)?.eventCount || 0),
+            txid: realTxid,
+            blockHeight: currentBlockHeight,
+            quorumSignatures: [],
+          } as any,
+          signatures
+        );
+
+        res.json({ 
+          success: true, 
+          checkpointRoot, 
+          txid: realTxid, 
+          blockHeight: currentBlockHeight,
+          opReturnData,
+          feePaidSats: feePaid,
+          sequenceNumber: anchorEvent.sequenceNumber,
+          message: `Checkpoint anchored to Bitcoin! TX: ${realTxid}`
+        });
+      } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
+    // ==================== END BITCOIN ANCHORING ENDPOINTS ====================
 
     this.app.get('/api/operator/status', async (req: Request, res: Response) => {
       await this.proxyToSeed(req, res);
