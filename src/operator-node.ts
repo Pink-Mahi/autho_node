@@ -2229,12 +2229,24 @@ export class OperatorNode extends EventEmitter {
             weight: weights.get(op.operatorId) || 0,
           }));
 
+        // Debug: log what operator IDs we found in anchor signatures
+        const debugAnchorInfo = anchorEvents.slice(0, 10).map((e: any) => ({
+          seq: e.sequenceNumber,
+          sigs: (e.signatures || []).map((s: any) => s?.operatorId),
+          txid: String(e.payload?.txid || '').substring(0, 16),
+        }));
+        
         res.json({ 
           success: true, 
           totalAnchors,
           operators: activeOperators,
           myOperatorId: this.config.operatorId,
           myAnchorCount: anchorsByOperator.get(this.config.operatorId) || 0,
+          _debug: {
+            anchorEventCount: anchorEvents.length,
+            operatorIdsFound: Array.from(anchorsByOperator.keys()),
+            sampleAnchors: debugAnchorInfo,
+          }
         });
       } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message || String(e) });
