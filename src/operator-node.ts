@@ -1356,10 +1356,21 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.app.get('/api/operator/info', (req: Request, res: Response) => {
+      // Derive address from private key to help debug mismatches
+      let derivedAddress = '';
+      try {
+        const btcService = new BitcoinTransactionService(this.config.network || 'mainnet');
+        derivedAddress = btcService.getAddressFromPrivateKey(this.config.privateKey);
+      } catch (e) {
+        derivedAddress = 'ERROR_DERIVING';
+      }
+      
       res.json({
         operatorId: this.config.operatorId,
         publicKey: this.config.publicKey,
         btcAddress: this.config.btcAddress,
+        derivedBtcAddress: derivedAddress,
+        addressMatch: this.config.btcAddress === derivedAddress,
         network: this.config.network,
         name: this.config.operatorName,
         description: this.config.operatorDescription,
