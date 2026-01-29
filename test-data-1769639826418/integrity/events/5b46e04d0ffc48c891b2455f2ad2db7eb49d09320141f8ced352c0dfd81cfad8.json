@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "checksum": "3e9e43ae18b5ad1026ac489b9a1a9e1a5df16882827afacbe19c5a4c9a789c49",
+  "data": {
+    "eventHash": "5b46e04d0ffc48c891b2455f2ad2db7eb49d09320141f8ced352c0dfd81cfad8",
+    "prevEventHash": "",
+    "sequenceNumber": 1,
+    "payload": {
+      "type": "ITEM_REGISTERED",
+      "timestamp": 1769639826722,
+      "nonce": "5sh0dm",
+      "itemId": "item-1",
+      "manufacturerId": "test-manufacturer",
+      "serialNumberHash": "59908df50572502ceeabbcc669a28bcc5343d7564a581b9c9648479580f5b773",
+      "metadataHash": "ae27e1794b34e3e54ae8e32b3adc7ae4e232b1344450913589e754ccc76df100",
+      "initialOwner": "1TestBitcoinAddress123"
+    },
+    "signatures": [
+      {
+        "operatorId": "test-operator",
+        "publicKey": "000000000000000000000000000000000000000000000000000000000000000000",
+        "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "createdAt": 1769639826722
+  },
+  "writtenAt": 1769639826727
+}

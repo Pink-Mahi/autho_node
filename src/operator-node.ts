@@ -21,6 +21,7 @@ import {
 } from './consensus';
 import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
 import { ItemProvenanceService } from './provenance';
+import { EntityRegistry, EntityType, EntityCategory, GlobalEntity } from './registry/entity-registry';
 
 interface OperatorConfig {
   operatorId: string;
@@ -102,6 +103,9 @@ export class OperatorNode extends EventEmitter {
   
   // Item provenance service for history tracking
   private itemProvenanceService?: ItemProvenanceService;
+  
+  // Global entity registry for manufacturers, artists, athletes, etc.
+  private entityRegistry?: EntityRegistry;
 
   constructor(config: OperatorConfig) {
     super();
@@ -2570,6 +2574,269 @@ export class OperatorNode extends EventEmitter {
 
     // ============================================================
     // END ITEM SEARCH API
+    // ============================================================
+
+    // ============================================================
+    // ENTITY REGISTRY API - Global manufacturers, artists, athletes
+    // ============================================================
+
+    // Initialize entity registry helper
+    const getEntityRegistry = (): EntityRegistry => {
+      if (!this.entityRegistry) {
+        this.entityRegistry = new EntityRegistry(this.canonicalEventStore);
+        this.entityRegistry.loadSeedData();
+      }
+      return this.entityRegistry;
+    };
+
+    // Search/autocomplete entities (for minting UI)
+    this.app.get('/api/entities/search', (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const query = String(req.query.q || '').trim();
+        
+        if (!query || query.length < 2) {
+          res.status(400).json({ success: false, error: 'Query must be at least 2 characters' });
+          return;
+        }
+
+        const types = req.query.types 
+          ? (req.query.types as string).split(',') as EntityType[]
+          : undefined;
+        const categories = req.query.categories
+          ? (req.query.categories as string).split(',') as EntityCategory[]
+          : undefined;
+        const verifiedOnly = req.query.verifiedOnly === 'true';
+        const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+
+        const results = registry.search({
+          query,
+          types,
+          categories,
+          verifiedOnly,
+          limit,
+        });
+
+        res.json({
+          success: true,
+          query,
+          count: results.length,
+          results: results.map(r => ({
+            entity: r.entity,
+            score: r.score,
+            matchedOn: r.matchedOn,
+          })),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get entity by ID
+    this.app.get('/api/entities/:entityId', (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const entity = registry.getById(req.params.entityId);
+        
+        if (!entity) {
+          res.status(404).json({ success: false, error: 'Entity not found' });
+          return;
+        }
+
+        res.json({ success: true, entity });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get entities by type (e.g., all manufacturers)
+    this.app.get('/api/entities/type/:type', (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const type = req.params.type as EntityType;
+        const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+        
+        const entities = registry.getByType(type, limit);
+
+        res.json({
+          success: true,
+          type,
+          count: entities.length,
+          entities,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get entities by category
+    this.app.get('/api/entities/category/:category', (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const category = req.params.category as EntityCategory;
+        const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+        
+        const entities = registry.getByCategory(category, limit);
+
+        res.json({
+          success: true,
+          category,
+          count: entities.length,
+          entities,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Resolve a name to best matching entity
+    this.app.get('/api/entities/resolve', (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const name = String(req.query.name || '').trim();
+        const type = req.query.type as EntityType | undefined;
+        
+        if (!name) {
+          res.status(400).json({ success: false, error: 'Name required' });
+          return;
+        }
+
+        const entity = registry.resolveEntity(name, type);
+
+        res.json({
+          success: true,
+          name,
+          resolved: !!entity,
+          entity: entity || null,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Check for potential duplicates before adding
+    this.app.get('/api/entities/duplicates', async (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const name = String(req.query.name || '').trim();
+        const type = req.query.type as EntityType;
+        
+        if (!name || !type) {
+          res.status(400).json({ success: false, error: 'Name and type required' });
+          return;
+        }
+
+        const duplicates = await registry.findPotentialDuplicates(name, type);
+
+        res.json({
+          success: true,
+          name,
+          type,
+          hasPotentialDuplicates: duplicates.length > 0,
+          duplicates: duplicates.map(d => ({
+            entity: d.entity,
+            score: d.score,
+          })),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Register a new entity (requires authentication)
+    this.app.post('/api/entities', async (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const { 
+          type, canonicalName, displayName, aliases, categories,
+          description, country, foundedYear, socialLinks, logoUrl
+        } = req.body;
+
+        // Basic validation
+        if (!type || !canonicalName || !displayName || !categories) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Required fields: type, canonicalName, displayName, categories' 
+          });
+          return;
+        }
+
+        // For now, use 'user' as createdBy - in production, get from auth
+        const createdBy = req.body.accountId || 'anonymous';
+
+        const entity = await registry.registerEntity({
+          type,
+          canonicalName,
+          displayName,
+          aliases: aliases || [],
+          categories,
+          verificationStatus: 'user_submitted',
+          description,
+          country,
+          foundedYear,
+          socialLinks,
+          logoUrl,
+        }, createdBy);
+
+        res.json({
+          success: true,
+          message: 'Entity registered successfully',
+          entity,
+        });
+      } catch (error: any) {
+        if (error.message.includes('already exists')) {
+          res.status(409).json({ success: false, error: error.message });
+        } else {
+          res.status(500).json({ success: false, error: error.message });
+        }
+      }
+    });
+
+    // Add alias to existing entity
+    this.app.post('/api/entities/:entityId/aliases', async (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const { alias, language, isCommonMisspelling } = req.body;
+        
+        if (!alias) {
+          res.status(400).json({ success: false, error: 'Alias required' });
+          return;
+        }
+
+        const addedBy = req.body.accountId || 'anonymous';
+        const entity = await registry.addAlias(
+          req.params.entityId,
+          { alias, language, isCommonMisspelling },
+          addedBy
+        );
+
+        res.json({
+          success: true,
+          message: 'Alias added successfully',
+          entity,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get entity registry statistics
+    this.app.get('/api/entities/stats', (req: Request, res: Response) => {
+      try {
+        const registry = getEntityRegistry();
+        const stats = registry.getStats();
+
+        res.json({
+          success: true,
+          stats,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // END ENTITY REGISTRY API
     // ============================================================
 
     // ============================================================
