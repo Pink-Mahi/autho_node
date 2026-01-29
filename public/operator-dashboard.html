@@ -546,9 +546,76 @@
             <h2 class="section-title">💰 Wallet & Earnings</h2>
             <div class="error-message" id="walletError"></div>
             <div class="success-message" id="walletSuccess"></div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 20px;">
                 <button class="btn" type="button" onclick="loadWalletEarnings()">Refresh</button>
             </div>
+            
+            <!-- Balance Card -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 24px;">
+                <div style="background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%); padding: 20px; border-radius: 16px; color: #1a1a1a;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; margin-bottom: 8px;">BTC Balance</div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="operatorBtcBalance">Loading...</div>
+                    <div style="font-size: 0.9rem; opacity: 0.8; margin-top: 4px;" id="operatorUsdBalance"></div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 16px;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px;">Confirmed</div>
+                    <div style="font-size: 1.4rem; font-weight: 600; color: #4cd964;" id="operatorConfirmed">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 16px;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px;">Unconfirmed</div>
+                    <div style="font-size: 1.4rem; font-weight: 600; color: #f5a623;" id="operatorUnconfirmed">-</div>
+                </div>
+            </div>
+
+            <!-- Receive Section -->
+            <div style="background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.2); padding: 20px; border-radius: 16px; margin-bottom: 24px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📥 Receive BTC</h3>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <div style="font-size: 0.8rem; color: #999; margin-bottom: 8px;">Your Operator Address</div>
+                        <div style="font-family: monospace; font-size: 0.85rem; word-break: break-all; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; color: #d4af37;" id="operatorReceiveAddress">Loading...</div>
+                        <button class="btn btn-secondary" style="margin-top: 10px; width: 100%;" onclick="copyOperatorAddress()">📋 Copy Address</button>
+                    </div>
+                    <div style="text-align: center;">
+                        <img id="operatorQrCode" alt="QR Code" style="width: 150px; height: 150px; border-radius: 12px; background: #fff; display: none;" />
+                        <div id="operatorQrLoading" style="width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 12px; color: #999;">Loading QR...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Send Section -->
+            <div style="background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.2); padding: 20px; border-radius: 16px; margin-bottom: 24px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📤 Send BTC</h3>
+                <div class="form-group">
+                    <label>Recipient Address</label>
+                    <input id="operatorSendTo" type="text" placeholder="bc1q... or 1... or 3..." />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Amount (sats)</label>
+                        <input id="operatorSendSats" type="number" placeholder="e.g. 50000" oninput="updateOperatorSendUsd()" />
+                    </div>
+                    <div class="form-group">
+                        <label>Amount (USD)</label>
+                        <input id="operatorSendUsd" type="number" step="0.01" placeholder="e.g. 25.00" oninput="updateOperatorSendSats()" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Fee Priority</label>
+                    <select id="operatorFeePriority" style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                        <option value="low">Low (~1 sat/vB)</option>
+                        <option value="medium" selected>Medium (~5 sat/vB)</option>
+                        <option value="high">High (~10 sat/vB)</option>
+                    </select>
+                </div>
+                <div id="operatorSendFeeEstimate" style="font-size: 0.85rem; color: #999; margin-bottom: 15px;"></div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="sendOperatorBtc()">Send BTC</button>
+                    <button class="btn btn-secondary" onclick="fillOperatorMax()">Send Max</button>
+                </div>
+                <div id="operatorSendStatus" style="margin-top: 15px; font-size: 0.9rem;"></div>
+            </div>
+
             <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
         </div>
 
@@ -1824,6 +1891,11 @@
             showEl('networkSuccess', true, 'Network health loaded.');
         }
 
+        // Operator wallet state
+        let operatorWalletAddress = '';
+        let operatorBalanceSats = 0;
+        let operatorBtcPrice = 0;
+
         async function loadWalletEarnings() {
             showEl('walletError', false);
             showEl('walletSuccess', false);
@@ -1841,6 +1913,17 @@
             const wallet = data.wallet || {};
             const earnings = data.earnings || {};
             const transactions = Array.isArray(earnings.transactions) ? earnings.transactions : [];
+
+            // Store address for other functions
+            operatorWalletAddress = String(wallet.btcAddress || '');
+            
+            // Update receive section
+            const addrEl = document.getElementById('operatorReceiveAddress');
+            if (addrEl) addrEl.textContent = operatorWalletAddress || 'N/A';
+
+            // Load balance and QR code
+            loadOperatorBalance(operatorWalletAddress);
+            loadOperatorQrCode(operatorWalletAddress);
 
             if (el) {
                 el.innerHTML = `
@@ -1903,6 +1986,146 @@
             }
 
             showEl('walletSuccess', true, 'Wallet info loaded.');
+        }
+
+        async function loadOperatorBalance(address) {
+            if (!address) {
+                document.getElementById('operatorBtcBalance').textContent = 'No address';
+                return;
+            }
+            try {
+                // Fetch balance from mempool.space API
+                const r = await fetch(`https://mempool.space/api/address/${address}`);
+                if (!r.ok) throw new Error('Failed to fetch balance');
+                const data = await r.json();
+                
+                const confirmed = Number(data.chain_stats?.funded_txo_sum || 0) - Number(data.chain_stats?.spent_txo_sum || 0);
+                const unconfirmed = Number(data.mempool_stats?.funded_txo_sum || 0) - Number(data.mempool_stats?.spent_txo_sum || 0);
+                const total = confirmed + unconfirmed;
+                operatorBalanceSats = total;
+
+                // Update UI
+                const btcAmount = (total / 100000000).toFixed(8);
+                document.getElementById('operatorBtcBalance').textContent = `${btcAmount} BTC`;
+                document.getElementById('operatorConfirmed').textContent = `${confirmed.toLocaleString()} sats`;
+                document.getElementById('operatorUnconfirmed').textContent = `${unconfirmed.toLocaleString()} sats`;
+
+                // Fetch BTC price for USD conversion
+                try {
+                    const priceR = await fetch('https://mempool.space/api/v1/prices');
+                    const priceData = await priceR.json();
+                    operatorBtcPrice = Number(priceData.USD || 0);
+                    if (operatorBtcPrice > 0) {
+                        const usdValue = (total / 100000000) * operatorBtcPrice;
+                        document.getElementById('operatorUsdBalance').textContent = `≈ $${usdValue.toFixed(2)} USD`;
+                    }
+                } catch {}
+            } catch (e) {
+                document.getElementById('operatorBtcBalance').textContent = 'Error loading';
+                console.error('Balance fetch error:', e);
+            }
+        }
+
+        async function loadOperatorQrCode(address) {
+            const qrImg = document.getElementById('operatorQrCode');
+            const qrLoading = document.getElementById('operatorQrLoading');
+            if (!address || !qrImg) return;
+
+            try {
+                // Use QR code API
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin:${encodeURIComponent(address)}`;
+                qrImg.src = qrUrl;
+                qrImg.style.display = 'block';
+                if (qrLoading) qrLoading.style.display = 'none';
+            } catch (e) {
+                console.error('QR code error:', e);
+            }
+        }
+
+        function copyOperatorAddress() {
+            if (!operatorWalletAddress) {
+                showEl('walletError', true, 'No address to copy');
+                return;
+            }
+            navigator.clipboard.writeText(operatorWalletAddress).then(() => {
+                showEl('walletSuccess', true, 'Address copied to clipboard!');
+            }).catch(() => {
+                showEl('walletError', true, 'Failed to copy address');
+            });
+        }
+
+        function updateOperatorSendUsd() {
+            const sats = Number(document.getElementById('operatorSendSats')?.value || 0);
+            if (sats > 0 && operatorBtcPrice > 0) {
+                const usd = (sats / 100000000) * operatorBtcPrice;
+                document.getElementById('operatorSendUsd').value = usd.toFixed(2);
+            }
+        }
+
+        function updateOperatorSendSats() {
+            const usd = Number(document.getElementById('operatorSendUsd')?.value || 0);
+            if (usd > 0 && operatorBtcPrice > 0) {
+                const sats = Math.round((usd / operatorBtcPrice) * 100000000);
+                document.getElementById('operatorSendSats').value = sats;
+            }
+        }
+
+        function fillOperatorMax() {
+            // Estimate fee (assume ~200 vbytes for typical tx)
+            const priority = document.getElementById('operatorFeePriority')?.value || 'medium';
+            const feeRates = { low: 1, medium: 5, high: 10 };
+            const feeRate = feeRates[priority] || 5;
+            const estimatedFee = 200 * feeRate;
+            
+            const maxSats = Math.max(0, operatorBalanceSats - estimatedFee);
+            document.getElementById('operatorSendSats').value = maxSats;
+            updateOperatorSendUsd();
+        }
+
+        async function sendOperatorBtc() {
+            const statusEl = document.getElementById('operatorSendStatus');
+            const toAddress = document.getElementById('operatorSendTo')?.value?.trim();
+            const amountSats = Number(document.getElementById('operatorSendSats')?.value || 0);
+            const priority = document.getElementById('operatorFeePriority')?.value || 'medium';
+
+            if (!toAddress) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter a recipient address</span>';
+                return;
+            }
+            if (amountSats <= 0) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter an amount</span>';
+                return;
+            }
+            if (amountSats > operatorBalanceSats) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Insufficient balance</span>';
+                return;
+            }
+
+            statusEl.innerHTML = '<span style="color: #d4af37;">Creating transaction...</span>';
+
+            try {
+                const r = await fetch('/api/operator/wallet/send', {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        toAddress,
+                        amountSats,
+                        feePriority: priority
+                    })
+                });
+                const data = await r.json().catch(() => ({}));
+                
+                if (!r.ok || !data || data.success !== true) {
+                    throw new Error(data?.error || 'Failed to send transaction');
+                }
+
+                statusEl.innerHTML = `<span style="color: #4cd964;">✅ Transaction sent! TXID: <a href="https://mempool.space/tx/${data.txid}" target="_blank" style="color: #d4af37;">${String(data.txid || '').substring(0, 16)}...</a></span>`;
+                
+                // Refresh balance after a short delay
+                setTimeout(() => loadOperatorBalance(operatorWalletAddress), 3000);
+            } catch (e) {
+                statusEl.innerHTML = `<span style="color: #ff6b6b;">Error: ${e?.message || String(e)}</span>`;
+            }
         }
 
         // Store next checkpoint for auto-anchor

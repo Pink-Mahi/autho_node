@@ -2318,6 +2318,18 @@ export class OperatorNode extends EventEmitter {
       await this.proxyToSeed(req, res);
     });
 
+    this.app.post('/api/operator/wallet/send', async (req: Request, res: Response) => {
+      // Note: Full Bitcoin transaction building requires UTXO management and signing
+      // For now, operators should use external wallets for sending BTC
+      // This endpoint is a placeholder for future implementation
+      res.status(501).json({
+        success: false,
+        error: 'Send functionality not yet implemented. Please use an external Bitcoin wallet to send from your operator address: ' + this.config.btcAddress,
+        operatorAddress: this.config.btcAddress,
+        hint: 'You can import your operator seed phrase into a Bitcoin wallet like BlueWallet, Sparrow, or Electrum to send transactions.'
+      });
+    });
+
     this.app.get('/seed-manifest.json', async (req: Request, res: Response) => {
       const protocol = String(req.protocol || 'http');
       const host = String(req.get('host') || '').trim();
