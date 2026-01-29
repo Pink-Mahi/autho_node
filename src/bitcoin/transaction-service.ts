@@ -82,11 +82,13 @@ export class BitcoinTransactionService {
    * Create and broadcast an OP_RETURN transaction for anchoring checkpoint data to Bitcoin
    * This embeds data permanently in the Bitcoin blockchain
    * Supports both native SegWit (bc1q...) and legacy (1...) addresses
+   * @param explicitAddress - If provided, use this address for UTXOs instead of deriving from key
    */
   async createOpReturnAnchor(
     privateKeyWIF: string,
     data: string | Buffer,
-    feeRate?: number
+    feeRate?: number,
+    explicitAddress?: string
   ): Promise<{ success: boolean; txid?: string; feeSats?: number; error?: string }> {
     try {
       // Parse private key (support both WIF and raw 32-byte hex)
@@ -101,14 +103,16 @@ export class BitcoinTransactionService {
         keyPair = ECPair.fromPrivateKey(privKeyBuf, { network: this.network });
       }
 
-      // Use native SegWit (P2WPKH) address - bc1q... format
-      const p2wpkh = bitcoin.payments.p2wpkh({
+      // Use explicit address if provided, otherwise derive from key
+      const fromAddress = explicitAddress || bitcoin.payments.p2wpkh({
         pubkey: keyPair.publicKey,
         network: this.network,
-      });
-      const fromAddress = p2wpkh.address!;
+      }).address!;
 
-      console.log(`[OP_RETURN Anchor] Creating anchor from ${fromAddress}`);
+      // Determine address type for proper input handling
+      const isSegWit = fromAddress.startsWith('bc1') || fromAddress.startsWith('tb1');
+
+      console.log(`[OP_RETURN Anchor] Creating anchor from ${fromAddress} (SegWit: ${isSegWit})`);
 
       // Get UTXOs
       const utxos = await this.getUTXOs(fromAddress);
@@ -145,16 +149,32 @@ export class BitcoinTransactionService {
       // Create PSBT
       const psbt = new bitcoin.Psbt({ network: this.network });
 
-      // Add SegWit inputs - need witnessUtxo for P2WPKH
+      // Create p2wpkh payment for SegWit witness script
+      const p2wpkh = bitcoin.payments.p2wpkh({
+        pubkey: keyPair.publicKey,
+        network: this.network,
+      });
+
+      // Add inputs - use witnessUtxo for SegWit addresses
       for (const utxo of confirmedUTXOs) {
-        psbt.addInput({
-          hash: utxo.txid,
-          index: utxo.vout,
-          witnessUtxo: {
-            script: p2wpkh.output!,
-            value: utxo.value,
-          },
-        });
+        if (isSegWit) {
+          psbt.addInput({
+            hash: utxo.txid,
+            index: utxo.vout,
+            witnessUtxo: {
+              script: p2wpkh.output!,
+              value: utxo.value,
+            },
+          });
+        } else {
+          // Legacy address - need full transaction hex
+          const txHex = await this.getTransactionHex(utxo.txid);
+          psbt.addInput({
+            hash: utxo.txid,
+            index: utxo.vout,
+            nonWitnessUtxo: Buffer.from(txHex, 'hex'),
+          });
+        }
       }
 
       // Add OP_RETURN output (value must be 0)

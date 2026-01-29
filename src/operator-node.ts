@@ -2289,8 +2289,14 @@ export class OperatorNode extends EventEmitter {
         }
 
         // Create and broadcast real Bitcoin OP_RETURN transaction
+        // Use the btcAddress from config to fetch UTXOs (may differ from derived address)
         const btcService = new BitcoinTransactionService(this.config.network || 'mainnet');
-        const anchorResult = await btcService.createOpReturnAnchor(operatorPrivateKey, opReturnData);
+        const anchorResult = await btcService.createOpReturnAnchor(
+          operatorPrivateKey, 
+          opReturnData, 
+          undefined, // use default fee rate
+          this.config.btcAddress // use explicit address from config
+        );
         
         if (!anchorResult.success || !anchorResult.txid) {
           res.status(400).json({ 
