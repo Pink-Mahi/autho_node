@@ -461,6 +461,14 @@
                 </div>
                 <div id="anchorStatsList" class="empty-state">Loading...</div>
             </div>
+
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-top: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📜 Your Anchor History</h3>
+                <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" onclick="loadAnchorHistory()">Refresh History</button>
+                </div>
+                <div id="anchorHistoryList" class="empty-state">Loading...</div>
+            </div>
         </div>
 
         <div class="section" id="reputation-section">
@@ -745,6 +753,7 @@
             } else if (tab === 'anchoring') {
                 loadUnanchoredCheckpoints();
                 loadAnchorStats();
+                loadAnchorHistory();
             }
         }
 
@@ -2398,6 +2407,63 @@
                         <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
                             💡 <strong>How it works:</strong> Operators receive 40% of the 1% title-update fee. 
                             Your share is weighted by your anchor contributions. More anchors = more fees!
+                        </p>
+                    `;
+                }
+            }
+        }
+
+        async function loadAnchorHistory() {
+            const el = document.getElementById('anchorHistoryList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
+
+            const r = await fetch('/api/operator/anchors/history', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load history.</div>';
+                return;
+            }
+
+            const anchors = Array.isArray(data.anchors) ? data.anchors : [];
+
+            if (el) {
+                if (anchors.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No anchor transactions yet. Anchor some checkpoints to see your history!</div>';
+                } else {
+                    el.innerHTML = `
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Checkpoint</th>
+                                        <th>TX ID</th>
+                                        <th>Block</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${anchors.map(a => {
+                                        const date = new Date(a.timestamp).toLocaleString();
+                                        const cpRoot = String(a.checkpointRoot || '').substring(0, 16);
+                                        const txid = String(a.txid || '').substring(0, 16);
+                                        return `
+                                            <tr>
+                                                <td style="font-size: 0.85rem;">${date}</td>
+                                                <td style="font-family: monospace; font-size: 0.8rem; color: #d4af37;">${cpRoot}...</td>
+                                                <td>
+                                                    <a href="https://mempool.space/tx/${a.txid}" target="_blank" style="font-family: monospace; font-size: 0.8rem; color: #4cd964;">
+                                                        ${txid}...
+                                                    </a>
+                                                </td>
+                                                <td style="font-weight: 700; color: #d4af37;">${Number(a.blockHeight || 0).toLocaleString()}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                            🔗 Click on TX ID to view transaction on mempool.space
                         </p>
                     `;
                 }
