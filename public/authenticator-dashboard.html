@@ -326,6 +326,7 @@
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px;">
                 <button class="btn" onclick="window.location.href='/scan'">Scan Item</button>
                 <button class="btn btn-secondary" onclick="window.location.href='/m/search'">Search Ledger</button>
+                <button class="btn btn-secondary" onclick="viewWallet()">💳 View Wallet</button>
                 <button class="btn btn-secondary" onclick="window.location.href='/'">Back to Home</button>
             </div>
         </div>
@@ -527,9 +528,80 @@
         </div>
     </div>
 
+    <!-- Wallet Modal -->
+    <div class="modal" id="walletModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>💳 Your Bitcoin Wallet</h2>
+                <button onclick="closeWalletModal()" style="background: none; border: none; color: #d4af37; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, 0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="color: #999; font-size: 0.9rem;">Balance</span>
+                    <button onclick="refreshAuthenticatorBalance()" style="background: none; border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 4px 12px; border-radius: 5px; cursor: pointer; font-size: 0.85rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div style="font-size: 2rem; font-weight: 600; color: #d4af37;" id="authenticatorBtcBalance">0.00000000</div>
+                <div style="color: #999; font-size: 0.9rem; margin-top: 5px;" id="authenticatorUsdBalance">$0.00 USD</div>
+                <div style="display:flex; justify-content: space-between; gap: 12px; margin-top: 10px; color:#999; font-size: 0.85rem;">
+                    <div>Confirmed: <span id="authenticatorBtcConfirmed" style="color:#d4af37;">0 sats</span></div>
+                    <div>Unconfirmed: <span id="authenticatorBtcUnconfirmed" style="color:#d4af37;">0 sats</span></div>
+                </div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color: #d4af37; margin-bottom: 10px; font-size: 1.1rem;">📥 Receive BTC</h3>
+                <p style="color: #999; font-size: 0.85rem; margin-bottom: 10px;">Your payment address for attestation fees:</p>
+                <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #d4af37; word-break: break-all; margin-bottom: 10px;" id="authenticatorWalletAddress"></div>
+                <button class="btn" onclick="copyAuthenticatorAddress()" style="width: 100%;">
+                    📋 Copy Address
+                </button>
+                <div style="margin-top: 12px; background: rgba(0,0,0,0.15); padding: 12px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.2); text-align: center;">
+                    <img id="authenticatorReceiveQr" alt="Receive BTC QR" style="width: 220px; height: 220px; max-width: 100%; background: #fff; padding: 10px; border-radius: 10px;" />
+                </div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color: #d4af37; margin-bottom: 10px; font-size: 1.1rem;">📤 Send BTC</h3>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Recipient Address</label>
+                    <input id="authenticatorSendToAddress" type="text" placeholder="bc1q..." style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%; font-family: monospace; font-size: 0.85rem;" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label style="color: #d4af37;">Amount (sats)</label>
+                        <input id="authenticatorSendAmountSats" type="number" placeholder="e.g. 50000" oninput="updateAuthenticatorSendUsd()" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;" />
+                    </div>
+                    <div class="form-group">
+                        <label style="color: #d4af37;">Amount (USD)</label>
+                        <input id="authenticatorSendAmountUsd" type="number" step="0.01" placeholder="e.g. 25.00" oninput="updateAuthenticatorSendSats()" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Fee Priority</label>
+                    <select id="authenticatorFeePriority" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 5px; color: #d4af37;">
+                        <option value="low">Low (~1 sat/vB)</option>
+                        <option value="medium" selected>Medium (~5 sat/vB)</option>
+                        <option value="high">High (~10 sat/vB)</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="sendAuthenticatorBtc()" style="flex: 1;">💸 Send BTC</button>
+                    <button class="btn btn-secondary" onclick="fillAuthenticatorMax()">Send Max</button>
+                </div>
+                <div id="authenticatorSendStatus" style="margin-top: 10px; color: #d4af37; font-size: 0.9rem;"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="/js/btc.bundle.js"></script>
     <script>
         let userConfig = {};
+        let authenticatorWalletAddress = '';
+        let authenticatorBalanceSats = 0;
+        let authenticatorBtcPrice = 0;
 
         function bytesToHex(bytes) {
             const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
@@ -1877,6 +1949,137 @@
                 sessionStorage.clear();
                 window.location.href = '/';
             }
+        }
+
+        // Wallet functions
+        function viewWallet() {
+            document.getElementById('walletModal').style.display = 'flex';
+            loadAuthenticatorWalletInfo();
+        }
+
+        function closeWalletModal() {
+            document.getElementById('walletModal').style.display = 'none';
+        }
+
+        function loadAuthenticatorWalletInfo() {
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            authenticatorWalletAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+            
+            const addrEl = document.getElementById('authenticatorWalletAddress');
+            if (addrEl) addrEl.textContent = authenticatorWalletAddress || 'No wallet address found';
+
+            // Load QR code
+            const qrImg = document.getElementById('authenticatorReceiveQr');
+            if (qrImg && authenticatorWalletAddress) {
+                qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=bitcoin:${encodeURIComponent(authenticatorWalletAddress)}`;
+            }
+
+            // Load balance
+            refreshAuthenticatorBalance();
+        }
+
+        async function refreshAuthenticatorBalance() {
+            if (!authenticatorWalletAddress) {
+                document.getElementById('authenticatorBtcBalance').textContent = 'No address';
+                return;
+            }
+            
+            try {
+                document.getElementById('authenticatorBtcBalance').textContent = 'Loading...';
+                
+                const r = await fetch(`https://mempool.space/api/address/${authenticatorWalletAddress}`);
+                if (!r.ok) throw new Error('Failed to fetch balance');
+                const data = await r.json();
+                
+                const confirmed = Number(data.chain_stats?.funded_txo_sum || 0) - Number(data.chain_stats?.spent_txo_sum || 0);
+                const unconfirmed = Number(data.mempool_stats?.funded_txo_sum || 0) - Number(data.mempool_stats?.spent_txo_sum || 0);
+                const total = confirmed + unconfirmed;
+                authenticatorBalanceSats = total;
+
+                const btcAmount = (total / 100000000).toFixed(8);
+                document.getElementById('authenticatorBtcBalance').textContent = `${btcAmount} BTC`;
+                document.getElementById('authenticatorBtcConfirmed').textContent = `${confirmed.toLocaleString()} sats`;
+                document.getElementById('authenticatorBtcUnconfirmed').textContent = `${unconfirmed.toLocaleString()} sats`;
+
+                // Fetch BTC price
+                try {
+                    const priceR = await fetch('https://mempool.space/api/v1/prices');
+                    const priceData = await priceR.json();
+                    authenticatorBtcPrice = Number(priceData.USD || 0);
+                    if (authenticatorBtcPrice > 0) {
+                        const usdValue = (total / 100000000) * authenticatorBtcPrice;
+                        document.getElementById('authenticatorUsdBalance').textContent = `≈ $${usdValue.toFixed(2)} USD`;
+                    }
+                } catch {}
+            } catch (e) {
+                document.getElementById('authenticatorBtcBalance').textContent = 'Error loading';
+                console.error('Balance fetch error:', e);
+            }
+        }
+
+        function copyAuthenticatorAddress() {
+            if (!authenticatorWalletAddress) {
+                alert('No address to copy');
+                return;
+            }
+            navigator.clipboard.writeText(authenticatorWalletAddress).then(() => {
+                alert('Address copied to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy address');
+            });
+        }
+
+        function updateAuthenticatorSendUsd() {
+            const sats = Number(document.getElementById('authenticatorSendAmountSats')?.value || 0);
+            if (sats > 0 && authenticatorBtcPrice > 0) {
+                const usd = (sats / 100000000) * authenticatorBtcPrice;
+                document.getElementById('authenticatorSendAmountUsd').value = usd.toFixed(2);
+            }
+        }
+
+        function updateAuthenticatorSendSats() {
+            const usd = Number(document.getElementById('authenticatorSendAmountUsd')?.value || 0);
+            if (usd > 0 && authenticatorBtcPrice > 0) {
+                const sats = Math.round((usd / authenticatorBtcPrice) * 100000000);
+                document.getElementById('authenticatorSendAmountSats').value = sats;
+            }
+        }
+
+        function fillAuthenticatorMax() {
+            const priority = document.getElementById('authenticatorFeePriority')?.value || 'medium';
+            const feeRates = { low: 1, medium: 5, high: 10 };
+            const feeRate = feeRates[priority] || 5;
+            const estimatedFee = 200 * feeRate;
+            
+            const maxSats = Math.max(0, authenticatorBalanceSats - estimatedFee);
+            document.getElementById('authenticatorSendAmountSats').value = maxSats;
+            updateAuthenticatorSendUsd();
+        }
+
+        async function sendAuthenticatorBtc() {
+            const statusEl = document.getElementById('authenticatorSendStatus');
+            const toAddress = document.getElementById('authenticatorSendToAddress')?.value?.trim();
+            const amountSats = Number(document.getElementById('authenticatorSendAmountSats')?.value || 0);
+
+            if (!toAddress) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter a recipient address</span>';
+                return;
+            }
+            if (amountSats <= 0) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter an amount</span>';
+                return;
+            }
+            if (amountSats > authenticatorBalanceSats) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Insufficient balance</span>';
+                return;
+            }
+
+            // For now, show instructions since full tx building requires wallet unlock
+            statusEl.innerHTML = '<span style="color: #d4af37;">⚠️ To send BTC, please use an external wallet (BlueWallet, Sparrow, Electrum) with your seed phrase. Your address: ' + authenticatorWalletAddress + '</span>';
         }
 
         requireAuthenticatorAuth();
