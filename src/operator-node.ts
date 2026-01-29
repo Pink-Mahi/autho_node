@@ -508,20 +508,14 @@ export class OperatorNode extends EventEmitter {
   }
 
   private async submitCanonicalEventToSeed(payload: any, signatures: QuorumSignature[]): Promise<{ ok: boolean; error?: string }>{
-    try {
-      const ws = this.mainSeedWs;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return { ok: false, error: 'Not connected to main seed' };
-      }
-
-      const requestId = `append_${Date.now()}_${randomBytes(8).toString('hex')}`;
-
-      const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    // Helper to send to a specific WebSocket and wait for ack
+    const sendAndWait = (ws: WebSocket, label: string): Promise<{ ok: boolean; error?: string }> => {
+      return new Promise((resolve) => {
+        const requestId = `append_${Date.now()}_${randomBytes(8).toString('hex')}`;
+        
         const timeout = setTimeout(() => {
-          try {
-            ws.off?.('message', onMessage as any);
-          } catch {}
-          resolve({ ok: false, error: 'Timeout waiting for seed ack' });
+          try { ws.off?.('message', onMessage as any); } catch {}
+          resolve({ ok: false, error: `Timeout waiting for ${label} ack` });
         }, 15000);
 
         const onMessage = (raw: WebSocket.Data) => {
@@ -530,17 +524,12 @@ export class OperatorNode extends EventEmitter {
             if (!msg || msg.type !== 'append_event_ack') return;
             if (String(msg.requestId || '') !== requestId) return;
             clearTimeout(timeout);
-            try {
-              ws.off?.('message', onMessage as any);
-            } catch {}
+            try { ws.off?.('message', onMessage as any); } catch {}
             resolve({ ok: Boolean(msg.ok), error: msg.error ? String(msg.error) : undefined });
-          } catch {
-          }
+          } catch {}
         };
 
-        try {
-          ws.on?.('message', onMessage as any);
-        } catch {}
+        try { ws.on?.('message', onMessage as any); } catch {}
 
         ws.send(JSON.stringify({
           type: 'append_event',
@@ -551,8 +540,31 @@ export class OperatorNode extends EventEmitter {
           timestamp: Date.now(),
         }));
       });
+    };
 
-      return result;
+    try {
+      // Try main seed first
+      const mainWs = this.mainSeedWs;
+      if (mainWs && mainWs.readyState === WebSocket.OPEN) {
+        const result = await sendAndWait(mainWs, 'main seed');
+        if (result.ok) return result;
+        console.warn(`[Operator] Main seed failed: ${result.error}, trying peer operators...`);
+      }
+
+      // Fallback: try peer operators (for resilience when main node is offline)
+      for (const [peerId, peer] of this.operatorPeerConnections) {
+        if (peer.ws.readyState === WebSocket.OPEN) {
+          try {
+            const result = await sendAndWait(peer.ws, `peer ${peerId}`);
+            if (result.ok) {
+              console.log(`[Operator] Event accepted by peer ${peerId}`);
+              return result;
+            }
+          } catch {}
+        }
+      }
+
+      return { ok: false, error: 'No available nodes to accept event (main seed and all peers offline)' };
     } catch (e: any) {
       return { ok: false, error: e?.message || String(e) };
     }
@@ -5032,6 +5044,52 @@ export class OperatorNode extends EventEmitter {
 
       case 'new_event_ack':
         // Acknowledgment from peer that they received our event
+        break;
+
+      // Handle append_event from peer operators - allows direct operator-to-operator sync when main node is offline
+      case 'append_event':
+        try {
+          const { requestId, payload, signatures, operatorId: senderOpId } = message;
+          
+          if (!payload || !signatures || !Array.isArray(signatures)) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: 'Invalid payload or signatures' }));
+            }
+            break;
+          }
+
+          // Append to canonical event store (this IS the ledger)
+          const event = await this.canonicalEventStore.appendEvent(payload, signatures);
+          
+          console.log(`[Operator] Appended event from peer ${senderOpId}: ${payload.type} (seq #${event.sequenceNumber})`);
+
+          // Send ack back to sender
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: true, eventHash: event.eventHash, sequenceNumber: event.sequenceNumber }));
+          }
+
+          // Broadcast to all OTHER connected operators (excluding sender and original source)
+          const broadcastMsg = JSON.stringify({ type: 'new_event', event, sourceOperatorId: this.config.operatorId });
+          for (const [peerOpId, peer] of this.operatorPeerConnections) {
+            if (peerOpId !== peerId && peer.ws.readyState === WebSocket.OPEN) {
+              try { peer.ws.send(broadcastMsg); } catch {}
+            }
+          }
+          for (const [gwWs] of this.gatewayConnections) {
+            if (gwWs.readyState === WebSocket.OPEN) {
+              try { gwWs.send(broadcastMsg); } catch {}
+            }
+          }
+
+          // Rebuild local state
+          await this.rebuildLocalStateFromCanonical();
+          this.broadcastRegistryUpdate();
+        } catch (e: any) {
+          const { requestId } = message || {};
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: e?.message || String(e) }));
+          }
+        }
         break;
 
       // CONSENSUS MESSAGES - Route to consensus node
