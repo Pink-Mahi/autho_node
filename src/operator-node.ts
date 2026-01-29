@@ -2377,10 +2377,22 @@ export class OperatorNode extends EventEmitter {
             if (!finalized || finalized.decision !== 'approve') continue;
             const companyName = String((app as any)?.companyName || '').trim();
             if (!companyName) continue;
+            const requestedRole = String((app as any)?.requestedRole || '').trim();
             const t = Number(finalized.finalizedAt || 0);
             if (t >= bestFinalizedAt) {
               bestFinalizedAt = t;
               manufacturerDisplayName = companyName;
+              // If approved role application exists, this is an official manufacturer/authenticator
+              if (requestedRole === 'manufacturer') {
+                mintedByOfficialManufacturer = true;
+                if (!issuerRole || issuerRole === 'user') {
+                  issuerRole = 'manufacturer';
+                }
+              } else if (requestedRole === 'authenticator') {
+                if (!issuerRole || issuerRole === 'user') {
+                  issuerRole = 'authenticator';
+                }
+              }
             }
           }
         }
