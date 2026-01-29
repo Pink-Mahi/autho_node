@@ -1380,6 +1380,100 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
+    // LEDGER HEALTH - comprehensive ledger metrics for operators
+    this.app.get('/api/operator/ledger-health', async (req: Request, res: Response) => {
+      try {
+        const events = await this.canonicalEventStore.getAllEvents();
+        const state = await this.canonicalStateBuilder.buildState();
+        
+        // Get latest event info
+        const latestEvent = events.length > 0 ? events[events.length - 1] : null;
+        const latestEventHash = latestEvent ? String((latestEvent as any).hash || (latestEvent as any).eventHash || '').substring(0, 16) : '';
+        const latestEventTimestamp = latestEvent ? Number((latestEvent as any).timestamp || 0) : 0;
+        
+        // Count checkpoints and anchors
+        const checkpoints = events.filter((e: any) => e?.payload?.type === 'CHECKPOINT_CREATED');
+        const anchors = events.filter((e: any) => e?.payload?.type === 'ANCHOR_COMMITTED');
+        const anchoredRoots = new Set(anchors.map((a: any) => String(a?.payload?.checkpointRoot || '')));
+        const anchoredCheckpoints = checkpoints.filter((c: any) => anchoredRoots.has(String(c?.payload?.checkpointRoot || '')));
+        
+        // Get latest checkpoint and anchor
+        const latestCheckpoint = checkpoints.length > 0 ? checkpoints[checkpoints.length - 1] : null;
+        const latestAnchor = anchors.length > 0 ? anchors[anchors.length - 1] : null;
+        
+        // Calculate events since last anchor
+        const lastAnchorSeq = latestAnchor ? Number((latestAnchor as any).sequenceNumber || 0) : 0;
+        const eventsSinceLastAnchor = events.length - lastAnchorSeq;
+        
+        // Sync status (compare with main node if connected)
+        let syncStatus = 'UNKNOWN';
+        let mainNodeSequence = 0;
+        if (this.isConnectedToMain) {
+          try {
+            const base = this.getSeedHttpBase();
+            if (base) {
+              const headRes = await fetch(`${base}/api/registry/head`);
+              if (headRes.ok) {
+                const headData = await headRes.json() as any;
+                mainNodeSequence = Number(headData.lastEventSequence || 0);
+                const localSequence = events.length;
+                if (localSequence >= mainNodeSequence) {
+                  syncStatus = 'IN_SYNC';
+                } else if (mainNodeSequence - localSequence <= 5) {
+                  syncStatus = 'SLIGHTLY_BEHIND';
+                } else {
+                  syncStatus = 'SYNCING';
+                }
+              }
+            }
+          } catch (e) {
+            syncStatus = 'UNKNOWN';
+          }
+        } else {
+          syncStatus = 'DISCONNECTED';
+        }
+        
+        // Calculate anchor coverage percentage
+        const anchorCoverage = checkpoints.length > 0 
+          ? ((anchoredCheckpoints.length / checkpoints.length) * 100).toFixed(1)
+          : '0.0';
+        
+        res.json({
+          success: true,
+          ledger: {
+            totalEvents: events.length,
+            latestEventHash,
+            latestEventTimestamp,
+            latestEventAge: latestEventTimestamp ? Math.floor((Date.now() - latestEventTimestamp) / 1000) : 0,
+          },
+          checkpoints: {
+            total: checkpoints.length,
+            anchored: anchoredCheckpoints.length,
+            unanchored: checkpoints.length - anchoredCheckpoints.length,
+            anchorCoveragePercent: parseFloat(anchorCoverage),
+            latestCheckpointRoot: latestCheckpoint ? String((latestCheckpoint as any).payload?.checkpointRoot || '').substring(0, 16) : '',
+            latestCheckpointSeq: latestCheckpoint ? Number((latestCheckpoint as any).sequenceNumber || 0) : 0,
+          },
+          anchoring: {
+            totalAnchors: anchors.length,
+            latestAnchorTxid: latestAnchor ? String((latestAnchor as any).payload?.txid || '').substring(0, 16) : '',
+            latestAnchorBlock: latestAnchor ? Number((latestAnchor as any).payload?.blockHeight || 0) : 0,
+            eventsSinceLastAnchor,
+          },
+          sync: {
+            status: syncStatus,
+            connectedToMain: this.isConnectedToMain,
+            localSequence: events.length,
+            mainNodeSequence,
+            behind: Math.max(0, mainNodeSequence - events.length),
+          },
+          timestamp: Date.now(),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/registry/head', async (req: Request, res: Response) => {
       try {
         const state = await this.canonicalStateBuilder.buildState();

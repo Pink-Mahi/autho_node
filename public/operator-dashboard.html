@@ -645,6 +645,12 @@
                 <button class="btn" type="button" onclick="loadNodeStatus()">Refresh</button>
             </div>
             <div id="statusPanel" class="empty-state">Open this tab to load status.</div>
+            
+            <!-- Ledger Health Section -->
+            <div style="margin-top: 25px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📊 Ledger Health</h3>
+                <div id="ledgerHealthPanel" class="empty-state">Loading ledger health...</div>
+            </div>
         </div>
 
         <div class="section" id="mempool-section">
@@ -1350,6 +1356,118 @@
             }
 
             showEl('statusSuccess', true, 'Status loaded.');
+            
+            // Also load ledger health
+            loadLedgerHealth();
+        }
+
+        async function loadLedgerHealth() {
+            const el = document.getElementById('ledgerHealthPanel');
+            if (!el) return;
+            
+            try {
+                const r = await fetch('/api/operator/ledger-health', { headers: getAuthHeaders(), cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+                
+                if (!r.ok || !data || data.success !== true) {
+                    el.innerHTML = '<div class="empty-state">Failed to load ledger health.</div>';
+                    return;
+                }
+                
+                const ledger = data.ledger || {};
+                const checkpoints = data.checkpoints || {};
+                const anchoring = data.anchoring || {};
+                const sync = data.sync || {};
+                
+                // Sync status styling
+                let syncStatusStyle = 'color: #999;';
+                let syncIcon = '⏸️';
+                if (sync.status === 'IN_SYNC') {
+                    syncStatusStyle = 'color: #4cd964; font-weight: 700;';
+                    syncIcon = '✅';
+                } else if (sync.status === 'SLIGHTLY_BEHIND') {
+                    syncStatusStyle = 'color: #ff9f0a; font-weight: 700;';
+                    syncIcon = '⚠️';
+                } else if (sync.status === 'SYNCING') {
+                    syncStatusStyle = 'color: #ff9f0a; font-weight: 700;';
+                    syncIcon = '🔄';
+                } else if (sync.status === 'DISCONNECTED') {
+                    syncStatusStyle = 'color: #ff3b30; font-weight: 700;';
+                    syncIcon = '❌';
+                }
+                
+                // Anchor coverage color
+                const coveragePercent = Number(checkpoints.anchorCoveragePercent || 0);
+                let coverageStyle = 'color: #ff3b30;';
+                if (coveragePercent >= 50) coverageStyle = 'color: #4cd964;';
+                else if (coveragePercent >= 10) coverageStyle = 'color: #ff9f0a;';
+                
+                // Format age
+                function fmtAge(seconds) {
+                    const s = Number(seconds || 0);
+                    if (s < 60) return `${s}s`;
+                    const m = Math.floor(s / 60);
+                    if (m < 60) return `${m}m`;
+                    const h = Math.floor(m / 60);
+                    if (h < 24) return `${h}h`;
+                    const d = Math.floor(h / 24);
+                    return `${d}d`;
+                }
+                
+                el.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Total Events</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; color: #d4af37;">${Number(ledger.totalEvents || 0).toLocaleString()}</div>
+                        </div>
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Sync Status</div>
+                            <div style="font-size: 1rem; font-weight: 700; ${syncStatusStyle}">${syncIcon} ${sync.status || 'UNKNOWN'}</div>
+                        </div>
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Anchor Coverage</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; ${coverageStyle}">${coveragePercent.toFixed(1)}%</div>
+                        </div>
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Latest Event Age</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; color: #d4af37;">${fmtAge(ledger.latestEventAge)}</div>
+                        </div>
+                    </div>
+                    
+                    <table style="font-size: 0.9rem;">
+                        <tbody>
+                            <tr>
+                                <td style="color: #999; width: 180px;">Latest Event Hash</td>
+                                <td style="font-family: monospace; color: #d4af37;">${ledger.latestEventHash || '-'}...</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Latest Checkpoint</td>
+                                <td style="font-family: monospace;">${checkpoints.latestCheckpointRoot || '-'}... <span style="color: #999;">(Seq #${checkpoints.latestCheckpointSeq || 0})</span></td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Checkpoints</td>
+                                <td><span style="color: #4cd964; font-weight: 700;">${checkpoints.anchored || 0}</span> anchored / <span style="color: #ff6b6b;">${checkpoints.unanchored || 0}</span> unanchored</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Latest Anchor TX</td>
+                                <td style="font-family: monospace;">${anchoring.latestAnchorTxid ? `<a href="https://mempool.space/tx/${anchoring.latestAnchorTxid}" target="_blank" style="color: #4cd964;">${anchoring.latestAnchorTxid}...</a>` : '-'} ${anchoring.latestAnchorBlock ? `<span style="color: #999;">(Block ${anchoring.latestAnchorBlock})</span>` : ''}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Events Since Anchor</td>
+                                <td style="font-weight: 700; color: ${anchoring.eventsSinceLastAnchor > 100 ? '#ff9f0a' : '#d4af37'};">${anchoring.eventsSinceLastAnchor || 0}</td>
+                            </tr>
+                            ${sync.behind > 0 ? `
+                            <tr>
+                                <td style="color: #999;">Events Behind</td>
+                                <td style="font-weight: 700; color: #ff9f0a;">${sync.behind} events</td>
+                            </tr>
+                            ` : ''}
+                        </tbody>
+                    </table>
+                `;
+            } catch (err) {
+                el.innerHTML = '<div class="empty-state">Error loading ledger health.</div>';
+            }
         }
 
         async function loadVerifierActions() {
