@@ -2213,8 +2213,11 @@ export class OperatorNode extends EventEmitter {
         const anchorsByOperator = new Map<string, number>();
         const anchorEvents = events.filter((e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED);
         
+        // Debug: log anchor events structure
+        console.log(`[Anchor Stats] Found ${anchorEvents.length} anchor events`);
         for (const e of anchorEvents) {
           const sigs = Array.isArray((e as any).signatures) ? (e as any).signatures : [];
+          console.log(`[Anchor Stats] Event ${(e as any).eventHash?.substring(0,16)}... has ${sigs.length} signatures:`, sigs.map((s: any) => s?.operatorId));
           for (const sig of sigs) {
             const opId = String(sig?.operatorId || '').trim();
             if (opId) {
@@ -2241,12 +2244,24 @@ export class OperatorNode extends EventEmitter {
             weight: weights.get(op.operatorId) || 0,
           }));
 
+        // Debug: include anchor event details
+        const debugAnchorEvents = anchorEvents.slice(0, 10).map((e: any) => ({
+          hash: (e.eventHash || '').substring(0, 16),
+          sigCount: Array.isArray(e.signatures) ? e.signatures.length : 0,
+          operatorIds: Array.isArray(e.signatures) ? e.signatures.map((s: any) => s?.operatorId) : [],
+          checkpointRoot: (e.payload?.checkpointRoot || '').substring(0, 16),
+        }));
+
         res.json({ 
           success: true, 
           totalAnchors,
           operators: activeOperators,
           myOperatorId: this.config.operatorId,
           myAnchorCount: anchorsByOperator.get(this.config.operatorId) || 0,
+          _debug: {
+            anchorEventCount: anchorEvents.length,
+            anchorEvents: debugAnchorEvents,
+          }
         });
       } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message || String(e) });
