@@ -2289,13 +2289,25 @@ export class OperatorNode extends EventEmitter {
         }
 
         // Create and broadcast real Bitcoin OP_RETURN transaction
-        // Use the btcAddress from config to fetch UTXOs (may differ from derived address)
         const btcService = new BitcoinTransactionService(this.config.network || 'mainnet');
+        
+        // Verify the private key matches the configured btcAddress
+        const derivedAddress = btcService.getAddressFromPrivateKey(operatorPrivateKey);
+        if (this.config.btcAddress && derivedAddress !== this.config.btcAddress) {
+          console.error(`[Auto-Anchor] Address mismatch! Derived: ${derivedAddress}, Config: ${this.config.btcAddress}`);
+          res.status(400).json({ 
+            success: false, 
+            error: `Private key mismatch: Your privateKey generates address ${derivedAddress} but your btcAddress is ${this.config.btcAddress}. Update your config to use matching keys.` 
+          });
+          return;
+        }
+        
+        // Use the derived address (which should match config if configured correctly)
         const anchorResult = await btcService.createOpReturnAnchor(
           operatorPrivateKey, 
           opReturnData, 
           undefined, // use default fee rate
-          this.config.btcAddress // use explicit address from config
+          derivedAddress // use address derived from private key
         );
         
         if (!anchorResult.success || !anchorResult.txid) {
