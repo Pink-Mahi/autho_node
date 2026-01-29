@@ -1556,17 +1556,29 @@
         const lastCheckpointEl = document.getElementById('lastCheckpoint');
         const bitcoinAnchorEl = document.getElementById('bitcoinAnchor');
 
-        const sigs = Array.isArray(lastAtt?.operatorQuorumSignatures)
-          ? lastAtt.operatorQuorumSignatures
-          : Array.isArray(item?.operatorQuorumSignatures)
-            ? item.operatorQuorumSignatures
-            : [];
+        // Use operatorSignaturesCount from API if available, otherwise count from arrays
+        let sigCount = item?.operatorSignaturesCount;
+        if (sigCount === undefined || sigCount === null) {
+          const sigs = Array.isArray(lastAtt?.operatorQuorumSignatures)
+            ? lastAtt.operatorQuorumSignatures
+            : Array.isArray(item?.operatorQuorumSignatures)
+              ? item.operatorQuorumSignatures
+              : [];
+          sigCount = sigs.length;
+        }
 
         if (signatureCountEl) {
-          signatureCountEl.textContent = sigs.length ? `${sigs.length} sigs` : '—';
+          signatureCountEl.textContent = sigCount ? `${sigCount} sigs` : '—';
         }
+        
+        // Use lastCheckpointHeight/Timestamp from API if available
         if (lastCheckpointEl) {
-          lastCheckpointEl.textContent = '—';
+          if (item?.lastCheckpointHeight) {
+            const ts = item.lastCheckpointTimestamp ? new Date(item.lastCheckpointTimestamp).toLocaleDateString() : '';
+            lastCheckpointEl.textContent = `Block ${item.lastCheckpointHeight}${ts ? ` (${ts})` : ''}`;
+          } else {
+            lastCheckpointEl.textContent = '—';
+          }
         }
 
         const txid = String(lastAtt?.feeTxid || item?.feeTxid || '').trim();

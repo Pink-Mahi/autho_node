@@ -2356,7 +2356,25 @@ export class OperatorNode extends EventEmitter {
       const issuerId = String((item as any)?.issuerAccountId || (item as any)?.manufacturerId || '').trim();
       const manufacturerId = String((item as any)?.manufacturerId || '').trim();
       
-      if (issuerId) {
+      // Resolve manufacturer display name
+      let manufacturerDisplayName = String((item as any)?.manufacturerName || '').trim();
+      let mfgAccount: any = null;
+      
+      if (manufacturerId) {
+        mfgAccount = this.state.accounts.get(manufacturerId);
+        if (mfgAccount) {
+          // Use account display name or company name
+          manufacturerDisplayName = String(mfgAccount.displayName || mfgAccount.companyName || mfgAccount.name || manufacturerDisplayName || manufacturerId).trim();
+          if (String(mfgAccount.role || '').trim() === 'manufacturer') {
+            mintedByOfficialManufacturer = true;
+            if (!issuerRole || issuerRole === 'user') {
+              issuerRole = 'manufacturer';
+            }
+          }
+        }
+      }
+      
+      if (issuerId && issuerId !== manufacturerId) {
         const issuerAccount: any = this.state.accounts.get(issuerId);
         const role = String(issuerAccount?.role || '').trim();
         if (role === 'manufacturer' || role === 'authenticator') {
@@ -2367,31 +2385,37 @@ export class OperatorNode extends EventEmitter {
         }
       }
       
-      // Also check manufacturerId separately
-      if (!mintedByOfficialManufacturer && manufacturerId) {
-        const mfgAccount: any = this.state.accounts.get(manufacturerId);
-        if (mfgAccount && String(mfgAccount.role || '').trim() === 'manufacturer') {
-          mintedByOfficialManufacturer = true;
-          if (!issuerRole || issuerRole === 'user') {
-            issuerRole = 'manufacturer';
-          }
-        }
-      }
-      
       if (!issuerRole) issuerRole = 'user';
+      
+      // If no display name found, use manufacturerName from item or fallback to ID
+      if (!manufacturerDisplayName) {
+        manufacturerDisplayName = String((item as any)?.manufacturerName || manufacturerId || 'Unknown').trim();
+      }
       
       const hasIssuerVerification = issuerRole === 'manufacturer' || issuerRole === 'authenticator' || mintedByOfficialManufacturer;
       const authentications = Array.isArray((item as any)?.authentications) ? (item as any).authentications : [];
       const hasAttestationVerification = authentications.some((a: any) => a && a.isAuthentic === true);
       const verificationStatus = hasIssuerVerification || hasAttestationVerification ? 'verified' : 'unverified';
       
+      // Get operator signatures count
+      const operatorSignatures = Array.isArray((item as any)?.operatorQuorumSignatures) 
+        ? (item as any).operatorQuorumSignatures.length 
+        : 0;
+      
+      // Get last checkpoint info from state if available
+      const lastCheckpoint = (this.state as any).lastCheckpoint || null;
+      
       res.json({
         success: true,
         itemRecord: {
           ...item,
+          manufacturerDisplayName,
           issuerRole,
           mintedByOfficialManufacturer,
           verificationStatus,
+          operatorSignaturesCount: operatorSignatures,
+          lastCheckpointHeight: lastCheckpoint?.height || lastCheckpoint?.blockHeight,
+          lastCheckpointTimestamp: lastCheckpoint?.timestamp,
         }
       });
     });
