@@ -65,6 +65,7 @@ export enum EventType {
   ACCOUNT_TOTP_ENABLED = 'ACCOUNT_TOTP_ENABLED',
   ACCOUNT_TOTP_DISABLED = 'ACCOUNT_TOTP_DISABLED',
   ACCOUNT_RECOVERY_TOTP_RESET = 'ACCOUNT_RECOVERY_TOTP_RESET',
+  ACCOUNT_PAY_HANDLE_SET = 'ACCOUNT_PAY_HANDLE_SET',
 
   // Account role applications / invites
   ACCOUNT_ROLE_APPLICATION_SUBMITTED = 'ACCOUNT_ROLE_APPLICATION_SUBMITTED',
@@ -73,6 +74,11 @@ export enum EventType {
   ACCOUNT_ROLE_APPLICATION_FINALIZED = 'ACCOUNT_ROLE_APPLICATION_FINALIZED',
   ACCOUNT_ROLE_INVITE_CREATED = 'ACCOUNT_ROLE_INVITE_CREATED',
   ACCOUNT_ROLE_INVITE_REDEEMED = 'ACCOUNT_ROLE_INVITE_REDEEMED',
+
+  // Content moderation (image tombstoning)
+  ITEM_IMAGE_TOMBSTONE_PROPOSED = 'ITEM_IMAGE_TOMBSTONE_PROPOSED',
+  ITEM_IMAGE_TOMBSTONE_VOTED = 'ITEM_IMAGE_TOMBSTONE_VOTED',
+  ITEM_IMAGE_TOMBSTONED = 'ITEM_IMAGE_TOMBSTONED',
 
   // Verifier governance (manufacturers/authenticators)
   ACCOUNT_VERIFIER_ACTION_CREATED = 'ACCOUNT_VERIFIER_ACTION_CREATED',
@@ -819,6 +825,33 @@ export interface OperatorRemovedPayload extends BaseEventPayload {
   reason: string;
 }
 
+// Content moderation - Image tombstoning
+export interface ItemImageTombstoneProposedPayload extends BaseEventPayload {
+  type: EventType.ITEM_IMAGE_TOMBSTONE_PROPOSED;
+  proposalId: string;
+  itemId: string;
+  imageHash: string;  // sha256Hex of the image to tombstone
+  proposerOperatorId: string;
+  reason: string;  // e.g., 'illegal_content', 'copyright', 'other'
+  details?: string;
+}
+
+export interface ItemImageTombstoneVotedPayload extends BaseEventPayload {
+  type: EventType.ITEM_IMAGE_TOMBSTONE_VOTED;
+  proposalId: string;
+  operatorId: string;
+  vote: 'approve' | 'reject';
+}
+
+export interface ItemImageTombstonedPayload extends BaseEventPayload {
+  type: EventType.ITEM_IMAGE_TOMBSTONED;
+  proposalId: string;
+  itemId: string;
+  imageHash: string;
+  reason: string;
+  approvedBy: string[];  // operator IDs who voted approve
+}
+
 export type EventPayload =
   | ItemRegisteredPayload
   | VerificationRequestCreatedPayload
@@ -888,7 +921,10 @@ export type EventPayload =
   | OperatorHeartbeatPayload
   | OperatorAdmittedPayload
   | OperatorRejectedPayload
-  | OperatorRemovedPayload;
+  | OperatorRemovedPayload
+  | ItemImageTombstoneProposedPayload
+  | ItemImageTombstoneVotedPayload
+  | ItemImageTombstonedPayload;
 
 export interface QuorumSignature {
   operatorId: string;

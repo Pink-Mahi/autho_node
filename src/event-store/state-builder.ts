@@ -368,6 +368,23 @@ export interface AccountVerifierActionState {
   };
 }
 
+export interface ImageTombstoneProposalState {
+  proposalId: string;
+  itemId: string;
+  imageHash: string;
+  proposerOperatorId: string;
+  reason: string;
+  details?: string;
+  createdAt: number;
+  votes: Map<string, { operatorId: string; vote: 'approve' | 'reject'; votedAt: number }>;
+  finalized?: {
+    decision: 'approve' | 'reject';
+    finalizedAt: number;
+    approveVotes: number;
+    rejectVotes: number;
+  };
+}
+
 export interface RegistryState {
   items: Map<string, ItemState>;
   settlements: Map<string, SettlementState>;
@@ -385,6 +402,8 @@ export interface RegistryState {
   retailerActions: Map<string, AccountRetailerActionState>;
   retailerRatings: Map<string, RetailerRatingState>;
   retailerReports: Map<string, RetailerReportState>;
+  imageTombstoneProposals: Map<string, ImageTombstoneProposalState>;
+  tombstonedImages: Set<string>;  // Set of imageHash values that are tombstoned
   ownership: Map<string, string>; // itemId -> owner address
   feePayoutCursor: number;
   lastEventSequence: number;
@@ -419,6 +438,8 @@ export class StateBuilder {
       retailerActions: new Map(),
       retailerRatings: new Map(),
       retailerReports: new Map(),
+      imageTombstoneProposals: new Map(),
+      tombstonedImages: new Set(),
       ownership: new Map(),
       feePayoutCursor: 0,
       lastEventSequence: 0,
@@ -711,6 +732,18 @@ export class StateBuilder {
 
       case EventType.ACCOUNT_RECOVERY_TOTP_RESET:
         this.applyAccountRecoveryTotpReset(state, event);
+        break;
+
+      case EventType.ITEM_IMAGE_TOMBSTONE_PROPOSED:
+        this.applyImageTombstoneProposed(state, event);
+        break;
+
+      case EventType.ITEM_IMAGE_TOMBSTONE_VOTED:
+        this.applyImageTombstoneVoted(state, event);
+        break;
+
+      case EventType.ITEM_IMAGE_TOMBSTONED:
+        this.applyImageTombstoned(state, event);
         break;
     }
 
@@ -1940,5 +1973,92 @@ export class StateBuilder {
     }
 
     return operators;
+  }
+
+  // ==================== Image Tombstone Methods ====================
+
+  private applyImageTombstoneProposed(state: RegistryState, event: Event): void {
+    const payload = event.payload as any;
+    const proposal: ImageTombstoneProposalState = {
+      proposalId: payload.proposalId,
+      itemId: payload.itemId,
+      imageHash: payload.imageHash,
+      proposerOperatorId: payload.proposerOperatorId,
+      reason: payload.reason,
+      details: payload.details,
+      createdAt: payload.timestamp,
+      votes: new Map(),
+    };
+    state.imageTombstoneProposals.set(payload.proposalId, proposal);
+  }
+
+  private applyImageTombstoneVoted(state: RegistryState, event: Event): void {
+    const payload = event.payload as any;
+    const proposal = state.imageTombstoneProposals.get(payload.proposalId);
+    if (!proposal) return;
+
+    proposal.votes.set(payload.operatorId, {
+      operatorId: payload.operatorId,
+      vote: payload.vote,
+      votedAt: payload.timestamp,
+    });
+  }
+
+  private applyImageTombstoned(state: RegistryState, event: Event): void {
+    const payload = event.payload as any;
+    
+    // Add the image hash to the tombstoned set
+    state.tombstonedImages.add(payload.imageHash);
+
+    // Update the proposal as finalized
+    const proposal = state.imageTombstoneProposals.get(payload.proposalId);
+    if (proposal) {
+      proposal.finalized = {
+        decision: 'approve',
+        finalizedAt: payload.timestamp,
+        approveVotes: payload.approvedBy?.length || 0,
+        rejectVotes: 0,
+      };
+    }
+  }
+
+  /**
+   * Check if an image hash is tombstoned (should not be rendered)
+   */
+  async isImageTombstoned(imageHash: string): Promise<boolean> {
+    const state = await this.buildState();
+    return state.tombstonedImages.has(imageHash);
+  }
+
+  /**
+   * Get item with tombstoned images filtered out
+   * This is what the UI should use to get items for display
+   */
+  async getItemForDisplay(itemId: string): Promise<ItemState | null> {
+    const state = await this.buildState();
+    const item = state.items.get(itemId);
+    if (!item) return null;
+
+    // Filter out tombstoned images from metadata
+    if (item.metadata?.images && Array.isArray(item.metadata.images)) {
+      item.metadata.images = item.metadata.images.filter((img: any) => {
+        const hash = String(img?.sha256Hex || '').trim().toLowerCase();
+        return !state.tombstonedImages.has(hash);
+      });
+    }
+
+    // Filter out tombstoned images from authentications
+    if (item.authentications) {
+      for (const auth of item.authentications) {
+        if (auth.images && Array.isArray(auth.images)) {
+          auth.images = auth.images.filter((img: any) => {
+            const hash = String(img?.sha256Hex || '').trim().toLowerCase();
+            return !state.tombstonedImages.has(hash);
+          });
+        }
+      }
+    }
+
+    return item;
   }
 }
