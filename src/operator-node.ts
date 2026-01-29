@@ -2347,7 +2347,53 @@ export class OperatorNode extends EventEmitter {
         res.status(404).json({ error: 'Item not found' });
         return;
       }
-      res.json(item);
+      
+      // Enhanced manufacturer detection
+      let issuerRole = String((item as any)?.issuerRole || '').trim();
+      let mintedByOfficialManufacturer = Boolean((item as any)?.mintedByOfficialManufacturer);
+      
+      // Check if manufacturerId or issuerAccountId matches an approved manufacturer account
+      const issuerId = String((item as any)?.issuerAccountId || (item as any)?.manufacturerId || '').trim();
+      const manufacturerId = String((item as any)?.manufacturerId || '').trim();
+      
+      if (issuerId) {
+        const issuerAccount: any = this.state.accounts.get(issuerId);
+        const role = String(issuerAccount?.role || '').trim();
+        if (role === 'manufacturer' || role === 'authenticator') {
+          issuerRole = role;
+          if (role === 'manufacturer') {
+            mintedByOfficialManufacturer = true;
+          }
+        }
+      }
+      
+      // Also check manufacturerId separately
+      if (!mintedByOfficialManufacturer && manufacturerId) {
+        const mfgAccount: any = this.state.accounts.get(manufacturerId);
+        if (mfgAccount && String(mfgAccount.role || '').trim() === 'manufacturer') {
+          mintedByOfficialManufacturer = true;
+          if (!issuerRole || issuerRole === 'user') {
+            issuerRole = 'manufacturer';
+          }
+        }
+      }
+      
+      if (!issuerRole) issuerRole = 'user';
+      
+      const hasIssuerVerification = issuerRole === 'manufacturer' || issuerRole === 'authenticator' || mintedByOfficialManufacturer;
+      const authentications = Array.isArray((item as any)?.authentications) ? (item as any).authentications : [];
+      const hasAttestationVerification = authentications.some((a: any) => a && a.isAuthentic === true);
+      const verificationStatus = hasIssuerVerification || hasAttestationVerification ? 'verified' : 'unverified';
+      
+      res.json({
+        success: true,
+        itemRecord: {
+          ...item,
+          issuerRole,
+          mintedByOfficialManufacturer,
+          verificationStatus,
+        }
+      });
     });
 
     this.app.get('/api/registry/owner/:address', (req: Request, res: Response) => {
