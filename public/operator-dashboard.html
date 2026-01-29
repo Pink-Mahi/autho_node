@@ -792,7 +792,9 @@
         function switchTab(tab) {
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            event.target.classList.add('active');
+            // Find the nav tab for this section and activate it
+            const navTab = document.querySelector(`.nav-tab[onclick*="'${tab}'"]`);
+            if (navTab) navTab.classList.add('active');
             document.getElementById(`${tab}-section`).classList.add('active');
 
             if (tab === 'applications') {
