@@ -483,7 +483,7 @@ export class OperatorNode extends EventEmitter {
     return String(this.config.operatorId || '').trim();
   }
 
-  private async requireOperatorSession(req: Request, res: Response): Promise<{ accountId: string } | null> {
+  private async requireOperatorSession(req: Request, res: Response): Promise<{ accountId: string; operatorId: string; operatorPublicKey: string } | null> {
     const sess = this.requireSession(req, res);
     if (!sess) return null;
     const state = await this.canonicalStateBuilder.buildState();
@@ -494,17 +494,21 @@ export class OperatorNode extends EventEmitter {
     }
 
     const ops = Array.from((state as any)?.operators?.values?.() || []) as any[];
-    const isActiveOperator = ops.some((o: any) =>
+    const matchingOperator = ops.find((o: any) =>
       o && String(o.status || '') === 'active' &&
       (String(o.publicKey || '') === accountId || String(o.sponsorId || '') === accountId)
     );
 
-    if (!isActiveOperator) {
+    if (!matchingOperator) {
       res.status(403).json({ success: false, error: 'Operator role required' });
       return null;
     }
 
-    return { accountId };
+    return { 
+      accountId, 
+      operatorId: String(matchingOperator.operatorId || ''),
+      operatorPublicKey: String(matchingOperator.publicKey || ''),
+    };
   }
 
   private async submitCanonicalEventToSeed(payload: any, signatures: QuorumSignature[]): Promise<{ ok: boolean; error?: string }>{
@@ -2305,6 +2309,10 @@ export class OperatorNode extends EventEmitter {
     // Manual anchor commit (for pre-existing Bitcoin transactions)
     this.app.post('/api/operator/anchors/commit', async (req: Request, res: Response) => {
       try {
+        // Require authenticated operator session to attribute the anchor
+        const opSession = await this.requireOperatorSession(req, res);
+        if (!opSession) return;
+
         const checkpointRoot = String(req.body?.checkpointRoot || '').trim();
         const txid = String(req.body?.txid || '').trim();
         const blockHeight = Number(req.body?.blockHeight || 0);
@@ -2337,10 +2345,11 @@ export class OperatorNode extends EventEmitter {
 
         const nonce = randomBytes(32).toString('hex');
         const now = Date.now();
+        // Use authenticated operator's ID for proper attribution
         const signatures: QuorumSignature[] = [
           {
-            operatorId: this.config.operatorId,
-            publicKey: this.config.publicKey,
+            operatorId: opSession.operatorId,
+            publicKey: opSession.operatorPublicKey,
             signature: createHash('sha256').update(`ANCHOR_COMMITTED:${checkpointRoot}:${txid}:${blockHeight}:${now}`).digest('hex'),
           },
         ];
@@ -2375,6 +2384,10 @@ export class OperatorNode extends EventEmitter {
     // ONE-CLICK AUTO-ANCHOR: Create and broadcast real Bitcoin OP_RETURN transaction
     this.app.post('/api/operator/anchors/auto-anchor', async (req: Request, res: Response) => {
       try {
+        // Require authenticated operator session to attribute the anchor
+        const opSession = await this.requireOperatorSession(req, res);
+        if (!opSession) return;
+
         let checkpointRoot = String(req.body?.checkpointRoot || '').trim();
         
         const events = await this.canonicalEventStore.getAllEvents();
@@ -2476,10 +2489,11 @@ export class OperatorNode extends EventEmitter {
         // Record the anchor commitment
         const nonce = randomBytes(32).toString('hex');
         const now = Date.now();
+        // Use authenticated operator's ID for proper attribution
         const signatures: QuorumSignature[] = [
           {
-            operatorId: this.config.operatorId,
-            publicKey: this.config.publicKey,
+            operatorId: opSession.operatorId,
+            publicKey: opSession.operatorPublicKey,
             signature: createHash('sha256').update(`ANCHOR_COMMITTED:${checkpointRoot}:${realTxid}:${currentBlockHeight}:${now}`).digest('hex'),
           },
         ];
@@ -2591,10 +2605,11 @@ export class OperatorNode extends EventEmitter {
         // Record the anchor commitment event
         const nonce = randomBytes(32).toString('hex');
         const now = Date.now();
+        // Use authenticated operator's ID for proper attribution
         const signatures: QuorumSignature[] = [
           {
-            operatorId: this.config.operatorId,
-            publicKey: this.config.publicKey,
+            operatorId: sess.operatorId,
+            publicKey: sess.operatorPublicKey,
             signature: createHash('sha256').update(`ANCHOR_COMMITTED:${checkpointRoot}:${broadcastTxid}:${currentBlockHeight}:${now}`).digest('hex'),
           },
         ];
