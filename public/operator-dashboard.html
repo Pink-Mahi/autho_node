@@ -2431,31 +2431,34 @@
                     el.innerHTML = '<div class="empty-state">No anchor transactions yet. Anchor some checkpoints to see your history!</div>';
                 } else {
                     el.innerHTML = `
+                        <div style="background: rgba(255, 165, 0, 0.1); border: 1px solid rgba(255, 165, 0, 0.3); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                            <p style="margin: 0; font-size: 0.85rem; color: #ffa500;">
+                                ⚠️ <strong>Note:</strong> Current implementation uses simulated anchors for testing. 
+                                Real Bitcoin transaction broadcasting requires wallet UTXO management (coming soon).
+                                The checkpoint hashes are recorded internally for consensus tracking.
+                            </p>
+                        </div>
                         <div style="max-height: 400px; overflow-y: auto;">
                             <table>
                                 <thead>
                                     <tr>
                                         <th>Date</th>
                                         <th>Checkpoint</th>
-                                        <th>TX ID</th>
-                                        <th>Block</th>
+                                        <th>Reference ID</th>
+                                        <th>Seq #</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${anchors.map(a => {
                                         const date = new Date(a.timestamp).toLocaleString();
                                         const cpRoot = String(a.checkpointRoot || '').substring(0, 16);
-                                        const txid = String(a.txid || '').substring(0, 16);
+                                        const refId = String(a.txid || '').substring(0, 16);
                                         return `
                                             <tr>
                                                 <td style="font-size: 0.85rem;">${date}</td>
                                                 <td style="font-family: monospace; font-size: 0.8rem; color: #d4af37;">${cpRoot}...</td>
-                                                <td>
-                                                    <a href="https://mempool.space/tx/${a.txid}" target="_blank" style="font-family: monospace; font-size: 0.8rem; color: #4cd964;">
-                                                        ${txid}...
-                                                    </a>
-                                                </td>
-                                                <td style="font-weight: 700; color: #d4af37;">${Number(a.blockHeight || 0).toLocaleString()}</td>
+                                                <td style="font-family: monospace; font-size: 0.8rem; color: #999;">${refId}...</td>
+                                                <td style="font-weight: 700; color: #d4af37;">${Number(a.sequenceNumber || 0).toLocaleString()}</td>
                                             </tr>
                                         `;
                                     }).join('')}
@@ -2463,7 +2466,7 @@
                             </table>
                         </div>
                         <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                            🔗 Click on TX ID to view transaction on mempool.space
+                            📋 Checkpoints are tracked internally. Real Bitcoin anchoring with OP_RETURN coming soon!
                         </p>
                     `;
                 }
