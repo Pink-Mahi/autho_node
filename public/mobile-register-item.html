@@ -433,11 +433,7 @@
           <input type="number" id="estimatedValue" placeholder="e.g., 5000">
         </div>
 
-        <div class="form-group">
-          <label>Photos (optional, up to 3)</label>
-          <input type="file" id="itemImages" accept="image/*" multiple>
-          <div id="imagePreview" class="image-preview"></div>
-        </div>
+        <!-- Photos removed - only manufacturers and authenticators can add images -->
       </div>
 
       <div class="form-section">
@@ -500,7 +496,6 @@
       }
       userWallet = WalletAuth.getWallet();
       initBrandAutocomplete();
-      initImagePreview();
     });
 
     // Brand autocomplete
@@ -616,27 +611,6 @@
       return div.innerHTML;
     }
 
-    // Image preview
-    function initImagePreview() {
-      const input = document.getElementById('itemImages');
-      const preview = document.getElementById('imagePreview');
-
-      input.addEventListener('change', function() {
-        preview.innerHTML = '';
-        const files = Array.from(this.files || []).slice(0, 3);
-
-        files.forEach(file => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const img = document.createElement('img');
-            img.src = e.target.result;
-            preview.appendChild(img);
-          };
-          reader.readAsDataURL(file);
-        });
-      });
-    }
-
     // Register item
     async function registerItem(event) {
       event.preventDefault();
@@ -683,12 +657,7 @@
           issuerRole: 'user',
         };
 
-        // Process images
-        const imageInput = document.getElementById('itemImages');
-        const files = Array.from(imageInput.files || []).slice(0, 3);
-        if (files.length > 0) {
-          itemData.metadata.images = await processImages(files);
-        }
+        // Note: Images removed - only manufacturers/authenticators can add images
 
         // Get wallet credentials
         const vaultStr = localStorage.getItem('autho_wallet_vault');
