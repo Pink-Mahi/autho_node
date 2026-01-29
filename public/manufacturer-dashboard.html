@@ -250,6 +250,80 @@
             border: 1px solid rgba(212, 175, 55, 0.3);
         }
 
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            border: 1px solid #d4af37;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 1001;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .autocomplete-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+            transition: background 0.2s;
+        }
+
+        .autocomplete-item:hover, .autocomplete-item.selected {
+            background: rgba(212, 175, 55, 0.15);
+        }
+
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+
+        .autocomplete-item .entity-name {
+            color: #d4af37;
+            font-weight: 500;
+            font-size: 1rem;
+        }
+
+        .autocomplete-item .entity-type {
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
+        .autocomplete-item .entity-meta {
+            color: #666;
+            font-size: 0.8rem;
+            margin-top: 2px;
+        }
+
+        .autocomplete-item .verified-badge {
+            display: inline-block;
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+        }
+
+        .autocomplete-item .add-new {
+            color: #d4af37;
+            font-style: italic;
+        }
+
+        .brand-warning {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            color: #FF9800;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
         .modal {
             display: none;
             position: fixed;
@@ -696,6 +770,16 @@
 
             <form id="mintForm" onsubmit="mintItem(event)">
                 <div class="form-group">
+                    <label>Brand / Manufacturer *</label>
+                    <div class="autocomplete-container" style="position: relative;">
+                        <input type="text" id="brandName" required placeholder="Start typing... e.g., Rolex, Nike, Louis Vuitton" autocomplete="off">
+                        <input type="hidden" id="brandEntityId">
+                        <div id="brandSuggestions" class="autocomplete-dropdown" style="display: none;"></div>
+                        <div id="brandStatus" style="font-size: 0.8rem; margin-top: 4px; color: #999;"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label>Product Name *</label>
                     <input type="text" id="productName" required placeholder="e.g., Luxury Watch Model X">
                 </div>
@@ -830,6 +914,212 @@
         let manufacturerConfirmedUtxos = [];
         let manufacturerLastFeeRate = 1;
         let manufacturerFeePriority = 'low';
+        
+        // Entity autocomplete state
+        let brandSearchTimeout = null;
+        let selectedBrandEntity = null;
+        let brandSuggestions = [];
+        let brandSelectedIndex = -1;
+
+        // ============================================================
+        // BRAND/MANUFACTURER AUTOCOMPLETE
+        // ============================================================
+        
+        function initBrandAutocomplete() {
+            const input = document.getElementById('brandName');
+            const dropdown = document.getElementById('brandSuggestions');
+            const statusEl = document.getElementById('brandStatus');
+            
+            if (!input) return;
+            
+            input.addEventListener('input', function() {
+                const query = this.value.trim();
+                clearTimeout(brandSearchTimeout);
+                
+                if (query.length < 2) {
+                    hideBrandDropdown();
+                    statusEl.textContent = '';
+                    selectedBrandEntity = null;
+                    document.getElementById('brandEntityId').value = '';
+                    return;
+                }
+                
+                brandSearchTimeout = setTimeout(() => searchBrands(query), 200);
+            });
+            
+            input.addEventListener('keydown', function(e) {
+                if (!dropdown || dropdown.style.display === 'none') return;
+                
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    brandSelectedIndex = Math.min(brandSelectedIndex + 1, brandSuggestions.length - 1);
+                    updateBrandSelection();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    brandSelectedIndex = Math.max(brandSelectedIndex - 1, 0);
+                    updateBrandSelection();
+                } else if (e.key === 'Enter' && brandSelectedIndex >= 0) {
+                    e.preventDefault();
+                    selectBrandSuggestion(brandSelectedIndex);
+                } else if (e.key === 'Escape') {
+                    hideBrandDropdown();
+                }
+            });
+            
+            input.addEventListener('blur', function() {
+                setTimeout(hideBrandDropdown, 200);
+            });
+        }
+        
+        async function searchBrands(query) {
+            const dropdown = document.getElementById('brandSuggestions');
+            const statusEl = document.getElementById('brandStatus');
+            
+            try {
+                const res = await fetch(`/api/entities/search?q=${encodeURIComponent(query)}&types=manufacturer,brand,artist,athlete,celebrity&limit=8`);
+                const data = await res.json();
+                
+                if (!data.success) {
+                    statusEl.textContent = 'Search error';
+                    return;
+                }
+                
+                brandSuggestions = data.results || [];
+                brandSelectedIndex = -1;
+                
+                if (brandSuggestions.length === 0) {
+                    dropdown.innerHTML = `
+                        <div class="autocomplete-item" onclick="addNewBrand()">
+                            <span class="add-new">+ Add "${query}" as new brand</span>
+                        </div>
+                    `;
+                    statusEl.innerHTML = '<span style="color:#FF9800;">⚠️ Brand not found in registry. You can add it or check spelling.</span>';
+                } else {
+                    let html = '';
+                    brandSuggestions.forEach((result, idx) => {
+                        const entity = result.entity;
+                        const verified = entity.verificationStatus === 'official' || entity.verificationStatus === 'community';
+                        const verifiedBadge = verified ? '<span class="verified-badge">✓ Verified</span>' : '';
+                        const typeLabel = entity.type.charAt(0).toUpperCase() + entity.type.slice(1);
+                        const meta = [entity.country, entity.foundedYear ? `Est. ${entity.foundedYear}` : ''].filter(Boolean).join(' • ');
+                        
+                        html += `
+                            <div class="autocomplete-item" data-index="${idx}" onclick="selectBrandSuggestion(${idx})">
+                                <div>
+                                    <span class="entity-name">${escapeHtml(entity.displayName)}</span>
+                                    <span class="entity-type">${typeLabel}</span>
+                                    ${verifiedBadge}
+                                </div>
+                                ${meta ? `<div class="entity-meta">${escapeHtml(meta)}</div>` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    html += `
+                        <div class="autocomplete-item" onclick="addNewBrand()">
+                            <span class="add-new">+ Add "${escapeHtml(query)}" as new brand</span>
+                        </div>
+                    `;
+                    
+                    dropdown.innerHTML = html;
+                    statusEl.textContent = `${brandSuggestions.length} match${brandSuggestions.length !== 1 ? 'es' : ''} found`;
+                }
+                
+                dropdown.style.display = 'block';
+                
+            } catch (err) {
+                console.error('Brand search error:', err);
+                statusEl.textContent = 'Search failed';
+            }
+        }
+        
+        function selectBrandSuggestion(index) {
+            if (index < 0 || index >= brandSuggestions.length) return;
+            
+            const result = brandSuggestions[index];
+            const entity = result.entity;
+            
+            document.getElementById('brandName').value = entity.displayName;
+            document.getElementById('brandEntityId').value = entity.entityId;
+            selectedBrandEntity = entity;
+            
+            const statusEl = document.getElementById('brandStatus');
+            const verified = entity.verificationStatus === 'official' || entity.verificationStatus === 'community';
+            
+            if (verified) {
+                statusEl.innerHTML = `<span style="color:#4CAF50;">✓ ${entity.displayName} - Verified ${entity.type}</span>`;
+            } else {
+                statusEl.innerHTML = `<span style="color:#d4af37;">${entity.displayName} - ${entity.type} (user-submitted)</span>`;
+            }
+            
+            hideBrandDropdown();
+        }
+        
+        function updateBrandSelection() {
+            const items = document.querySelectorAll('#brandSuggestions .autocomplete-item');
+            items.forEach((item, idx) => {
+                item.classList.toggle('selected', idx === brandSelectedIndex);
+            });
+        }
+        
+        function hideBrandDropdown() {
+            const dropdown = document.getElementById('brandSuggestions');
+            if (dropdown) dropdown.style.display = 'none';
+            brandSelectedIndex = -1;
+        }
+        
+        async function addNewBrand() {
+            const brandName = document.getElementById('brandName').value.trim();
+            if (!brandName) return;
+            
+            const statusEl = document.getElementById('brandStatus');
+            statusEl.innerHTML = '<span style="color:#d4af37;">Adding new brand...</span>';
+            
+            try {
+                // First check for duplicates
+                const dupRes = await fetch(`/api/entities/duplicates?name=${encodeURIComponent(brandName)}&type=manufacturer`);
+                const dupData = await dupRes.json();
+                
+                if (dupData.hasPotentialDuplicates && dupData.duplicates.length > 0) {
+                    const similar = dupData.duplicates[0].entity.displayName;
+                    statusEl.innerHTML = `<div class="brand-warning">⚠️ Similar brand exists: "${similar}". Did you mean that? If not, continue typing.</div>`;
+                    return;
+                }
+                
+                // Register new entity
+                const res = await fetch('/api/entities', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'manufacturer',
+                        canonicalName: brandName,
+                        displayName: brandName,
+                        aliases: [],
+                        categories: ['other'],
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    document.getElementById('brandEntityId').value = data.entity.entityId;
+                    selectedBrandEntity = data.entity;
+                    statusEl.innerHTML = `<span style="color:#4CAF50;">✓ "${brandName}" added to registry</span>`;
+                    hideBrandDropdown();
+                } else {
+                    statusEl.innerHTML = `<span style="color:#f44336;">Error: ${data.error}</span>`;
+                }
+            } catch (err) {
+                console.error('Add brand error:', err);
+                statusEl.innerHTML = '<span style="color:#f44336;">Failed to add brand</span>';
+            }
+        }
+        
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
 
         function getWalletNetworkName() {
             let wallet = {};
@@ -2602,11 +2892,22 @@
                 return;
             }
             
+            // Get brand info from autocomplete
+            const brandName = document.getElementById('brandName').value.trim();
+            const brandEntityId = document.getElementById('brandEntityId').value.trim();
+            
+            if (!brandName) {
+                alert('Brand / Manufacturer is required');
+                return;
+            }
+            
             const itemData = {
                 serialNumber: document.getElementById('serialNumber').value,
                 itemType: document.getElementById('productName').value,
                 description: document.getElementById('productDescription').value,
                 manufacturerId: manufacturerId,
+                manufacturerName: brandName,
+                brandEntityId: brandEntityId || undefined,
                 category: document.getElementById('category').value,
                 price: document.getElementById('price').value
             };
@@ -2986,6 +3287,9 @@
             if (userConfig.name) {
                 document.getElementById('navUsername').textContent = userConfig.name;
             }
+            
+            // Initialize brand autocomplete
+            initBrandAutocomplete();
         });
     </script>
 </body>
