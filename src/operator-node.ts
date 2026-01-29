@@ -47,6 +47,8 @@ interface SyncedState {
   settlements: Map<string, any>;
   consignments: Map<string, any>;
   operators: Map<string, any>;
+  roleApplications: Map<string, any>;
+  checkpoints: Map<string, any>;
   lastSyncedSequence: number;
   lastSyncedAt: number;
   lastSyncedHash: string;
@@ -122,6 +124,8 @@ export class OperatorNode extends EventEmitter {
       settlements: new Map(),
       consignments: new Map(),
       operators: new Map(),
+      roleApplications: new Map(),
+      checkpoints: new Map(),
       lastSyncedSequence: 0,
       lastSyncedAt: 0,
       lastSyncedHash: ''
@@ -449,6 +453,8 @@ export class OperatorNode extends EventEmitter {
     this.state.consignments = (state as any).consignments || new Map();
     this.state.operators = state.operators;
     this.state.accounts = state.accounts;
+    this.state.roleApplications = (state as any).roleApplications || new Map();
+    this.state.checkpoints = (state as any).checkpoints || new Map();
     this.state.lastSyncedSequence = Number((state as any).lastEventSequence || 0);
     this.state.lastSyncedHash = String((state as any).lastEventHash || '');
     this.state.lastSyncedAt = Date.now();
@@ -2363,7 +2369,7 @@ export class OperatorNode extends EventEmitter {
       if (manufacturerId) {
         // Look for companyName in approved role applications (same as main repo)
         let bestFinalizedAt = -1;
-        const roleApps = (this.state as any).roleApplications;
+        const roleApps = this.state.roleApplications;
         if (roleApps && roleApps.size > 0) {
           for (const app of roleApps.values()) {
             if (String((app as any)?.accountId || '') !== manufacturerId) continue;
