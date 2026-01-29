@@ -79,6 +79,7 @@ export class BitcoinTransactionService {
   /**
    * Create and broadcast an OP_RETURN transaction for anchoring checkpoint data to Bitcoin
    * This embeds data permanently in the Bitcoin blockchain
+   * Supports both native SegWit (bc1q...) and legacy (1...) addresses
    */
   async createOpReturnAnchor(
     privateKeyWIF: string,
@@ -98,10 +99,12 @@ export class BitcoinTransactionService {
         keyPair = ECPair.fromPrivateKey(privKeyBuf, { network: this.network });
       }
 
-      const fromAddress = bitcoin.payments.p2pkh({
+      // Use native SegWit (P2WPKH) address - bc1q... format
+      const p2wpkh = bitcoin.payments.p2wpkh({
         pubkey: keyPair.publicKey,
         network: this.network,
-      }).address!;
+      });
+      const fromAddress = p2wpkh.address!;
 
       console.log(`[OP_RETURN Anchor] Creating anchor from ${fromAddress}`);
 
@@ -115,9 +118,9 @@ export class BitcoinTransactionService {
       const totalInput = confirmedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
       const estimatedFeeRate = feeRate || (await this.estimateFee());
 
-      // OP_RETURN transaction: inputs + 1 OP_RETURN output + 1 change output
-      const estimatedSize = confirmedUTXOs.length * 148 + 83 + 34 + 10;
-      const estimatedFee = Math.ceil(estimatedSize * estimatedFeeRate);
+      // SegWit transaction size is smaller: ~68 vbytes per input + outputs
+      const estimatedVsize = confirmedUTXOs.length * 68 + 43 + 31 + 10;
+      const estimatedFee = Math.ceil(estimatedVsize * estimatedFeeRate);
 
       if (totalInput < estimatedFee + 546) {
         return { success: false, error: `Insufficient funds. Have ${totalInput} sats, need at least ${estimatedFee + 546} sats` };
@@ -140,13 +143,15 @@ export class BitcoinTransactionService {
       // Create PSBT
       const psbt = new bitcoin.Psbt({ network: this.network });
 
-      // Add inputs
+      // Add SegWit inputs - need witnessUtxo for P2WPKH
       for (const utxo of confirmedUTXOs) {
-        const txHex = await this.getTransactionHex(utxo.txid);
         psbt.addInput({
           hash: utxo.txid,
           index: utxo.vout,
-          nonWitnessUtxo: Buffer.from(txHex, 'hex'),
+          witnessUtxo: {
+            script: p2wpkh.output!,
+            value: utxo.value,
+          },
         });
       }
 
@@ -192,7 +197,7 @@ export class BitcoinTransactionService {
   }
 
   /**
-   * Get the P2PKH address for a private key
+   * Get the native SegWit (P2WPKH) address for a private key - bc1q... format
    */
   getAddressFromPrivateKey(privateKeyWIF: string): string {
     let keyPair: any;
@@ -206,7 +211,7 @@ export class BitcoinTransactionService {
       keyPair = ECPair.fromPrivateKey(privKeyBuf, { network: this.network });
     }
 
-    return bitcoin.payments.p2pkh({
+    return bitcoin.payments.p2wpkh({
       pubkey: keyPair.publicKey,
       network: this.network,
     }).address!;
