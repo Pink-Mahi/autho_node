@@ -675,11 +675,9 @@
 
         let html = '';
         productSuggestions.forEach((product, idx) => {
-          const valueInfo = product.estimatedValue ? `<span style="color:#4CAF50;font-size:0.75rem;margin-left:8px;">${product.estimatedValue}</span>` : '';
           html += `
             <div class="autocomplete-item" onclick="selectProduct(${idx})">
               <span class="entity-name">${escapeHtml(product.name)}</span>
-              ${valueInfo}
             </div>
           `;
         });
@@ -701,11 +699,7 @@
       document.getElementById('productSuggestions').style.display = 'none';
 
       const statusEl = document.getElementById('productStatus');
-      if (product.estimatedValue) {
-        statusEl.innerHTML = `<span style="color:#4CAF50;">✓ ${escapeHtml(product.name)} - Est. ${product.estimatedValue}</span>`;
-      } else {
-        statusEl.innerHTML = `<span style="color:#d4af37;">✓ ${escapeHtml(product.name)}</span>`;
-      }
+      statusEl.innerHTML = `<span style="color:#4CAF50;">✓ ${escapeHtml(product.name)}</span>`;
 
       // Auto-set category if available
       if (product.category) {
