@@ -228,6 +228,69 @@
       justify-content: space-between;
     }
 
+    .proof-section.warning {
+      background: rgba(255, 152, 0, 0.1);
+      border-color: #FF9800;
+    }
+
+    .proof-section.warning .proof-title {
+      color: #FF9800;
+    }
+
+    .proof-section.danger {
+      background: rgba(244, 67, 54, 0.1);
+      border-color: #f44336;
+    }
+
+    .proof-section.danger .proof-title {
+      color: #f44336;
+    }
+
+    .trust-warning {
+      background: rgba(244, 67, 54, 0.1);
+      border: 1px solid rgba(244, 67, 54, 0.5);
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+
+    .trust-warning-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f44336;
+      margin-bottom: 8px;
+    }
+
+    .trust-warning-text {
+      font-size: 12px;
+      color: #ccc;
+      line-height: 1.5;
+    }
+
+    .trust-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .trust-badge.official {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+    }
+
+    .trust-badge.verified {
+      background: rgba(33, 150, 243, 0.2);
+      color: #2196F3;
+    }
+
+    .trust-badge.unverified {
+      background: rgba(244, 67, 54, 0.2);
+      color: #f44336;
+    }
+
     .loading {
       text-align: center;
       padding: 40px 20px;
@@ -516,8 +579,16 @@
           <span class="info-value" id="itemDescription">-</span>
         </div>
 
-        <div class="proof-section">
-          <div class="proof-title">✓ Verified Authentic</div>
+        <div class="proof-section" id="trustSection">
+          <div class="proof-title" id="trustTitle">✓ Verified Authentic</div>
+          <div class="proof-item" id="issuerRoleRow">
+            <span>Registered By</span>
+            <span id="issuerRole">-</span>
+          </div>
+          <div class="proof-item" id="verificationStatusRow">
+            <span>Verification</span>
+            <span id="verificationStatus">-</span>
+          </div>
           <div class="proof-item">
             <span>Operator Signatures</span>
             <span id="signatureCount">5/5</span>
@@ -530,6 +601,11 @@
             <span>Bitcoin Anchor</span>
             <span id="bitcoinAnchor">Block 820,000</span>
           </div>
+        </div>
+
+        <div id="trustWarning" class="trust-warning" style="display:none;">
+          <div class="trust-warning-title">⚠️ Buyer Caution</div>
+          <div class="trust-warning-text" id="trustWarningText">This item was registered by a user and has not been verified by an authenticator. Consider requesting verification before purchase.</div>
         </div>
 
         <div id="attestationImagesSection" style="display:none; margin-top: 15px;">
@@ -1291,6 +1367,63 @@
       }
     };
 
+    function displayTrustIndicators(item) {
+      const trustSection = document.getElementById('trustSection');
+      const trustTitle = document.getElementById('trustTitle');
+      const issuerRoleEl = document.getElementById('issuerRole');
+      const verificationStatusEl = document.getElementById('verificationStatus');
+      const trustWarning = document.getElementById('trustWarning');
+      const trustWarningText = document.getElementById('trustWarningText');
+
+      const issuerRole = String(item?.issuerRole || '').toLowerCase();
+      const mintedByOfficial = Boolean(item?.mintedByOfficialManufacturer);
+      const manufacturerVerified = Boolean(item?.manufacturerVerified);
+      const authentications = Array.isArray(item?.authentications) ? item.authentications : [];
+      const hasAuthentication = authentications.length > 0 && authentications.some(a => a?.isAuthentic === true);
+
+      // Determine trust level
+      let trustLevel = 'unverified'; // default
+      let issuerLabel = 'User';
+      let verificationLabel = 'Not Verified';
+
+      if (mintedByOfficial || issuerRole === 'manufacturer') {
+        trustLevel = 'official';
+        issuerLabel = '<span class="trust-badge official">Official Manufacturer</span>';
+        verificationLabel = '<span class="trust-badge official">Factory Certified</span>';
+      } else if (issuerRole === 'authenticator') {
+        trustLevel = 'verified';
+        issuerLabel = '<span class="trust-badge verified">Authenticator</span>';
+        verificationLabel = '<span class="trust-badge verified">Authenticator Verified</span>';
+      } else if (hasAuthentication) {
+        trustLevel = 'verified';
+        issuerLabel = '<span class="trust-badge unverified">User Registered</span>';
+        verificationLabel = '<span class="trust-badge verified">Authenticator Verified</span>';
+      } else {
+        trustLevel = 'unverified';
+        issuerLabel = '<span class="trust-badge unverified">User Registered</span>';
+        verificationLabel = '<span class="trust-badge unverified">Not Verified</span>';
+      }
+
+      // Update UI based on trust level
+      issuerRoleEl.innerHTML = issuerLabel;
+      verificationStatusEl.innerHTML = verificationLabel;
+
+      if (trustLevel === 'official') {
+        trustSection.className = 'proof-section';
+        trustTitle.textContent = '✓ Official Manufacturer Item';
+        trustWarning.style.display = 'none';
+      } else if (trustLevel === 'verified') {
+        trustSection.className = 'proof-section';
+        trustTitle.textContent = '✓ Authenticator Verified';
+        trustWarning.style.display = 'none';
+      } else {
+        trustSection.className = 'proof-section danger';
+        trustTitle.textContent = '⚠️ Unverified Item';
+        trustWarning.style.display = 'block';
+        trustWarningText.textContent = 'This item was registered by a user and has NOT been verified by an approved authenticator. Exercise caution before purchasing. The seller can request verification from an authenticator to increase trust.';
+      }
+    }
+
     function displayItemDetails(item) {
       try {
         const btn = document.getElementById('makeOfferBtn');
@@ -1317,6 +1450,9 @@
         }
       } catch {}
       document.getElementById('authenticator').textContent = authDisplay || '—';
+
+      // Display trust indicators
+      displayTrustIndicators(item);
       
       // Format owner address
       const owner = item.currentOwner || item.ownerPubKey || 'Unknown';
