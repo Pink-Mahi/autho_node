@@ -2356,19 +2356,39 @@ export class OperatorNode extends EventEmitter {
       const issuerId = String((item as any)?.issuerAccountId || (item as any)?.manufacturerId || '').trim();
       const manufacturerId = String((item as any)?.manufacturerId || '').trim();
       
-      // Resolve manufacturer display name
-      let manufacturerDisplayName = String((item as any)?.manufacturerName || '').trim();
-      let mfgAccount: any = null;
+      // Resolve manufacturer display name - match main repo logic
+      // Priority: companyName from approved role application > username > manufacturerName > manufacturerId
+      let manufacturerDisplayName = '';
       
       if (manufacturerId) {
-        mfgAccount = this.state.accounts.get(manufacturerId);
-        if (mfgAccount) {
-          // Use account display name or company name
-          manufacturerDisplayName = String(mfgAccount.displayName || mfgAccount.companyName || mfgAccount.name || manufacturerDisplayName || manufacturerId).trim();
-          if (String(mfgAccount.role || '').trim() === 'manufacturer') {
-            mintedByOfficialManufacturer = true;
-            if (!issuerRole || issuerRole === 'user') {
-              issuerRole = 'manufacturer';
+        // Look for companyName in approved role applications (same as main repo)
+        let bestFinalizedAt = -1;
+        const roleApps = (this.state as any).roleApplications;
+        if (roleApps && roleApps.size > 0) {
+          for (const app of roleApps.values()) {
+            if (String((app as any)?.accountId || '') !== manufacturerId) continue;
+            const finalized = (app as any)?.finalized;
+            if (!finalized || finalized.decision !== 'approve') continue;
+            const companyName = String((app as any)?.companyName || '').trim();
+            if (!companyName) continue;
+            const t = Number(finalized.finalizedAt || 0);
+            if (t >= bestFinalizedAt) {
+              bestFinalizedAt = t;
+              manufacturerDisplayName = companyName;
+            }
+          }
+        }
+        
+        // Fallback to account username if no companyName found
+        if (!manufacturerDisplayName) {
+          const mfgAccount: any = this.state.accounts.get(manufacturerId);
+          if (mfgAccount) {
+            manufacturerDisplayName = String(mfgAccount.username || '').trim();
+            if (String(mfgAccount.role || '').trim() === 'manufacturer') {
+              mintedByOfficialManufacturer = true;
+              if (!issuerRole || issuerRole === 'user') {
+                issuerRole = 'manufacturer';
+              }
             }
           }
         }
@@ -2387,7 +2407,7 @@ export class OperatorNode extends EventEmitter {
       
       if (!issuerRole) issuerRole = 'user';
       
-      // If no display name found, use manufacturerName from item or fallback to ID
+      // Final fallback for display name
       if (!manufacturerDisplayName) {
         manufacturerDisplayName = String((item as any)?.manufacturerName || manufacturerId || 'Unknown').trim();
       }
