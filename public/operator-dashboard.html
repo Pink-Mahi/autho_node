@@ -363,43 +363,96 @@
             <div class="error-message" id="anchoringError"></div>
             <div class="success-message" id="anchoringSuccess"></div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
-                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
-                    <h3 style="margin-bottom: 15px; color: #d4af37;">📋 Unanchored Checkpoints</h3>
-                    <div style="display:flex; gap:10px; margin-bottom: 15px;">
-                        <button class="btn btn-secondary" onclick="loadUnanchoredCheckpoints()">Refresh</button>
+            <!-- One-Click Auto Anchor Section -->
+            <div style="background: linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(52, 199, 89, 0.1)); border: 2px solid rgba(212, 175, 55, 0.4); padding: 25px; border-radius: 16px; margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                    <div style="font-size: 2.5rem;">⚡</div>
+                    <div>
+                        <h3 style="color: #d4af37; margin: 0; font-size: 1.3rem;">One-Click Bitcoin Anchor</h3>
+                        <p class="muted" style="margin: 5px 0 0 0;">Automatically anchor the next checkpoint to Bitcoin</p>
                     </div>
-                    <div id="unanchoredList" class="empty-state">Loading...</div>
                 </div>
-
-                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
-                    <h3 style="margin-bottom: 15px; color: #d4af37;">⚓ Commit Bitcoin Anchor</h3>
-                    <form id="anchorForm" onsubmit="submitAnchor(event)">
-                        <div class="form-group">
-                            <label>Checkpoint</label>
-                            <select id="checkpointSelect" required style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
-                                <option value="">Select checkpoint...</option>
-                            </select>
+                
+                <div id="autoAnchorStatus" style="background: rgba(26, 26, 26, 0.6); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.9rem; color: #999;">Next Checkpoint to Anchor</div>
+                            <div id="nextCheckpointInfo" style="font-family: monospace; color: #d4af37; margin-top: 5px;">Loading...</div>
                         </div>
-                        <div class="form-group">
-                            <label>Bitcoin Transaction ID</label>
-                            <input type="text" id="txidInput" required placeholder="Enter Bitcoin txid" />
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.9rem; color: #999;">Estimated Fee</div>
+                            <div id="estimatedFee" style="color: #4cd964; font-weight: 700; margin-top: 5px;">~1,500 sats</div>
                         </div>
-                        <div class="form-group">
-                            <label>Block Height</label>
-                            <input type="number" id="blockHeightInput" required placeholder="Enter block height" />
-                        </div>
-                        <button type="submit" class="btn" style="width: 100%;">Commit Anchor</button>
-                    </form>
-                    <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                        💡 <strong>How to anchor:</strong><br>
-                        1. Select a checkpoint<br>
-                        2. Create Bitcoin tx with OP_RETURN containing checkpoint hash<br>
-                        3. Wait for confirmation<br>
-                        4. Enter txid and block height above
-                    </p>
+                    </div>
                 </div>
+                
+                <div id="anchorInProgress" style="display: none; background: rgba(212, 175, 55, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner" style="width: 20px; height: 20px; border: 2px solid rgba(212, 175, 55, 0.3); border-top-color: #d4af37; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <div>
+                            <div style="color: #d4af37; font-weight: 600;" id="anchorProgressText">Broadcasting transaction...</div>
+                            <div class="muted" style="font-size: 0.85rem;" id="anchorProgressDetail">Please wait...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="autoAnchorBtn" class="btn" style="width: 100%; padding: 18px; font-size: 1.1rem; font-weight: 700;" onclick="startAutoAnchor()">
+                    ⚓ Anchor Next Checkpoint (~1,500 sats)
+                </button>
+                
+                <p class="muted" style="margin-top: 15px; font-size: 0.85rem; text-align: center;">
+                    Clicking this button will create a Bitcoin transaction with the checkpoint hash and broadcast it automatically.
+                    You'll pay the mining fee from your operator wallet.
+                </p>
             </div>
+            
+            <style>
+                @keyframes spin { to { transform: rotate(360deg); } }
+            </style>
+
+            <!-- Manual Anchor (Advanced) - Collapsed by default -->
+            <details style="margin-bottom: 25px;">
+                <summary style="cursor: pointer; padding: 15px; background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); border-radius: 12px; color: #999;">
+                    🔧 Advanced: Manual Anchor (for operators who prefer to create their own transaction)
+                </summary>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                    <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                        <h3 style="margin-bottom: 15px; color: #d4af37;">📋 Unanchored Checkpoints</h3>
+                        <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                            <button class="btn btn-secondary" onclick="loadUnanchoredCheckpoints()">Refresh</button>
+                        </div>
+                        <div id="unanchoredList" class="empty-state">Loading...</div>
+                    </div>
+
+                    <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                        <h3 style="margin-bottom: 15px; color: #d4af37;">⚓ Commit Bitcoin Anchor</h3>
+                        <form id="anchorForm" onsubmit="submitAnchor(event)">
+                            <div class="form-group">
+                                <label>Checkpoint</label>
+                                <select id="checkpointSelect" required style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                                    <option value="">Select checkpoint...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Bitcoin Transaction ID</label>
+                                <input type="text" id="txidInput" required placeholder="Enter Bitcoin txid" />
+                            </div>
+                            <div class="form-group">
+                                <label>Block Height</label>
+                                <input type="number" id="blockHeightInput" required placeholder="Enter block height" />
+                            </div>
+                            <button type="submit" class="btn" style="width: 100%;">Commit Anchor</button>
+                        </form>
+                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                            💡 <strong>How to anchor manually:</strong><br>
+                            1. Select a checkpoint<br>
+                            2. Create Bitcoin tx with OP_RETURN containing checkpoint hash<br>
+                            3. Wait for confirmation<br>
+                            4. Enter txid and block height above
+                        </p>
+                    </div>
+                </div>
+            </details>
 
             <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
                 <h3 style="margin-bottom: 15px; color: #d4af37;">📊 Operator Anchor Statistics</h3>
@@ -1852,6 +1905,9 @@
             showEl('walletSuccess', true, 'Wallet info loaded.');
         }
 
+        // Store next checkpoint for auto-anchor
+        let nextCheckpointToAnchor = null;
+
         async function loadUnanchoredCheckpoints() {
             showEl('anchoringError', false);
             showEl('anchoringSuccess', false);
@@ -1863,6 +1919,7 @@
             if (!r.ok || !data || data.success !== true) {
                 showEl('anchoringError', true, data?.error || 'Failed to load checkpoints');
                 if (el) el.innerHTML = '<div class="empty-state">Failed to load checkpoints.</div>';
+                updateAutoAnchorUI(null);
                 return;
             }
 
@@ -1872,6 +1929,10 @@
             document.getElementById('totalCheckpoints').textContent = Number(data.total || 0);
             document.getElementById('anchoredCount').textContent = Number(data.anchored || 0);
             document.getElementById('unanchoredCount').textContent = unanchored.length;
+
+            // Update one-click auto-anchor UI with oldest unanchored checkpoint
+            nextCheckpointToAnchor = unanchored.length > 0 ? unanchored[0] : null;
+            updateAutoAnchorUI(nextCheckpointToAnchor);
 
             // Populate checkpoint dropdown
             const select = document.getElementById('checkpointSelect');
@@ -1941,6 +2002,110 @@
             // Reload data
             await loadUnanchoredCheckpoints();
             await loadAnchorStats();
+        }
+
+        function updateAutoAnchorUI(checkpoint) {
+            const infoEl = document.getElementById('nextCheckpointInfo');
+            const btn = document.getElementById('autoAnchorBtn');
+            
+            if (!checkpoint) {
+                if (infoEl) infoEl.innerHTML = '<span style="color: #4cd964;">✅ All checkpoints are anchored!</span>';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '✅ All Anchored';
+                    btn.style.opacity = '0.5';
+                }
+                return;
+            }
+            
+            const root = String(checkpoint.checkpointRoot || '');
+            const date = new Date(checkpoint.hourStartMs || checkpoint.createdAt).toLocaleString();
+            const seq = Number(checkpoint.headSequence || 0);
+            
+            if (infoEl) {
+                infoEl.innerHTML = `
+                    <div style="margin-bottom: 5px;">${root.substring(0, 24)}...</div>
+                    <div style="font-size: 0.85rem; color: #999;">${date} • Seq: ${seq}</div>
+                `;
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '⚓ Anchor Next Checkpoint (~1,500 sats)';
+                btn.style.opacity = '1';
+            }
+        }
+
+        async function startAutoAnchor() {
+            if (!nextCheckpointToAnchor) {
+                showEl('anchoringError', true, 'No unanchored checkpoints available');
+                return;
+            }
+            
+            const btn = document.getElementById('autoAnchorBtn');
+            const progressEl = document.getElementById('anchorInProgress');
+            const progressText = document.getElementById('anchorProgressText');
+            const progressDetail = document.getElementById('anchorProgressDetail');
+            
+            // Disable button and show progress
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+            }
+            if (progressEl) progressEl.style.display = 'block';
+            
+            showEl('anchoringError', false);
+            showEl('anchoringSuccess', false);
+            
+            try {
+                const checkpointRoot = nextCheckpointToAnchor.checkpointRoot;
+                
+                // Step 1: Request auto-anchor from server
+                if (progressText) progressText.textContent = 'Creating Bitcoin transaction...';
+                if (progressDetail) progressDetail.textContent = `Checkpoint: ${checkpointRoot.substring(0, 16)}...`;
+                
+                const r = await fetch('/api/operator/anchors/auto-anchor', {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ checkpointRoot })
+                });
+                
+                const data = await r.json().catch(() => ({}));
+                
+                if (!r.ok || !data || data.success !== true) {
+                    throw new Error(data?.error || 'Failed to create anchor transaction');
+                }
+                
+                // Step 2: Show success with transaction details
+                if (progressText) progressText.textContent = 'Transaction broadcast!';
+                if (progressDetail) progressDetail.textContent = `TXID: ${String(data.txid || '').substring(0, 16)}...`;
+                
+                // Wait a moment then show success
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                if (progressEl) progressEl.style.display = 'none';
+                
+                showEl('anchoringSuccess', true, `
+                    ✅ Bitcoin anchor created successfully!<br>
+                    <span style="font-family: monospace; font-size: 0.9rem;">
+                        TXID: ${data.txid || 'pending'}<br>
+                        Block: ${data.blockHeight || 'pending confirmation'}
+                    </span>
+                `);
+                
+                // Reload data
+                await loadUnanchoredCheckpoints();
+                await loadAnchorStats();
+                
+            } catch (err) {
+                if (progressEl) progressEl.style.display = 'none';
+                showEl('anchoringError', true, err.message || 'Failed to create anchor');
+            } finally {
+                // Re-enable button
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }
+            }
         }
 
         async function loadAnchorStats() {
