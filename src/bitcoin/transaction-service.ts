@@ -48,9 +48,11 @@ export class BitcoinTransactionService {
     try {
       const response = await fetch(`${this.apiBase}/v1/fees/recommended`);
       const fees = (await response.json()) as any;
-      return fees.halfHourFee || fees.hourFee || 3;
+      // Use minimum economy fee for non-urgent anchoring transactions
+      // Minimum relay fee is 1 sat/vB, but we can use the lowest recommended
+      return fees.minimumFee || fees.economyFee || 1;
     } catch (error) {
-      return 3; // Fallback fee rate
+      return 1; // Fallback to minimum relay fee
     }
   }
 
