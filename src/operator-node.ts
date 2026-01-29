@@ -2318,19 +2318,26 @@ export class OperatorNode extends EventEmitter {
           },
         ];
 
-        const anchorEvent = await this.canonicalEventStore.appendEvent(
-          {
-            type: EventType.ANCHOR_COMMITTED,
-            timestamp: now,
-            nonce,
-            checkpointRoot,
-            eventCount: Number((checkpoint as any)?.eventCount || 0),
-            txid,
-            blockHeight,
-            quorumSignatures: [],
-          } as any,
-          signatures
-        );
+        const anchorPayload = {
+          type: EventType.ANCHOR_COMMITTED,
+          timestamp: now,
+          nonce,
+          checkpointRoot,
+          eventCount: Number((checkpoint as any)?.eventCount || 0),
+          txid,
+          blockHeight,
+          quorumSignatures: [],
+        };
+
+        const anchorEvent = await this.canonicalEventStore.appendEvent(anchorPayload as any, signatures);
+
+        // Broadcast anchor event to main node so it's synced to all operators
+        const seedResult = await this.submitCanonicalEventToSeed(anchorPayload, signatures);
+        if (!seedResult.ok) {
+          console.warn(`[Manual-Anchor] Failed to sync anchor to main node: ${seedResult.error}`);
+        } else {
+          console.log(`[Manual-Anchor] Anchor event synced to main node`);
+        }
 
         res.json({ success: true, checkpointRoot, txid, blockHeight, sequenceNumber: anchorEvent.sequenceNumber });
       } catch (e: any) {
@@ -2450,19 +2457,26 @@ export class OperatorNode extends EventEmitter {
           },
         ];
 
-        const anchorEvent = await this.canonicalEventStore.appendEvent(
-          {
-            type: EventType.ANCHOR_COMMITTED,
-            timestamp: now,
-            nonce,
-            checkpointRoot,
-            eventCount: Number((checkpoint as any)?.eventCount || 0),
-            txid: realTxid,
-            blockHeight: currentBlockHeight,
-            quorumSignatures: [],
-          } as any,
-          signatures
-        );
+        const anchorPayload = {
+          type: EventType.ANCHOR_COMMITTED,
+          timestamp: now,
+          nonce,
+          checkpointRoot,
+          eventCount: Number((checkpoint as any)?.eventCount || 0),
+          txid: realTxid,
+          blockHeight: currentBlockHeight,
+          quorumSignatures: [],
+        };
+
+        const anchorEvent = await this.canonicalEventStore.appendEvent(anchorPayload as any, signatures);
+
+        // Broadcast anchor event to main node so it's synced to all operators
+        const seedResult = await this.submitCanonicalEventToSeed(anchorPayload, signatures);
+        if (!seedResult.ok) {
+          console.warn(`[Auto-Anchor] Failed to sync anchor to main node: ${seedResult.error}`);
+        } else {
+          console.log(`[Auto-Anchor] Anchor event synced to main node`);
+        }
 
         res.json({ 
           success: true, 
@@ -2558,19 +2572,26 @@ export class OperatorNode extends EventEmitter {
           },
         ];
 
-        const anchorEvent = await this.canonicalEventStore.appendEvent(
-          {
-            type: EventType.ANCHOR_COMMITTED,
-            timestamp: now,
-            nonce,
-            checkpointRoot,
-            eventCount: Number((checkpoint as any)?.payload?.eventCount || 0),
-            txid: broadcastTxid,
-            blockHeight: currentBlockHeight,
-            quorumSignatures: [],
-          } as any,
-          signatures
-        );
+        const anchorPayload = {
+          type: EventType.ANCHOR_COMMITTED,
+          timestamp: now,
+          nonce,
+          checkpointRoot,
+          eventCount: Number((checkpoint as any)?.payload?.eventCount || 0),
+          txid: broadcastTxid,
+          blockHeight: currentBlockHeight,
+          quorumSignatures: [],
+        };
+
+        const anchorEvent = await this.canonicalEventStore.appendEvent(anchorPayload as any, signatures);
+
+        // Broadcast anchor event to main node so it's synced to all operators
+        const seedResult = await this.submitCanonicalEventToSeed(anchorPayload, signatures);
+        if (!seedResult.ok) {
+          console.warn(`[Broadcast-Anchor] Failed to sync anchor to main node: ${seedResult.error}`);
+        } else {
+          console.log(`[Broadcast-Anchor] Anchor event synced to main node`);
+        }
 
         console.log(`[Broadcast-Anchor] Checkpoint ${checkpointRoot.substring(0, 16)}... anchored with TX ${broadcastTxid}`);
 
