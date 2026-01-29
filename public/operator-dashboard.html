@@ -742,6 +742,9 @@
                 loadSecurity();
             } else if (tab === 'mempool') {
                 loadMempool();
+            } else if (tab === 'anchoring') {
+                loadUnanchoredCheckpoints();
+                loadAnchorStats();
             }
         }
 
