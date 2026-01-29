@@ -780,8 +780,12 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Product Name *</label>
-                    <input type="text" id="productName" required placeholder="e.g., Luxury Watch Model X">
+                    <label>Product Name / Model *</label>
+                    <div class="autocomplete-container" style="position: relative;">
+                        <input type="text" id="productName" required placeholder="e.g., Submariner, Air Jordan 1, Charizard" autocomplete="off">
+                        <div id="productSuggestions" class="autocomplete-dropdown" style="display: none;"></div>
+                        <div id="productStatus" style="font-size: 0.8rem; margin-top: 4px; color: #999;"></div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -1044,7 +1048,7 @@
             selectedBrandEntity = entity;
             
             const statusEl = document.getElementById('brandStatus');
-            const verified = entity.verificationStatus === 'official' || entity.verificationStatus === 'community';
+            const verified = entity.verificationStatus === 'official' || entity.verificationStatus === 'community' || entity.verificationStatus === 'global';
             
             if (verified) {
                 statusEl.innerHTML = `<span style="color:#4CAF50;">✓ ${entity.displayName} - Verified ${entity.type}</span>`;
@@ -1053,6 +1057,9 @@
             }
             
             hideBrandDropdown();
+            
+            // Load product suggestions for this brand
+            loadProductSuggestions(entity.displayName);
         }
         
         function updateBrandSelection() {
@@ -1066,6 +1073,116 @@
             const dropdown = document.getElementById('brandSuggestions');
             if (dropdown) dropdown.style.display = 'none';
             brandSelectedIndex = -1;
+        }
+        
+        // ============================================================
+        // PRODUCT/MODEL AUTOCOMPLETE
+        // ============================================================
+        let productSearchTimeout = null;
+        let productSuggestions = [];
+        
+        function initProductAutocomplete() {
+            const input = document.getElementById('productName');
+            const dropdown = document.getElementById('productSuggestions');
+            if (!input || !dropdown) return;
+
+            input.addEventListener('input', function() {
+                const query = this.value.trim();
+                const brandName = document.getElementById('brandName').value.trim();
+                clearTimeout(productSearchTimeout);
+
+                if (!brandName || brandName.length < 2) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                productSearchTimeout = setTimeout(() => searchProducts(brandName, query), 200);
+            });
+
+            input.addEventListener('focus', function() {
+                const brandName = document.getElementById('brandName').value.trim();
+                if (brandName.length >= 2 && this.value.length === 0) {
+                    loadProductSuggestions(brandName);
+                }
+            });
+
+            input.addEventListener('blur', () => {
+                setTimeout(() => dropdown.style.display = 'none', 200);
+            });
+        }
+
+        function loadProductSuggestions(brandName) {
+            if (!brandName || brandName.length < 2) return;
+            searchProducts(brandName, '');
+        }
+
+        async function searchProducts(brandName, query) {
+            const dropdown = document.getElementById('productSuggestions');
+            const statusEl = document.getElementById('productStatus');
+            if (!dropdown) return;
+
+            try {
+                const res = await fetch(`/api/products/search?brand=${encodeURIComponent(brandName)}&q=${encodeURIComponent(query)}&limit=10`);
+                const data = await res.json();
+
+                if (!data.success) {
+                    if (statusEl) statusEl.textContent = '';
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                productSuggestions = data.results || [];
+
+                if (productSuggestions.length === 0) {
+                    if (statusEl) statusEl.textContent = '';
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                let html = '';
+                productSuggestions.forEach((product, idx) => {
+                    html += `
+                        <div class="autocomplete-item" onclick="selectProduct(${idx})">
+                            <span class="entity-name">${escapeHtml(product.name)}</span>
+                        </div>
+                    `;
+                });
+
+                dropdown.innerHTML = html;
+                dropdown.style.display = 'block';
+                if (statusEl) statusEl.innerHTML = `<span style="color:#888;">${productSuggestions.length} known model${productSuggestions.length !== 1 ? 's' : ''} for ${escapeHtml(brandName)}</span>`;
+            } catch (err) {
+                console.error('Product search error:', err);
+                dropdown.style.display = 'none';
+            }
+        }
+
+        function selectProduct(index) {
+            if (index < 0 || index >= productSuggestions.length) return;
+
+            const product = productSuggestions[index];
+            document.getElementById('productName').value = product.name;
+            document.getElementById('productSuggestions').style.display = 'none';
+
+            const statusEl = document.getElementById('productStatus');
+            if (statusEl) statusEl.innerHTML = `<span style="color:#4CAF50;">✓ ${escapeHtml(product.name)}</span>`;
+
+            // Auto-set category if available
+            if (product.category) {
+                const categoryMap = {
+                    'watches': 'luxury',
+                    'sneakers': 'fashion',
+                    'trading_cards': 'art',
+                    'art': 'art',
+                    'fashion': 'fashion',
+                    'automotive': 'other',
+                    'sports': 'other'
+                };
+                const categorySelect = document.getElementById('category');
+                if (categorySelect && categoryMap[product.category]) {
+                    categorySelect.value = categoryMap[product.category];
+                }
+            }
         }
         
         async function addNewBrand() {
@@ -3290,6 +3407,7 @@
             
             // Initialize brand autocomplete
             initBrandAutocomplete();
+            initProductAutocomplete();
         });
     </script>
 </body>
