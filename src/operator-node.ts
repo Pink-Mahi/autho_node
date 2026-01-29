@@ -1295,6 +1295,11 @@ export class OperatorNode extends EventEmitter {
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
+    this.app.get('/m/search', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('mobile-search.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('UI not available');
+    });
 
     this.app.get('/verify', (req: Request, res: Response) => {
       const id = String((req.query as any)?.id || (req.query as any)?.itemId || '').trim();
