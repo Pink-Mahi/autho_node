@@ -2476,6 +2476,7 @@ export class OperatorNode extends EventEmitter {
         success: true,
         itemRecord: {
           ...item,
+          status: 'active',
           manufacturerDisplayName,
           issuerRole,
           mintedByOfficialManufacturer,
@@ -3658,16 +3659,21 @@ export class OperatorNode extends EventEmitter {
       const offers = Array.from(this.state.settlements.values())
         .filter((s: any) => String(s?.itemId || '').trim() === itemId)
         .sort((a: any, b: any) => Number(b?.initiatedAt || 0) - Number(a?.initiatedAt || 0))
-        .map((s: any) => ({
-          offerId: String(s?.settlementId || ''),
-          itemId: String(s?.itemId || ''),
-          buyerAddress: String(s?.buyer || ''),
-          sellerAddress: String(s?.seller || ''),
-          sats: Number(s?.price || 0),
-          status: String(s?.status || ''),
-          createdAt: Number(s?.initiatedAt || 0),
-          expiresAt: Number(s?.expiresAt || 0),
-        }));
+        .map((s: any) => {
+          // Normalize status to match main repo: 'completed' -> 'paid'
+          let status = String(s?.status || '').toLowerCase();
+          if (status === 'completed') status = 'paid';
+          return {
+            offerId: String(s?.settlementId || ''),
+            itemId: String(s?.itemId || ''),
+            buyerAddress: String(s?.buyer || ''),
+            sellerAddress: String(s?.seller || ''),
+            sats: Number(s?.price || 0),
+            status,
+            createdAt: Number(s?.initiatedAt || 0),
+            expiresAt: Number(s?.expiresAt || 0),
+          };
+        });
       res.json({ offers, count: offers.length });
     });
 
