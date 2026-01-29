@@ -29,6 +29,8 @@ interface OperatorConfig {
   publicKey: string;
   privateKey: string;
   btcAddress: string;
+  /** Bitcoin wallet private key (from user's seed phrase) - separate from operator signing key */
+  btcPrivateKey?: string;
   /** Primary seed URL - can be ANY active operator in the network */
   mainSeedUrl: string;
   /** Fallback seed URLs - tried if primary fails */
@@ -2377,6 +2379,114 @@ export class OperatorNode extends EventEmitter {
           feePaidSats: feePaid,
           sequenceNumber: anchorEvent.sequenceNumber,
           message: `Checkpoint anchored to Bitcoin! TX: ${realTxid}`
+        });
+      } catch (e: any) {
+        res.status(500).json({ success: false, error: e?.message || String(e) });
+      }
+    });
+
+    // BROADCAST PRE-SIGNED ANCHOR TRANSACTION (non-custodial - client signs, server broadcasts)
+    this.app.post('/api/operator/anchors/broadcast-anchor', async (req: Request, res: Response) => {
+      try {
+        const sess = await this.requireOperatorSession(req, res);
+        if (!sess) return;
+
+        const { checkpointRoot, signedTxHex, txid } = req.body || {};
+        
+        if (!checkpointRoot || !signedTxHex) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Missing required fields: checkpointRoot, signedTxHex' 
+          });
+          return;
+        }
+
+        // Verify checkpoint exists and is unanchored
+        const checkpoints = await this.canonicalEventStore.getAllEvents();
+        const checkpoint = checkpoints.find(
+          (e: any) => e?.payload?.type === EventType.CHECKPOINT_CREATED && 
+                     String(e?.payload?.checkpointRoot || '') === String(checkpointRoot)
+        );
+        
+        if (!checkpoint) {
+          res.status(400).json({ success: false, error: 'Checkpoint not found' });
+          return;
+        }
+
+        // Check if already anchored
+        const existingAnchor = checkpoints.find(
+          (e: any) => e?.payload?.type === EventType.ANCHOR_COMMITTED && 
+                     String(e?.payload?.checkpointRoot || '') === String(checkpointRoot)
+        );
+        
+        if (existingAnchor) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Checkpoint already anchored',
+            existingTxid: (existingAnchor as any)?.payload?.txid
+          });
+          return;
+        }
+
+        // Broadcast the pre-signed transaction to Bitcoin network
+        const btcService = new BitcoinTransactionService(this.config.network || 'mainnet');
+        let broadcastTxid: string;
+        
+        try {
+          broadcastTxid = await btcService.broadcastTransaction(signedTxHex);
+        } catch (broadcastErr: any) {
+          res.status(400).json({ 
+            success: false, 
+            error: `Broadcast failed: ${broadcastErr?.message || String(broadcastErr)}` 
+          });
+          return;
+        }
+
+        // Get current block height
+        let currentBlockHeight = 0;
+        try {
+          const blockHeightRes = await fetch('https://mempool.space/api/blocks/tip/height');
+          if (blockHeightRes.ok) {
+            currentBlockHeight = Number(await blockHeightRes.text()) || 0;
+          }
+        } catch (e) {
+          console.warn('[Broadcast-Anchor] Could not fetch current block height');
+        }
+
+        // Record the anchor commitment event
+        const nonce = randomBytes(32).toString('hex');
+        const now = Date.now();
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: this.config.operatorId,
+            publicKey: this.config.publicKey,
+            signature: createHash('sha256').update(`ANCHOR_COMMITTED:${checkpointRoot}:${broadcastTxid}:${currentBlockHeight}:${now}`).digest('hex'),
+          },
+        ];
+
+        const anchorEvent = await this.canonicalEventStore.appendEvent(
+          {
+            type: EventType.ANCHOR_COMMITTED,
+            timestamp: now,
+            nonce,
+            checkpointRoot,
+            eventCount: Number((checkpoint as any)?.payload?.eventCount || 0),
+            txid: broadcastTxid,
+            blockHeight: currentBlockHeight,
+            quorumSignatures: [],
+          } as any,
+          signatures
+        );
+
+        console.log(`[Broadcast-Anchor] Checkpoint ${checkpointRoot.substring(0, 16)}... anchored with TX ${broadcastTxid}`);
+
+        res.json({ 
+          success: true, 
+          checkpointRoot, 
+          txid: broadcastTxid, 
+          blockHeight: currentBlockHeight,
+          sequenceNumber: anchorEvent.sequenceNumber,
+          message: `Checkpoint anchored to Bitcoin! TX: ${broadcastTxid}`
         });
       } catch (e: any) {
         res.status(500).json({ success: false, error: e?.message || String(e) });

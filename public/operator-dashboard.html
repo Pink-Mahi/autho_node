@@ -709,7 +709,64 @@
         </div>
     </div>
 
+    <!-- Bitcoin signing library for client-side transaction signing -->
+    <script src="/js/btc.bundle.js"></script>
     <script>
+        // === Wallet Vault Decryption Functions ===
+        function bytesFromB64(b64) {
+            const binaryStr = atob(b64);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+            return bytes;
+        }
+
+        function b64FromBytes(bytes) {
+            let binary = '';
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+            return btoa(binary);
+        }
+
+        async function deriveVaultKey(password, salt, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(String(password)),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptWalletVault(walletVault, password) {
+            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+                throw new Error('Unsupported wallet vault format');
+            }
+            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+            const iterations = Number(walletVault.kdf?.iterations || 100000);
+            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            return JSON.parse(new TextDecoder().decode(pt));
+        }
+
+        function opReturnScriptHexFromText(text) {
+            const bytes = new TextEncoder().encode(text);
+            const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            const byteLen = bytes.length;
+            if (byteLen > 80) throw new Error('OP_RETURN data exceeds 80 bytes');
+            // OP_RETURN (0x6a) + PUSHDATA length + data
+            return '6a' + byteLen.toString(16).padStart(2, '0') + hex;
+        }
+
         function showEl(id, show, msg) {
             const el = document.getElementById(id);
             if (!el) return;
@@ -2294,27 +2351,121 @@
             try {
                 const checkpointRoot = nextCheckpointToAnchor.checkpointRoot;
                 
-                // Step 1: Request auto-anchor from server
-                if (progressText) progressText.textContent = 'Creating Bitcoin transaction...';
+                // Step 1: Check for wallet vault (non-custodial - keys never leave browser)
+                if (progressText) progressText.textContent = 'Preparing wallet...';
+                if (progressDetail) progressDetail.textContent = 'Checking wallet credentials...';
+                
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (!vaultStr) {
+                    throw new Error('No wallet vault found. Please sign in again to restore your wallet.');
+                }
+                
+                let vault;
+                try {
+                    vault = JSON.parse(vaultStr);
+                } catch {
+                    throw new Error('Wallet vault is corrupted. Please sign in again.');
+                }
+                
+                // Step 2: Prompt for wallet password to unlock
+                const getSecret = (attempt) => {
+                    const label = attempt > 1
+                        ? 'Unlock failed. Enter your wallet passcode again:'
+                        : 'Enter your wallet passcode to sign the anchor transaction:';
+                    return prompt(label);
+                };
+                
+                const secret1 = getSecret(1);
+                if (!secret1) throw new Error('Wallet unlock cancelled');
+                
+                let walletPayload;
+                try {
+                    walletPayload = await decryptWalletVault(vault, secret1);
+                } catch {
+                    const secret2 = getSecret(2);
+                    if (!secret2) throw new Error('Wallet unlock cancelled');
+                    walletPayload = await decryptWalletVault(vault, secret2);
+                }
+                
+                const mnemonic = String(walletPayload?.mnemonic || '').trim();
+                if (!mnemonic) throw new Error('Mnemonic missing in vault');
+                
+                // Step 3: Get wallet address and UTXOs
+                if (progressText) progressText.textContent = 'Fetching UTXOs...';
+                
+                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+                    throw new Error('Bitcoin signing library not loaded. Please refresh the page.');
+                }
+                
+                const network = 'mainnet';
+                const walletAddress = window.AuthoBTC.getAddressFromMnemonic(mnemonic, network, 0, 0);
+                
+                const utxosRaw = await fetch(`/api/chain/address/${encodeURIComponent(walletAddress)}/utxo`, { cache: 'no-store' }).then(r => r.json());
+                const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+                const spendable = utxos
+                    .filter((u) => u && u.txid && (u.status?.confirmed === true))
+                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+                
+                if (spendable.length === 0) {
+                    throw new Error(`No confirmed UTXOs available at ${walletAddress}. Please fund your wallet first.`);
+                }
+                
+                // Step 4: Build and sign OP_RETURN transaction CLIENT-SIDE
+                if (progressText) progressText.textContent = 'Signing transaction locally...';
                 if (progressDetail) progressDetail.textContent = `Checkpoint: ${checkpointRoot.substring(0, 16)}...`;
                 
-                const r = await fetch('/api/operator/anchors/auto-anchor', {
+                // Build OP_RETURN data: "AUTHO:" + first 32 bytes of checkpoint root
+                const opReturnText = 'AUTHO:' + checkpointRoot.substring(0, 64);
+                const opReturnScriptHex = opReturnScriptHexFromText(opReturnText);
+                
+                // Get fee rate (use low priority for anchoring)
+                let feeRate = 1; // Default 1 sat/vB
+                try {
+                    const feesRes = await fetch('https://mempool.space/api/v1/fees/recommended');
+                    const fees = await feesRes.json();
+                    feeRate = fees.minimumFee || fees.economyFee || 1;
+                } catch {}
+                
+                // Build outputs: just OP_RETURN (no payment needed)
+                const outputs = [
+                    { scriptHex: opReturnScriptHex, amountSats: 0 }
+                ];
+                
+                const signed = window.AuthoBTC.buildAndSignP2WPKH({
+                    mnemonic,
+                    outputs,
+                    utxos: spendable,
+                    feeRateSatPerVb: feeRate,
+                    network
+                });
+                
+                if (!signed || !signed.txHex) {
+                    throw new Error('Failed to sign transaction');
+                }
+                
+                // Step 5: Send signed transaction to server for broadcast and recording
+                if (progressText) progressText.textContent = 'Broadcasting transaction...';
+                
+                const r = await fetch('/api/operator/anchors/broadcast-anchor', {
                     method: 'POST',
                     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ checkpointRoot })
+                    body: JSON.stringify({ 
+                        checkpointRoot,
+                        signedTxHex: signed.txHex,
+                        txid: signed.txId
+                    })
                 });
                 
                 const data = await r.json().catch(() => ({}));
                 
                 if (!r.ok || !data || data.success !== true) {
-                    throw new Error(data?.error || 'Failed to create anchor transaction');
+                    throw new Error(data?.error || 'Failed to broadcast anchor transaction');
                 }
                 
-                // Step 2: Show success with transaction details
+                // Step 6: Show success
                 if (progressText) progressText.textContent = 'Transaction broadcast!';
-                if (progressDetail) progressDetail.textContent = `TXID: ${String(data.txid || '').substring(0, 16)}...`;
+                if (progressDetail) progressDetail.textContent = `TXID: ${String(data.txid || signed.txId || '').substring(0, 16)}...`;
                 
-                // Wait a moment then show success
                 await new Promise(resolve => setTimeout(resolve, 1500));
                 
                 if (progressEl) progressEl.style.display = 'none';
@@ -2322,8 +2473,8 @@
                 showEl('anchoringSuccess', true, `
                     ✅ Bitcoin anchor created successfully!<br>
                     <span style="font-family: monospace; font-size: 0.9rem;">
-                        TXID: ${data.txid || 'pending'}<br>
-                        Block: ${data.blockHeight || 'pending confirmation'}
+                        TXID: ${data.txid || signed.txId || 'pending'}<br>
+                        Fee: ${signed.fee || 'unknown'} sats
                     </span>
                 `);
                 

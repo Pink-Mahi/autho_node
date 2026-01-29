@@ -48,6 +48,8 @@ async function main() {
     publicKey: process.env.OPERATOR_PUBLIC_KEY!,
     privateKey: process.env.OPERATOR_PRIVATE_KEY!,
     btcAddress: process.env.OPERATOR_BTC_ADDRESS!,
+    // BTC wallet private key (from user's seed phrase) - separate from operator signing key
+    btcPrivateKey: process.env.OPERATOR_BTC_PRIVATE_KEY || '',
     mainSeedUrl: seedUrl!, // Keep internal name for compatibility
     fallbackSeedUrls: fallbackSeeds,
     port: parseInt(process.env.PORT || '3000', 10),
