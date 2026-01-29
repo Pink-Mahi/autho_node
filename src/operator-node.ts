@@ -2341,7 +2341,7 @@ export class OperatorNode extends EventEmitter {
       await this.proxyToSeed(req, res);
     });
 
-    this.app.get('/api/registry/item/:itemId', (req: Request, res: Response) => {
+    this.app.get('/api/registry/item/:itemId', async (req: Request, res: Response) => {
       const item = this.state.items.get(req.params.itemId);
       if (!item) {
         res.status(404).json({ error: 'Item not found' });
@@ -2417,13 +2417,42 @@ export class OperatorNode extends EventEmitter {
       const hasAttestationVerification = authentications.some((a: any) => a && a.isAuthentic === true);
       const verificationStatus = hasIssuerVerification || hasAttestationVerification ? 'verified' : 'unverified';
       
-      // Get operator signatures count
-      const operatorSignatures = Array.isArray((item as any)?.operatorQuorumSignatures) 
-        ? (item as any).operatorQuorumSignatures.length 
-        : 0;
+      // Get operator signatures from the item's registration event
+      let operatorSignaturesCount = 0;
+      let registrationEventSignatures: any[] = [];
       
-      // Get last checkpoint info from state if available
-      const lastCheckpoint = (this.state as any).lastCheckpoint || null;
+      // Try to find the registration event for this item to get signatures
+      if (this.canonicalEventStore) {
+        try {
+          const events = await this.canonicalEventStore.getAllEvents();
+          const regEvent = events.find((e: any) => 
+            e.payload?.type === 'ITEM_REGISTERED' && e.payload?.itemId === req.params.itemId
+          );
+          if (regEvent && Array.isArray(regEvent.signatures)) {
+            operatorSignaturesCount = regEvent.signatures.length;
+            registrationEventSignatures = regEvent.signatures;
+          }
+        } catch (e) {
+          // Fallback to item's operatorQuorumSignatures if available
+          operatorSignaturesCount = Array.isArray((item as any)?.operatorQuorumSignatures) 
+            ? (item as any).operatorQuorumSignatures.length 
+            : 0;
+        }
+      }
+      
+      // Get last checkpoint info
+      let lastCheckpointHeight: number | undefined;
+      let lastCheckpointTimestamp: number | undefined;
+      
+      const checkpoints = (this.state as any).checkpoints;
+      if (checkpoints && checkpoints.size > 0) {
+        const sorted = Array.from(checkpoints.values()).sort((a: any, b: any) => 
+          (b.sequence || b.height || 0) - (a.sequence || a.height || 0)
+        );
+        const latest = sorted[0] as any;
+        lastCheckpointHeight = latest?.sequence || latest?.height || latest?.blockHeight;
+        lastCheckpointTimestamp = latest?.timestamp;
+      }
       
       res.json({
         success: true,
@@ -2433,9 +2462,10 @@ export class OperatorNode extends EventEmitter {
           issuerRole,
           mintedByOfficialManufacturer,
           verificationStatus,
-          operatorSignaturesCount: operatorSignatures,
-          lastCheckpointHeight: lastCheckpoint?.height || lastCheckpoint?.blockHeight,
-          lastCheckpointTimestamp: lastCheckpoint?.timestamp,
+          operatorSignaturesCount,
+          operatorSignatures: registrationEventSignatures,
+          lastCheckpointHeight,
+          lastCheckpointTimestamp,
         }
       });
     });
