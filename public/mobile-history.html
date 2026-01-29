@@ -249,11 +249,10 @@
       } catch (error) {
         console.error('Error loading history:', error);
         
-        // Show empty state for now (API not implemented yet)
         document.getElementById('historyList').innerHTML = `
           <div class="empty-state">
             <div class="empty-icon">📜</div>
-            <div class="empty-title">No Transaction History</div>
+            <div class="empty-title">No Transactions Yet</div>
             <div class="empty-text">
               Your transaction history will appear here once you start making offers and acquiring items.
             </div>
@@ -283,14 +282,15 @@
           ${transactions.map(tx => {
             const icon = getTransactionIcon(tx.type);
             const description = getTransactionDescription(tx);
+            const typeLabel = getTypeLabel(tx.type);
             
             return `
-              <div class="timeline-item">
+              <div class="timeline-item" onclick="viewTransactionDetails('${tx.itemId}')" style="cursor: pointer;">
                 <div class="timeline-dot"></div>
                 <div class="timeline-card">
                   <div class="timeline-header">
                     <div class="timeline-type">
-                      ${icon} ${tx.type}
+                      ${icon} ${typeLabel}
                     </div>
                     <div class="timeline-date">${formatDate(tx.timestamp)}</div>
                   </div>
@@ -304,22 +304,22 @@
                         <span class="timeline-detail-value">${tx.itemId.substring(0, 20)}...</span>
                       </div>
                     ` : ''}
-                    ${tx.amount ? `
+                    ${tx.price ? `
                       <div class="timeline-detail-row">
-                        <span class="timeline-detail-label">Amount</span>
-                        <span class="timeline-detail-value">$${tx.amount.toLocaleString()}</span>
+                        <span class="timeline-detail-label">Price</span>
+                        <span class="timeline-detail-value">${tx.price.toLocaleString()} sats</span>
                       </div>
                     ` : ''}
-                    ${tx.txHash ? `
+                    ${tx.txid ? `
                       <div class="timeline-detail-row">
                         <span class="timeline-detail-label">Bitcoin TX</span>
-                        <span class="timeline-detail-value">${tx.txHash.substring(0, 20)}...</span>
+                        <span class="timeline-detail-value">${tx.txid.substring(0, 20)}...</span>
                       </div>
                     ` : ''}
                   </div>
                   
-                  ${tx.txHash ? `
-                    <a href="https://mempool.space/tx/${tx.txHash}" target="_blank" class="tx-link">
+                  ${tx.txid ? `
+                    <a href="https://mempool.space/tx/${tx.txid}" target="_blank" class="tx-link" onclick="event.stopPropagation();">
                       🔗 View on Blockchain →
                     </a>
                   ` : ''}
@@ -333,6 +333,11 @@
 
     function getTransactionIcon(type) {
       const icons = {
+        'mint': '📦',
+        'purchase': '🛒',
+        'sale': '💰',
+        'verification_requested': '🔍',
+        'authentication_performed': '✓',
         'ITEM_REGISTERED': '📦',
         'OFFER_CREATED': '💰',
         'OFFER_ACCEPTED': '✅',
@@ -344,17 +349,40 @@
       return icons[type] || '📝';
     }
 
-    function getTransactionDescription(tx) {
-      const descriptions = {
-        'ITEM_REGISTERED': `Registered new item: ${tx.itemName || 'Unknown'}`,
-        'OFFER_CREATED': `Made offer of $${tx.amount?.toLocaleString()} on ${tx.itemName || 'item'}`,
-        'OFFER_ACCEPTED': `Your offer was accepted for ${tx.itemName || 'item'}`,
-        'PAYMENT_SENT': `Sent payment of ${tx.sats?.toLocaleString()} sats`,
-        'PAYMENT_RECEIVED': `Received payment of ${tx.sats?.toLocaleString()} sats`,
-        'ITEM_TRANSFERRED': `Transferred ${tx.itemName || 'item'} to new owner`,
-        'ITEM_AUTHENTICATED': `Item ${tx.itemName || 'authenticated'} verified`
+    function getTypeLabel(type) {
+      const labels = {
+        'mint': 'Item Registered',
+        'purchase': 'Purchase',
+        'sale': 'Sale',
+        'verification_requested': 'Verification Requested',
+        'authentication_performed': 'Authentication Performed'
       };
-      return descriptions[tx.type] || tx.description || 'Transaction completed';
+      return labels[type] || type;
+    }
+
+    function getTransactionDescription(tx) {
+      if (tx.type === 'mint') {
+        return `Registered ${tx.itemName || 'item'}${tx.manufacturerName ? ` by ${tx.manufacturerName}` : ''}`;
+      }
+      if (tx.type === 'purchase') {
+        return `Purchased ${tx.itemName || 'item'}${tx.price ? ` for ${tx.price.toLocaleString()} sats` : ''}`;
+      }
+      if (tx.type === 'sale') {
+        return `Sold ${tx.itemName || 'item'}${tx.price ? ` for ${tx.price.toLocaleString()} sats` : ''}`;
+      }
+      if (tx.type === 'verification_requested') {
+        return `Requested verification for ${tx.itemName || 'item'}`;
+      }
+      if (tx.type === 'authentication_performed') {
+        return `Authenticated ${tx.itemName || 'item'} - ${tx.isAuthentic ? 'Genuine' : 'Not Authentic'}`;
+      }
+      return tx.description || 'Transaction completed';
+    }
+
+    function viewTransactionDetails(itemId) {
+      if (itemId) {
+        window.location.href = `/m/verify?itemId=${encodeURIComponent(itemId)}`;
+      }
     }
 
     function formatDate(timestamp) {
