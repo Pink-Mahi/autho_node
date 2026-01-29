@@ -523,6 +523,7 @@
                 <button class="nav-tab" onclick="switchTab('verifiers')">🏢 Verifiers</button>
                 <button class="nav-tab" onclick="switchTab('retailerapps')">🛍️ Retailer Verification</button>
                 <button class="nav-tab" onclick="switchTab('roleapps')">🏭 Role Applications</button>
+                <button class="nav-tab" onclick="switchTab('opcandidates')">🧑‍💼 Operator Candidates</button>
                 <button class="nav-tab" style="margin-left: auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
         </div>
@@ -1174,6 +1175,28 @@
                 </div>
             </div>
         </div>
+
+        <div class="section" id="opcandidates-section">
+            <h2 class="section-title">🧑‍💼 Operator Candidates</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Review and vote on pending operator applications. Candidates require 2/3 supermajority approval from active operators.
+                <strong>Note:</strong> Voting is only enabled after the 30-day founder window expires.
+            </p>
+
+            <div class="error-message" id="opCandidatesError"></div>
+            <div class="success-message" id="opCandidatesSuccess"></div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom: 20px;">
+                <button class="btn" type="button" onclick="loadOperatorCandidates()">Refresh</button>
+                <select id="opCandidatesStatusFilter" onchange="loadOperatorCandidates()" style="padding: 12px 16px; border-radius: 8px; border: 1px solid #d4af37; background: #fff; color: #333;">
+                    <option value="all" selected>All</option>
+                    <option value="open">Open (Founder Window)</option>
+                    <option value="voting">Voting Enabled</option>
+                </select>
+            </div>
+
+            <div id="opCandidatesList" class="empty-state">Click Refresh to load operator candidates.</div>
+        </div>
     </div>
 
     <script>
@@ -1212,6 +1235,8 @@
                 ensureRetailerAppsSession();
             } else if (tab === 'roleapps') {
                 ensureRoleAppsSession();
+            } else if (tab === 'opcandidates') {
+                loadOperatorCandidates();
             }
         }
 
@@ -3301,6 +3326,326 @@
                 }, 5000);
             }
         };
+
+        // ==================== OPERATOR CANDIDATES ====================
+        function getAdminToken() {
+            return sessionStorage.getItem('admin_token');
+        }
+
+        function getAdminAuthHeaders() {
+            const token = getAdminToken();
+            return token ? { 'Authorization': `Bearer ${token}` } : {};
+        }
+
+        async function loadOperatorCandidates() {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            const listEl = document.getElementById('opCandidatesList');
+            
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+            if (listEl) listEl.innerHTML = '<div class="empty-state">Loading operator candidates...</div>';
+
+            const status = document.getElementById('opCandidatesStatusFilter')?.value || 'all';
+            const url = `/api/operators/candidates?status=${encodeURIComponent(status)}`;
+
+            try {
+                const r = await fetch(url, { headers: getAdminAuthHeaders(), cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to load operator candidates'; errorEl.classList.add('active'); }
+                    if (listEl) listEl.innerHTML = '<div class="empty-state">Failed to load candidates. Make sure you are signed in as admin.</div>';
+                    return;
+                }
+
+                const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+                if (candidates.length === 0) {
+                    if (listEl) listEl.innerHTML = '<div class="empty-state">No operator candidates found.</div>';
+                    return;
+                }
+
+                renderOperatorCandidates(candidates);
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+                if (listEl) listEl.innerHTML = '<div class="empty-state">Network error.</div>';
+            }
+        }
+
+        // Store candidates globally for detail view
+        let _opCandidatesData = [];
+
+        function renderOperatorCandidates(candidates) {
+            const el = document.getElementById('opCandidatesList');
+            if (!el) return;
+
+            _opCandidatesData = candidates; // Store for detail view
+
+            const now = Date.now();
+            const rows = candidates.map((c, idx) => {
+                const candidateId = String(c.operatorId || c.candidateId || '');
+                const operatorUrl = String(c.operatorUrl || '');
+                const btcAddress = String(c.btcAddress || '');
+                const publicKey = String(c.publicKey || '');
+                const sponsorId = String(c.sponsorId || '');
+                const requestedAt = Number(c.candidateRequestedAt || 0);
+                const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+                const eligibleVoterCount = Number(c.eligibleVoterCount || 0);
+                const requiredYesVotes = Number(c.requiredYesVotes || 0);
+                const voteCount = c.voteCount || { approve: 0, reject: 0 };
+
+                const votingEnabled = now >= eligibleVotingAt;
+                const votingStartsIn = eligibleVotingAt > now ? Math.ceil((eligibleVotingAt - now) / (24 * 60 * 60 * 1000)) : 0;
+
+                const statusBadge = votingEnabled
+                    ? '<span style="background: #22c55e; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">VOTING OPEN</span>'
+                    : `<span style="background: #f59e0b; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">FOUNDER WINDOW (${votingStartsIn}d)</span>`;
+
+                // Admin/Founder buttons - always available on main node
+                const adminButtons = `
+                    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="adminApproveCandidate('${candidateId}', '${publicKey}', '${btcAddress}')">✓ Admin Approve</button>
+                        <button class="btn" onclick="adminRejectCandidate('${candidateId}')" style="background: #dc3545; border-color: #dc3545; color: #fff;">✗ Admin Reject</button>
+                        <button class="btn" onclick="showCandidateDetails(${idx})" style="background: #6366f1; border-color: #6366f1; color: #fff;">📋 View Details</button>
+                    </div>
+                `;
+
+                return `
+                    <div style="background: #f8f9fa; border: 1px solid #d4af37; padding: 20px; border-radius: 12px; margin-bottom: 15px; cursor: pointer;" onclick="showCandidateDetails(${idx})">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #333; margin-bottom: 8px;">
+                                    ${candidateId}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    <strong>URL:</strong> ${operatorUrl || '(none)'}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    <strong>BTC Address:</strong> <span style="font-family: monospace;">${btcAddress.substring(0, 20)}...</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    <strong>Sponsor:</strong> <span style="font-family: monospace;">${sponsorId.substring(0, 20)}...</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    <strong>Applied:</strong> ${requestedAt ? new Date(requestedAt).toLocaleDateString() : 'Unknown'}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                ${statusBadge}
+                                <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+                                    <strong>Votes:</strong> ${voteCount.approve || 0} approve / ${voteCount.reject || 0} reject
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    <strong>Required:</strong> ${requiredYesVotes} of ${eligibleVoterCount} voters
+                                </div>
+                            </div>
+                        </div>
+                        <div onclick="event.stopPropagation();">
+                            ${adminButtons}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            el.innerHTML = rows;
+        }
+
+        function showCandidateDetails(idx) {
+            const c = _opCandidatesData[idx];
+            if (!c) return;
+
+            const candidateId = String(c.operatorId || c.candidateId || '');
+            const operatorUrl = String(c.operatorUrl || '');
+            const btcAddress = String(c.btcAddress || '');
+            const publicKey = String(c.publicKey || '');
+            const sponsorId = String(c.sponsorId || '');
+            const requestedAt = Number(c.candidateRequestedAt || 0);
+            const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+            const eligibleVoterCount = Number(c.eligibleVoterCount || 0);
+            const requiredYesVotes = Number(c.requiredYesVotes || 0);
+            const voteCount = c.voteCount || { approve: 0, reject: 0 };
+
+            const detailsHtml = `
+                <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center;" onclick="this.remove()">
+                    <div style="background: #fff; border-radius: 16px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+                        <h2 style="color: #d4af37; margin-bottom: 20px; border-bottom: 2px solid #d4af37; padding-bottom: 10px;">Operator Candidate Details</h2>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Operator ID:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${candidateId}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Public Key:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all; font-size: 0.8rem;">${publicKey}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">BTC Address:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${btcAddress}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Operator URL:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${operatorUrl || '(not set)'}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Sponsor ID:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${sponsorId}</div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                            <div>
+                                <strong style="color: #333;">Applied:</strong>
+                                <div>${requestedAt ? new Date(requestedAt).toLocaleString() : 'Unknown'}</div>
+                            </div>
+                            <div>
+                                <strong style="color: #333;">Voting Eligible:</strong>
+                                <div>${eligibleVotingAt ? new Date(eligibleVotingAt).toLocaleString() : 'Unknown'}</div>
+                            </div>
+                            <div>
+                                <strong style="color: #333;">Votes:</strong>
+                                <div>${voteCount.approve || 0} approve / ${voteCount.reject || 0} reject</div>
+                            </div>
+                            <div>
+                                <strong style="color: #333;">Required:</strong>
+                                <div>${requiredYesVotes} of ${eligibleVoterCount} voters</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid #eee; padding-top: 20px;">
+                            <button class="btn btn-success" onclick="adminApproveCandidate('${candidateId}', '${publicKey}', '${btcAddress}'); this.closest('[style*=position]').remove();">✓ Approve</button>
+                            <button class="btn" onclick="adminRejectCandidate('${candidateId}'); this.closest('[style*=position]').remove();" style="background: #dc3545; border-color: #dc3545; color: #fff;">✗ Reject</button>
+                            <button class="btn" onclick="this.closest('[style*=position]').remove();" style="margin-left: auto;">Close</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', detailsHtml);
+        }
+
+        async function adminApproveCandidate(operatorId, publicKey, btcAddress) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            if (!confirm(`Approve operator ${operatorId} as an active operator? This action is immediate and cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/admin/operators/approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ operatorId, publicKey, btcAddress })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to approve operator'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                if (successEl) { successEl.textContent = `Operator ${operatorId} approved successfully!`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+
+        async function adminRejectCandidate(operatorId) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            const reason = prompt('Reason for rejection (required):');
+            if (!reason) {
+                if (errorEl) { errorEl.textContent = 'Rejection reason is required'; errorEl.classList.add('active'); }
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/admin/operators/reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ operatorId, reason })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to reject operator'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                if (successEl) { successEl.textContent = `Operator ${operatorId} rejected.`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+
+        async function voteOnCandidate(candidateId, vote) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            const reason = prompt(`Reason for ${vote} (optional):`);
+
+            try {
+                const r = await fetch(`/api/operators/candidates/${encodeURIComponent(candidateId)}/vote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ vote, reason: reason || undefined })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to submit vote'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                if (successEl) { successEl.textContent = `Vote recorded: ${vote}`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+
+        async function finalizeCandidate(candidateId) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            if (!confirm(`Finalize voting for candidate ${candidateId}? This will admit or reject them based on current votes.`)) {
+                return;
+            }
+
+            try {
+                const r = await fetch(`/api/operators/candidates/${encodeURIComponent(candidateId)}/finalize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({})
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to finalize candidate'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                const decision = data.decision || 'unknown';
+                if (successEl) { successEl.textContent = `Candidate ${candidateId} finalized: ${decision.toUpperCase()}`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
     </script>
 </body>
 </html>
