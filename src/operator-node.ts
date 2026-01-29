@@ -1269,6 +1269,11 @@ export class OperatorNode extends EventEmitter {
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
+    this.app.get('/m/register-item', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('mobile-register-item.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('UI not available');
+    });
     this.app.get('/m/offers', (req: Request, res: Response) => {
       const fp = this.resolvePublicFile('mobile-offers.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);
@@ -2837,6 +2842,166 @@ export class OperatorNode extends EventEmitter {
 
     // ============================================================
     // END ENTITY REGISTRY API
+    // ============================================================
+
+    // ============================================================
+    // USER ITEM REGISTRATION API - For users to register their own items
+    // ============================================================
+
+    // Prepare user item registration (get commitment hash and fee info)
+    this.app.post('/api/registry/user/prepare', async (req: Request, res: Response) => {
+      try {
+        const { manufacturerName, serialNumber, metadata } = req.body;
+
+        if (!manufacturerName || !metadata?.itemType || !metadata?.description) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Required: manufacturerName, metadata.itemType, metadata.description' 
+          });
+          return;
+        }
+
+        // Generate commitment hash for fee anchoring
+        const commitmentData = {
+          type: 'USER_ITEM_REGISTRATION',
+          manufacturerName,
+          serialNumber: serialNumber || `USER_${Date.now()}`,
+          itemType: metadata.itemType,
+          timestamp: Date.now(),
+        };
+        
+        const commitmentJson = JSON.stringify(commitmentData);
+        const encoder = new TextEncoder();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(commitmentJson));
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const commitmentHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+        // Fee goes to sponsor address
+        const feeAddress = process.env.SPONSOR_ADDRESS || '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U';
+        const feeSats = Number(process.env.USER_MINT_FEE_SATS || 1000);
+
+        res.json({
+          success: true,
+          commitmentHex,
+          feeAddress,
+          feeSats,
+          message: 'Send fee transaction with OP_RETURN containing commitment, then call /api/registry/user/complete',
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Complete user item registration after fee payment
+    this.app.post('/api/registry/user/complete', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        
+        const { 
+          manufacturerName, brandEntityId, serialNumber, metadata,
+          feeTxid, feeCommitmentHex, initialOwner 
+        } = req.body;
+
+        if (!manufacturerName || !metadata?.itemType || !metadata?.description) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Required: manufacturerName, metadata.itemType, metadata.description' 
+          });
+          return;
+        }
+
+        if (!feeTxid || !feeCommitmentHex) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Required: feeTxid, feeCommitmentHex' 
+          });
+          return;
+        }
+
+        if (!initialOwner) {
+          res.status(400).json({ 
+            success: false, 
+            error: 'Required: initialOwner (wallet address)' 
+          });
+          return;
+        }
+
+        // Generate unique item ID
+        const itemId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const now = Date.now();
+
+        // Create the ITEM_REGISTERED event
+        const event = {
+          eventId: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: EventType.ITEM_REGISTERED,
+          timestamp: now,
+          payload: {
+            type: EventType.ITEM_REGISTERED,
+            itemId,
+            manufacturerId: account?.accountId || initialOwner,
+            manufacturerName,
+            brandEntityId: brandEntityId || undefined,
+            serialNumber: serialNumber || `USER_${now}`,
+            metadataHash: feeCommitmentHex,
+            initialOwner,
+            metadata: {
+              ...metadata,
+              name: metadata.itemType,
+            },
+            issuerRole: 'user' as const,
+            issuerAccountId: account?.accountId || initialOwner,
+            feeTxid,
+            feeCommitmentHex,
+          },
+          signatures: [],
+        };
+
+        // Append to event store
+        await this.canonicalEventStore.appendEvent(event.payload as any, event.signatures as any);
+
+        // Update local state
+        this.state.items.set(itemId, {
+          itemId,
+          manufacturerId: account?.accountId || initialOwner,
+          manufacturerName,
+          serialNumberHash: feeCommitmentHex,
+          serialNumberDisplay: serialNumber ? `${serialNumber.substring(0, 4)}...` : undefined,
+          metadataHash: feeCommitmentHex,
+          currentOwner: initialOwner,
+          metadata: {
+            ...metadata,
+            name: metadata.itemType,
+          },
+          registeredAt: now,
+          issuerRole: 'user',
+          issuerAccountId: account?.accountId || initialOwner,
+          manufacturerVerified: false,
+          mintedByOfficialManufacturer: false,
+          authentications: [],
+        });
+
+        res.json({
+          success: true,
+          itemId,
+          message: 'Item registered successfully. It is marked as unverified until authenticated.',
+          item: {
+            itemId,
+            manufacturerName,
+            name: metadata.itemType,
+            currentOwner: initialOwner,
+            registeredAt: now,
+            verified: false,
+            issuerRole: 'user',
+          },
+        });
+      } catch (error: any) {
+        console.error('User item registration error:', error);
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // END USER ITEM REGISTRATION API
     // ============================================================
 
     // ============================================================

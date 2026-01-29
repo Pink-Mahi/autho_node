@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Register My Item - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .info-box {
+      background: rgba(212, 175, 55, 0.1);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .info-box h3 {
+      color: #d4af37;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .info-box p {
+      color: #999;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .warning-box {
+      background: rgba(255, 152, 0, 0.1);
+      border: 1px solid rgba(255, 152, 0, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .warning-box h3 {
+      color: #FF9800;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .warning-box p {
+      color: #ccc;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .form-section {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .form-section h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      color: #d4af37;
+      margin-bottom: 15px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .form-group input::placeholder,
+    .form-group textarea::placeholder {
+      color: #666;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .autocomplete-container {
+      position: relative;
+    }
+
+    .autocomplete-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1a1a1a;
+      border: 1px solid #d4af37;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1001;
+      display: none;
+    }
+
+    .autocomplete-item {
+      padding: 10px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+    }
+
+    .autocomplete-item:hover {
+      background: rgba(212, 175, 55, 0.15);
+    }
+
+    .autocomplete-item .entity-name {
+      color: #d4af37;
+      font-weight: 500;
+    }
+
+    .autocomplete-item .entity-type {
+      color: #888;
+      font-size: 0.75rem;
+      margin-left: 8px;
+    }
+
+    .autocomplete-item .verified-badge {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+    }
+
+    .brand-status {
+      font-size: 0.8rem;
+      margin-top: 4px;
+      color: #999;
+    }
+
+    .btn {
+      width: 100%;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+      margin-bottom: 10px;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+
+    .status-box {
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .status-box.success {
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      color: #4CAF50;
+    }
+
+    .status-box.error {
+      background: rgba(244, 67, 54, 0.1);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+      color: #f44336;
+    }
+
+    .status-box.show {
+      display: block;
+    }
+
+    .fee-info {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 15px;
+    }
+
+    .fee-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+
+    .fee-row:last-child {
+      margin-bottom: 0;
+      padding-top: 8px;
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+      font-weight: 600;
+      color: #d4af37;
+    }
+
+    .fee-label {
+      color: #999;
+    }
+
+    .fee-value {
+      color: #fff;
+    }
+
+    .image-preview {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .image-preview img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+
+    .qr-result {
+      text-align: center;
+      padding: 20px;
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      border-radius: 12px;
+      margin-top: 20px;
+      display: none;
+    }
+
+    .qr-result canvas {
+      background: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+
+    .qr-result .item-id {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #d4af37;
+      word-break: break-all;
+      margin-bottom: 15px;
+    }
+
+    .verification-note {
+      background: rgba(255, 152, 0, 0.1);
+      border: 1px solid rgba(255, 152, 0, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 15px;
+      font-size: 13px;
+      color: #FF9800;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="history.back()">←</button>
+    <h1>📦 Register My Item</h1>
+  </div>
+
+  <div class="container">
+    <div class="info-box">
+      <h3>📝 What is this?</h3>
+      <p>Register a physical item you own on the Bitcoin blockchain. This creates a permanent record of ownership that can be verified by anyone.</p>
+    </div>
+
+    <div class="warning-box">
+      <h3>⚠️ Unverified Items</h3>
+      <p>Items registered by users are marked as <strong>unverified</strong> until an authenticator examines the physical item and confirms its authenticity. You can hire an authenticator later from your "My Items" page.</p>
+    </div>
+
+    <form id="registerForm" onsubmit="registerItem(event)">
+      <div class="form-section">
+        <h2>📋 Item Details</h2>
+        
+        <div class="form-group">
+          <label>Brand / Manufacturer *</label>
+          <div class="autocomplete-container">
+            <input type="text" id="brandName" required placeholder="Start typing... e.g., Rolex, Nike, Pokemon" autocomplete="off">
+            <input type="hidden" id="brandEntityId">
+            <div id="brandSuggestions" class="autocomplete-dropdown"></div>
+            <div id="brandStatus" class="brand-status"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Item Name / Model *</label>
+          <input type="text" id="itemName" required placeholder="e.g., Submariner Date, Air Jordan 1, Charizard Holo">
+        </div>
+
+        <div class="form-group">
+          <label>Description *</label>
+          <textarea id="description" required placeholder="Describe the item, its condition, any unique features..."></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Serial Number</label>
+            <input type="text" id="serialNumber" placeholder="If applicable">
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="category">
+              <option value="collectibles">Collectibles</option>
+              <option value="luxury_watches">Luxury Watches</option>
+              <option value="jewelry">Jewelry</option>
+              <option value="sneakers">Sneakers</option>
+              <option value="art">Art</option>
+              <option value="trading_cards">Trading Cards</option>
+              <option value="sports_memorabilia">Sports Memorabilia</option>
+              <option value="electronics">Electronics</option>
+              <option value="fashion">Fashion</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Year / Edition</label>
+            <input type="text" id="year" placeholder="e.g., 2023, 1st Edition">
+          </div>
+          <div class="form-group">
+            <label>Condition</label>
+            <select id="condition">
+              <option value="mint">Mint / New</option>
+              <option value="excellent">Excellent</option>
+              <option value="good">Good</option>
+              <option value="fair">Fair</option>
+              <option value="poor">Poor</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Estimated Value (USD, optional)</label>
+          <input type="number" id="estimatedValue" placeholder="e.g., 5000">
+        </div>
+
+        <div class="form-group">
+          <label>Photos (optional, up to 3)</label>
+          <input type="file" id="itemImages" accept="image/*" multiple>
+          <div id="imagePreview" class="image-preview"></div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>💰 Registration Fee</h2>
+        <div class="fee-info">
+          <div class="fee-row">
+            <span class="fee-label">Registration Fee</span>
+            <span class="fee-value">1,000 sats</span>
+          </div>
+          <div class="fee-row">
+            <span class="fee-label">Network Fee (est.)</span>
+            <span class="fee-value" id="networkFee">~200 sats</span>
+          </div>
+          <div class="fee-row">
+            <span class="fee-label">Total</span>
+            <span class="fee-value" id="totalFee">~1,200 sats</span>
+          </div>
+        </div>
+        <p style="font-size: 12px; color: #999; margin-bottom: 15px;">
+          The registration fee is paid via Bitcoin and anchors your item to the blockchain permanently.
+        </p>
+      </div>
+
+      <button type="submit" class="btn" id="registerBtn">
+        ⚡ Register Item (1,000 sats)
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="history.back()">
+        Cancel
+      </button>
+
+      <div id="statusSuccess" class="status-box success"></div>
+      <div id="statusError" class="status-box error"></div>
+    </form>
+
+    <div id="qrResult" class="qr-result">
+      <h3 style="color: #4CAF50; margin-bottom: 15px;">✅ Item Registered!</h3>
+      <canvas id="qrCanvas"></canvas>
+      <div class="item-id" id="registeredItemId"></div>
+      <button class="btn" onclick="downloadQR()">💾 Download QR Code</button>
+      <button class="btn btn-secondary" onclick="window.location.href='/m/items'">📦 View My Items</button>
+      <div class="verification-note">
+        <strong>Next Step:</strong> Your item is registered but marked as "unverified". To increase buyer trust, go to "My Items" and request verification from an authenticator.
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script src="/js/btc.bundle.js"></script>
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let userWallet = null;
+    let brandSearchTimeout = null;
+    let brandSuggestions = [];
+    let selectedBrandEntity = null;
+
+    // Initialize
+    window.addEventListener('load', () => {
+      if (!WalletAuth.requireAuth('/m/register-item')) {
+        return;
+      }
+      userWallet = WalletAuth.getWallet();
+      initBrandAutocomplete();
+      initImagePreview();
+    });
+
+    // Brand autocomplete
+    function initBrandAutocomplete() {
+      const input = document.getElementById('brandName');
+      const dropdown = document.getElementById('brandSuggestions');
+      const statusEl = document.getElementById('brandStatus');
+
+      input.addEventListener('input', function() {
+        const query = this.value.trim();
+        clearTimeout(brandSearchTimeout);
+
+        if (query.length < 2) {
+          dropdown.style.display = 'none';
+          statusEl.textContent = '';
+          selectedBrandEntity = null;
+          document.getElementById('brandEntityId').value = '';
+          return;
+        }
+
+        brandSearchTimeout = setTimeout(() => searchBrands(query), 200);
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => dropdown.style.display = 'none', 200);
+      });
+    }
+
+    async function searchBrands(query) {
+      const dropdown = document.getElementById('brandSuggestions');
+      const statusEl = document.getElementById('brandStatus');
+
+      try {
+        const res = await fetch(`/api/entities/search?q=${encodeURIComponent(query)}&types=manufacturer,brand,artist,athlete,celebrity&limit=6`);
+        const data = await res.json();
+
+        if (!data.success) {
+          statusEl.textContent = 'Search error';
+          return;
+        }
+
+        brandSuggestions = data.results || [];
+
+        let html = '';
+        brandSuggestions.forEach((result, idx) => {
+          const entity = result.entity;
+          const verified = entity.verificationStatus === 'official' || entity.verificationStatus === 'community';
+          const verifiedBadge = verified ? '<span class="verified-badge">✓ Verified</span>' : '';
+          const typeLabel = entity.type.charAt(0).toUpperCase() + entity.type.slice(1);
+
+          html += `
+            <div class="autocomplete-item" onclick="selectBrand(${idx})">
+              <span class="entity-name">${escapeHtml(entity.displayName)}</span>
+              <span class="entity-type">${typeLabel}</span>
+              ${verifiedBadge}
+            </div>
+          `;
+        });
+
+        html += `
+          <div class="autocomplete-item" onclick="useCustomBrand()">
+            <span style="color: #d4af37; font-style: italic;">+ Use "${escapeHtml(query)}" as entered</span>
+          </div>
+        `;
+
+        dropdown.innerHTML = html;
+        dropdown.style.display = 'block';
+
+        if (brandSuggestions.length === 0) {
+          statusEl.innerHTML = '<span style="color:#FF9800;">Brand not in registry - will be added as user-submitted</span>';
+        } else {
+          statusEl.textContent = `${brandSuggestions.length} match${brandSuggestions.length !== 1 ? 'es' : ''} found`;
+        }
+      } catch (err) {
+        console.error('Brand search error:', err);
+        statusEl.textContent = 'Search failed';
+      }
+    }
+
+    function selectBrand(index) {
+      if (index < 0 || index >= brandSuggestions.length) return;
+
+      const result = brandSuggestions[index];
+      const entity = result.entity;
+
+      document.getElementById('brandName').value = entity.displayName;
+      document.getElementById('brandEntityId').value = entity.entityId;
+      selectedBrandEntity = entity;
+
+      const statusEl = document.getElementById('brandStatus');
+      const verified = entity.verificationStatus === 'official' || entity.verificationStatus === 'community';
+
+      if (verified) {
+        statusEl.innerHTML = `<span style="color:#4CAF50;">✓ ${entity.displayName} - Verified ${entity.type}</span>`;
+      } else {
+        statusEl.innerHTML = `<span style="color:#d4af37;">${entity.displayName} - ${entity.type}</span>`;
+      }
+
+      document.getElementById('brandSuggestions').style.display = 'none';
+    }
+
+    function useCustomBrand() {
+      const brandName = document.getElementById('brandName').value.trim();
+      document.getElementById('brandEntityId').value = '';
+      selectedBrandEntity = null;
+      document.getElementById('brandStatus').innerHTML = `<span style="color:#FF9800;">Using "${escapeHtml(brandName)}" (unverified brand)</span>`;
+      document.getElementById('brandSuggestions').style.display = 'none';
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Image preview
+    function initImagePreview() {
+      const input = document.getElementById('itemImages');
+      const preview = document.getElementById('imagePreview');
+
+      input.addEventListener('change', function() {
+        preview.innerHTML = '';
+        const files = Array.from(this.files || []).slice(0, 3);
+
+        files.forEach(file => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            preview.appendChild(img);
+          };
+          reader.readAsDataURL(file);
+        });
+      });
+    }
+
+    // Register item
+    async function registerItem(event) {
+      event.preventDefault();
+
+      const btn = document.getElementById('registerBtn');
+      const successEl = document.getElementById('statusSuccess');
+      const errorEl = document.getElementById('statusError');
+
+      successEl.classList.remove('show');
+      errorEl.classList.remove('show');
+
+      if (!userWallet) {
+        showError('Wallet not connected. Please sign in.');
+        return;
+      }
+
+      const brandName = document.getElementById('brandName').value.trim();
+      const itemName = document.getElementById('itemName').value.trim();
+      const description = document.getElementById('description').value.trim();
+
+      if (!brandName || !itemName || !description) {
+        showError('Please fill in all required fields.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Preparing...';
+
+      try {
+        // Build item data
+        const itemData = {
+          manufacturerName: brandName,
+          brandEntityId: document.getElementById('brandEntityId').value || undefined,
+          serialNumber: document.getElementById('serialNumber').value.trim() || `USER_${Date.now()}`,
+          metadata: {
+            itemType: itemName,
+            name: itemName,
+            description: description,
+            category: document.getElementById('category').value,
+            year: document.getElementById('year').value.trim() || undefined,
+            condition: document.getElementById('condition').value,
+            estimatedValue: document.getElementById('estimatedValue').value ? Number(document.getElementById('estimatedValue').value) : undefined,
+          },
+          issuerRole: 'user',
+        };
+
+        // Process images
+        const imageInput = document.getElementById('itemImages');
+        const files = Array.from(imageInput.files || []).slice(0, 3);
+        if (files.length > 0) {
+          itemData.metadata.images = await processImages(files);
+        }
+
+        // Get wallet credentials
+        const vaultStr = localStorage.getItem('autho_wallet_vault');
+        if (!vaultStr) {
+          throw new Error('Wallet not found. Please sign in again.');
+        }
+
+        const vault = JSON.parse(vaultStr);
+        const secret = prompt('Enter your wallet passcode to pay the registration fee:');
+        if (!secret) throw new Error('Registration cancelled');
+
+        let walletPayload;
+        try {
+          walletPayload = await decryptWalletVault(vault, secret);
+        } catch {
+          throw new Error('Invalid passcode');
+        }
+
+        const mnemonic = walletPayload.mnemonic;
+        const fromAddress = userWallet.paymentAddress || userWallet.address;
+
+        // Get UTXOs
+        const utxosRaw = await fetchUtxos(fromAddress);
+        const spendable = utxosRaw
+          .filter(u => u && u.txid && u.status?.confirmed)
+          .map(u => ({ txid: u.txid, vout: Number(u.vout), value: Number(u.value) }));
+
+        if (spendable.length === 0) {
+          throw new Error('No confirmed funds available. Please fund your wallet first.');
+        }
+
+        btn.textContent = '⏳ Building transaction...';
+
+        // Get fee commitment from server
+        const commitRes = await fetch('/api/registry/user/prepare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(itemData),
+        });
+        const commitData = await commitRes.json();
+
+        if (!commitRes.ok || !commitData.success) {
+          throw new Error(commitData.error || 'Failed to prepare registration');
+        }
+
+        const { commitmentHex, feeAddress, feeSats } = commitData;
+
+        // Build and sign transaction
+        const feeRate = await getFeeRate();
+        const networkName = getNetworkName();
+
+        const outputs = [
+          { address: feeAddress, amountSats: feeSats },
+        ];
+
+        // Add OP_RETURN with commitment
+        const opReturnHex = '6a' + (commitmentHex.length / 2).toString(16).padStart(2, '0') + commitmentHex;
+
+        const signed = window.AuthoBTC.buildAndSignP2WPKH({
+          mnemonic,
+          outputs,
+          utxos: spendable,
+          feeRateSatPerVb: feeRate,
+          changeAddress: fromAddress,
+          network: networkName,
+          opReturnHex,
+        });
+
+        btn.textContent = '⏳ Broadcasting...';
+
+        // Broadcast transaction
+        const txid = await broadcastTx(signed.txHex);
+
+        btn.textContent = '⏳ Registering item...';
+
+        // Complete registration
+        const registerRes = await fetch('/api/registry/user/complete', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('autho_session_id')}`,
+          },
+          body: JSON.stringify({
+            ...itemData,
+            feeTxid: txid,
+            feeCommitmentHex: commitmentHex,
+            initialOwner: fromAddress,
+          }),
+        });
+
+        const registerData = await registerRes.json();
+
+        if (!registerRes.ok || !registerData.success) {
+          throw new Error(registerData.error || 'Registration failed');
+        }
+
+        // Show success
+        const itemId = registerData.itemId;
+        document.getElementById('registeredItemId').textContent = itemId;
+
+        // Generate QR code
+        await QRCode.toCanvas(document.getElementById('qrCanvas'), itemId, {
+          width: 200,
+          margin: 2,
+          color: { dark: '#1a1a1a', light: '#ffffff' },
+        });
+
+        document.getElementById('registerForm').style.display = 'none';
+        document.getElementById('qrResult').style.display = 'block';
+
+        btn.textContent = '✅ Registered!';
+
+      } catch (err) {
+        console.error('Registration error:', err);
+        showError(err.message || 'Registration failed');
+        btn.disabled = false;
+        btn.textContent = '⚡ Register Item (1,000 sats)';
+      }
+    }
+
+    function showError(message) {
+      const el = document.getElementById('statusError');
+      el.textContent = message;
+      el.classList.add('show');
+    }
+
+    async function processImages(files) {
+      const images = [];
+      for (const file of files) {
+        const base64 = await fileToBase64(file);
+        images.push({
+          data: base64,
+          mimeType: file.type || 'image/jpeg',
+        });
+      }
+      return images;
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function fetchUtxos(address) {
+      const res = await fetch(`/api/chain/address/${encodeURIComponent(address)}/utxo`);
+      return res.json();
+    }
+
+    async function getFeeRate() {
+      try {
+        const res = await fetch('/api/chain/fee-estimates');
+        const data = await res.json();
+        return Math.max(1, Number(data['6'] || data['3'] || 2));
+      } catch {
+        return 2;
+      }
+    }
+
+    function getNetworkName() {
+      const net = String(userWallet?.network || 'mainnet').toLowerCase();
+      return net.includes('test') ? 'testnet' : 'mainnet';
+    }
+
+    async function broadcastTx(txHex) {
+      const res = await fetch('/api/chain/tx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHex }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Broadcast failed');
+      }
+      return data.txid;
+    }
+
+    function bytesFromB64(b64) {
+      const bin = atob(String(b64 || ''));
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    async function deriveVaultKey(password, salt, iterations) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+
+    async function decryptWalletVault(walletVault, password) {
+      if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+        throw new Error('Unsupported wallet vault format');
+      }
+      const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+      const iterations = Number(walletVault.kdf?.iterations || 0);
+      const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+      const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+      const key = await deriveVaultKey(password, salt, iterations);
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    }
+
+    function downloadQR() {
+      const canvas = document.getElementById('qrCanvas');
+      const link = document.createElement('a');
+      link.download = `item-${document.getElementById('registeredItemId').textContent}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+  </script>
+</body>
+</html>
