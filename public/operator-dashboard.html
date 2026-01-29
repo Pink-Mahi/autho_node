@@ -348,9 +348,9 @@
             </div>
 
             <div style="background: rgba(52, 199, 89, 0.08); border: 1px solid rgba(52, 199, 89, 0.25); padding: 18px; border-radius: 12px; margin-bottom: 25px;">
-                <h3 style="color: #4cd964; margin-bottom: 12px; font-size: 1.1rem;">💰 Fee Distribution Incentive</h3>
+                <h3 style="color: #4cd964; margin-bottom: 12px; font-size: 1.1rem;">💰 Anchor Rewards</h3>
                 <p class="muted" style="margin-bottom: 12px;">
-                    Operators receive 40% of the 1% title-update fee. Your share is weighted by your anchor contributions:
+                    Operators earn rewards for anchoring checkpoints. Your share is weighted by your contributions:
                 </p>
                 <div style="font-size: 1.2rem; color: #4cd964; font-weight: 700; margin-top: 10px;">
                     Your Weight: <span id="myWeight">0%</span>
@@ -2540,7 +2540,7 @@
                                 ${operators.map(op => {
                                     const isMe = op.operatorId === myOperatorId;
                                     const weight = (op.weight * 100).toFixed(1);
-                                    const feeShare = (op.weight * 40).toFixed(1); // 40% of 1% goes to operators
+                                    const feeShare = (op.weight * 100).toFixed(1); // percentage of operator pool
                                     return `
                                         <tr style="${isMe ? 'background: rgba(212, 175, 55, 0.1);' : ''}">
                                             <td style="font-family: monospace; font-size: 0.85rem;">
@@ -2556,8 +2556,7 @@
                             </tbody>
                         </table>
                         <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                            💡 <strong>How it works:</strong> Operators receive 40% of the 1% title-update fee. 
-                            Your share is weighted by your anchor contributions. More anchors = more fees!
+                            💡 <strong>How it works:</strong> Your share is weighted by your anchor contributions. More anchors = more fees!
                         </p>
                     `;
                 }
