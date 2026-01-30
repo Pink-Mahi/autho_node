@@ -2189,7 +2189,11 @@
       });
     }
     
-    // Convert base64 data URL to Blob URL for better iOS video compatibility
+    // Detect iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    // Convert base64 data URL to Blob URL for better mobile video compatibility
     function base64ToBlobUrl(base64DataUrl) {
       try {
         const parts = base64DataUrl.split(',');
@@ -2202,15 +2206,16 @@
           u8arr[n] = bstr.charCodeAt(n);
         }
         const blob = new Blob([u8arr], { type: mime });
-        return URL.createObjectURL(blob);
+        return { url: URL.createObjectURL(blob), mime: mime };
       } catch (e) {
         console.error('Failed to convert base64 to blob:', e);
-        return base64DataUrl; // Fallback to original
+        return { url: base64DataUrl, mime: 'video/mp4' };
       }
     }
     
-    // Track blob URLs for cleanup
+    // Track blob URLs and base64 for cleanup/fallback
     const videoBlobUrls = new Map();
+    const videoBase64Data = new Map();
 
     function showMediaPreview() {
       if (!pendingMedia) return;
@@ -2611,18 +2616,31 @@
               </div>
             `;
           } else if (parsed.type === 'video') {
-            // Convert base64 to Blob URL for iOS compatibility (iOS Safari can't play base64 videos)
+            // Convert base64 to Blob URL for mobile compatibility
             const videoId = 'vid_' + msg.timestamp + '_' + Math.random().toString(36).substr(2, 9);
-            const blobUrl = base64ToBlobUrl(parsed.content);
-            videoBlobUrls.set(videoId, blobUrl);
-            content = `
-              <div class="message-media">
-                <video id="${videoId}" src="${blobUrl}#t=0.1" controls playsinline webkit-playsinline preload="metadata" 
-                       onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
-                       onclick="openFullscreen('${videoId}', 'video')"></video>
-                <div style="display:none; color:#ff6b6b; padding:10px;">Video playback error</div>
-              </div>
-            `;
+            const blobData = base64ToBlobUrl(parsed.content);
+            videoBlobUrls.set(videoId, blobData.url);
+            videoBase64Data.set(videoId, parsed.content); // Keep base64 as fallback for iOS
+            
+            // iOS needs special handling - use source element without fragment
+            if (isIOS) {
+              content = `
+                <div class="message-media">
+                  <video id="${videoId}" controls playsinline webkit-playsinline preload="auto"
+                         onclick="openFullscreen('${videoId}', 'video')">
+                    <source src="${blobData.url}" type="${blobData.mime}">
+                    Your browser does not support video.
+                  </video>
+                </div>
+              `;
+            } else {
+              content = `
+                <div class="message-media">
+                  <video id="${videoId}" src="${blobData.url}#t=0.1" controls playsinline webkit-playsinline preload="metadata"
+                         onclick="openFullscreen('${videoId}', 'video')"></video>
+                </div>
+              `;
+            }
           } else if (parsed.type === 'audio') {
             content = `
               <div class="message-media">
