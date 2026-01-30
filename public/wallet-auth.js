@@ -134,8 +134,13 @@ const WalletAuth = {
     if (!wallet) {
       return {};
     }
+    let sessionId = '';
+    try {
+      sessionId = String(localStorage.getItem('autho_session_id') || '').trim();
+    } catch {}
     return {
       'Content-Type': 'application/json',
+      ...(sessionId ? { 'Authorization': `Bearer ${sessionId}` } : {}),
       'X-Wallet-Address': wallet.address || wallet.publicKey,
       'X-Public-Key': wallet.publicKey
     };
