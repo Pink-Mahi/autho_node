@@ -1611,18 +1611,19 @@
       try {
         const res = await fetch('/api/messages/contacts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            accountId: wallet.publicKey, 
-            contactId: contactId 
-          })
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ contactId: contactId })
         });
         
         if (res.ok) {
           alert('Contact added! Tap their name in the list to start chatting.');
           loadConversations();
         } else {
-          alert('Failed to add contact');
+          const data = await res.json().catch(() => ({}));
+          alert('Failed to add contact: ' + (data.error || 'Unknown error'));
         }
       } catch (e) {
         console.error('Add contact error:', e);
