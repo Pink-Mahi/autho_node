@@ -3949,7 +3949,21 @@ export class OperatorNode extends EventEmitter {
             res.status(404).json({ success: false, error: 'Item not found' });
             return;
           }
-          targetRecipient = item.currentOwner;
+          // item.currentOwner is a Bitcoin address - find the account's public key (accountId)
+          const ownerAddress = item.currentOwner;
+          let ownerAccountId: string | null = null;
+          
+          // Look up account by their Bitcoin address to get their accountId (public key)
+          for (const [accId, acc] of this.state.accounts.entries()) {
+            const accAny = acc as any;
+            if (accAny.address === ownerAddress || accAny.paymentAddress === ownerAddress || accId === ownerAddress) {
+              ownerAccountId = accId;
+              break;
+            }
+          }
+          
+          // If no account found by address lookup, use the address directly (fallback)
+          targetRecipient = ownerAccountId || ownerAddress;
         }
 
         if (targetRecipient === account.accountId) {
