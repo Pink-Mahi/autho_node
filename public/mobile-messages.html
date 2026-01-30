@@ -690,6 +690,14 @@
         const response = await fetch('/api/messages/conversations', {
           headers: WalletAuth.getAuthHeaders()
         });
+        
+        // Redirect to login if not authenticated
+        if (response.status === 401 || response.status === 403) {
+          WalletAuth.clearWallet();
+          window.location.href = '/m/login?redirect=/m/messages';
+          return;
+        }
+        
         const data = await response.json();
 
         if (data.success) {
@@ -697,6 +705,9 @@
           renderConversations();
           document.getElementById('inboxStats').textContent = 
             `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`;
+        } else if (data.error && data.error.includes('auth')) {
+          WalletAuth.clearWallet();
+          window.location.href = '/m/login?redirect=/m/messages';
         }
       } catch (error) {
         console.error('Failed to load conversations:', error);
@@ -747,6 +758,14 @@
         const response = await fetch('/api/messages/contacts', {
           headers: WalletAuth.getAuthHeaders()
         });
+        
+        // Redirect to login if not authenticated
+        if (response.status === 401 || response.status === 403) {
+          WalletAuth.clearWallet();
+          window.location.href = '/m/login?redirect=/m/messages';
+          return;
+        }
+        
         const data = await response.json();
 
         if (data.success) {
