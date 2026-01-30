@@ -78,6 +78,10 @@ class GatewayNode {
     this.discoveredOperators = []; // List of operators from /api/network/operators
     this.lastOperatorDiscovery = 0;
     
+    // Communications ledger storage (ephemeral messages backup)
+    this.ephemeralEvents = new Map(); // eventId -> event
+    this.ephemeralContactsByUser = new Map(); // userId -> Set of contactIds
+    
     // Useful work tracking - gateways contribute to network security
     this.operatorHealth = new Map(); // operatorId -> health info
     this.verificationResults = []; // Recent verification results
@@ -91,93 +95,8 @@ class GatewayNode {
       lastWorkAt: 0,
     };
     
-    // Ephemeral message ledger backup - gateways store messages to help operators recover after restart
-    this.ephemeralEvents = new Map(); // eventId -> event
-    this.ephemeralRetentionMs = 10 * 24 * 60 * 60 * 1000; // 10 days
-    this.ephemeralPersistPath = path.join(CONFIG.dataDir, 'ephemeral-messages.json');
-    this.loadEphemeralEvents();
-    this.startEphemeralPruning();
-    
     this.setupMiddleware();
     this.setupRoutes();
-  }
-
-  // ============================================================
-  // EPHEMERAL MESSAGE LEDGER BACKUP
-  // ============================================================
-  
-  loadEphemeralEvents() {
-    try {
-      if (!fs.existsSync(this.ephemeralPersistPath)) return;
-      const raw = fs.readFileSync(this.ephemeralPersistPath, 'utf8');
-      const data = JSON.parse(raw);
-      const now = Date.now();
-      let loaded = 0;
-      for (const event of (data.events || [])) {
-        if (event.expiresAt > now) {
-          this.ephemeralEvents.set(event.eventId, event);
-          loaded++;
-        }
-      }
-      console.log(`📨 [Ephemeral] Loaded ${loaded} messages from disk`);
-    } catch (e) {
-      console.log(`📨 [Ephemeral] No previous messages to load`);
-    }
-  }
-
-  saveEphemeralEvents() {
-    try {
-      const events = Array.from(this.ephemeralEvents.values());
-      fs.writeFileSync(this.ephemeralPersistPath, JSON.stringify({ events }, null, 2));
-    } catch (e) {
-      console.error(`📨 [Ephemeral] Failed to save:`, e.message);
-    }
-  }
-
-  startEphemeralPruning() {
-    setInterval(() => {
-      const now = Date.now();
-      let pruned = 0;
-      for (const [id, event] of this.ephemeralEvents) {
-        if (event.expiresAt <= now) {
-          this.ephemeralEvents.delete(id);
-          pruned++;
-        }
-      }
-      if (pruned > 0) {
-        console.log(`📨 [Ephemeral] Pruned ${pruned} expired messages`);
-        this.saveEphemeralEvents();
-      }
-    }, 60 * 60 * 1000); // Prune every hour
-  }
-
-  importEphemeralEvent(event) {
-    if (!event || !event.eventId) return false;
-    if (this.ephemeralEvents.has(event.eventId)) return false;
-    if (event.expiresAt <= Date.now()) return false;
-    
-    this.ephemeralEvents.set(event.eventId, event);
-    this.saveEphemeralEvents();
-    return true;
-  }
-
-  getEphemeralEventsSince(sinceTimestamp, limit = 500) {
-    const events = [];
-    for (const event of this.ephemeralEvents.values()) {
-      if (event.timestamp > sinceTimestamp && event.expiresAt > Date.now()) {
-        events.push(event);
-      }
-    }
-    events.sort((a, b) => a.timestamp - b.timestamp);
-    return events.slice(0, limit);
-  }
-
-  getEphemeralLatestTimestamp() {
-    let latest = 0;
-    for (const event of this.ephemeralEvents.values()) {
-      if (event.timestamp > latest) latest = event.timestamp;
-    }
-    return latest;
   }
 
   getOperatorUrls() {
@@ -1214,71 +1133,29 @@ class GatewayNode {
         // Gateway acknowledges consensus verification from network
         console.log(`✓ State verification from ${message.nodeId} (seq: ${message.sequenceNumber})`);
         break;
-
-      // ============================================================
-      // EPHEMERAL MESSAGE LEDGER - Gateway stores as backup
-      // ============================================================
+      
+      // Communications ledger sync
       case 'ephemeral_event':
-        try {
-          const event = message.event;
-          if (event && this.importEphemeralEvent(event)) {
-            console.log(`📨 [Ephemeral] Stored ${event.eventType}: ${event.eventId}`);
-          }
-        } catch (e) {
-          console.log(`📨 [Ephemeral] Error storing event:`, e.message);
+        if (this.storeEphemeralEvent(message.event)) {
+          this.broadcastToPeers(message);
         }
         break;
-
+      
       case 'ephemeral_sync_request':
-        // Operator is requesting ephemeral events (after restart)
-        try {
-          const sinceTimestamp = Number(message.since || 0);
-          const limit = Math.min(Number(message.limit || 500), 1000);
-          const events = this.getEphemeralEventsSince(sinceTimestamp, limit);
-          
-          // Find the correct WebSocket to respond to (could be operator or seed connection)
-          let responseWs = null;
-          const opConn = this.operatorConnections.get(seed);
-          if (opConn && opConn.ws && opConn.ws.readyState === WebSocket.OPEN) {
-            responseWs = opConn.ws;
-          } else if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
-            responseWs = this.seedWs;
-          }
-          
-          if (responseWs) {
-            responseWs.send(JSON.stringify({
-              type: 'ephemeral_sync_response',
-              events,
-              sinceTimestamp,
-              latestTimestamp: this.getEphemeralLatestTimestamp(),
-            }));
-            console.log(`📨 [Ephemeral] Sent ${events.length} events to operator ${seed} (backfill)`);
-          } else {
-            console.log(`📨 [Ephemeral] No active connection to respond to ${seed}`);
-          }
-        } catch (e) {
-          console.log(`📨 [Ephemeral] Error handling sync request:`, e.message);
-        }
+        this.handleEphemeralSyncRequest(message);
         break;
-
+      
       case 'ephemeral_sync_response':
-        // Operator is sending us ephemeral events
-        try {
-          const events = message.events || [];
+        if (Array.isArray(message.events)) {
           let imported = 0;
-          for (const event of events) {
-            if (this.importEphemeralEvent(event)) imported++;
+          for (const event of message.events) {
+            if (this.storeEphemeralEvent(event)) imported++;
           }
           if (imported > 0) {
-            console.log(`📨 [Ephemeral] Imported ${imported} events from operator`);
+            console.log(`📥 [Ephemeral] Imported ${imported} events from ${seed}`);
           }
-        } catch (e) {
-          console.log(`📨 [Ephemeral] Error processing sync response:`, e.message);
         }
         break;
-      // ============================================================
-      // END EPHEMERAL MESSAGE LEDGER
-      // ============================================================
       
       default:
         console.log(`📨 Unknown message from seed ${seed}:`, message.type);
@@ -1348,6 +1225,9 @@ class GatewayNode {
         console.error('❌ Failed to load registry data:', error);
       }
     }
+    
+    // Load communications ledger
+    this.loadEphemeralLedger();
 
     // Start HTTP server
     this.app.listen(EFFECTIVE_HTTP_PORT, () => {
@@ -1398,6 +1278,9 @@ class GatewayNode {
       } catch (error) {
         console.error('❌ Failed to save registry data:', error);
       }
+      
+      // Save communications ledger
+      this.saveEphemeralLedger();
     }, 60000);
   }
 
@@ -1415,6 +1298,10 @@ class GatewayNode {
     } catch (error) {
       console.error('❌ Failed to save registry data:', error);
     }
+    
+    // Save communications ledger
+    this.saveEphemeralLedger();
+    console.log(`💾 Saved ${this.ephemeralEvents.size} communications ledger events`);
     
     // Close WebSocket server
     if (this.wsServer) {
@@ -1570,6 +1457,105 @@ class GatewayNode {
 
     if (this.verificationResults.length > 100) {
       this.verificationResults = this.verificationResults.slice(-100);
+    }
+  }
+
+  // ============================================================
+  // COMMUNICATIONS LEDGER METHODS (ephemeral messages backup)
+  // ============================================================
+  
+  storeEphemeralEvent(event) {
+    if (!event || !event.eventId) return false;
+    if (this.ephemeralEvents.has(event.eventId)) return false;
+    if (event.expiresAt && event.expiresAt <= Date.now()) return false;
+    
+    this.ephemeralEvents.set(event.eventId, event);
+    
+    // Index contacts
+    if (event.eventType === 'CONTACT_ADDED' && event.payload) {
+      const { userId, contactId } = event.payload;
+      if (userId && contactId) {
+        if (!this.ephemeralContactsByUser.has(userId)) {
+          this.ephemeralContactsByUser.set(userId, new Set());
+        }
+        this.ephemeralContactsByUser.get(userId).add(contactId);
+      }
+    }
+    return true;
+  }
+  
+  handleEphemeralSyncRequest(message) {
+    const sinceTimestamp = Number(message.since || 0);
+    const maxEvents = Math.min(Number(message.limit || 500), 1000);
+    const now = Date.now();
+    const events = [];
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.timestamp > sinceTimestamp && (!event.expiresAt || event.expiresAt > now)) {
+        events.push(event);
+        if (events.length >= maxEvents) break;
+      }
+    }
+    
+    events.sort((a, b) => a.timestamp - b.timestamp);
+    
+    if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
+      this.seedWs.send(JSON.stringify({
+        type: 'ephemeral_sync_response',
+        events,
+        sinceTimestamp,
+        latestTimestamp: this.getLatestEphemeralTimestamp(),
+      }));
+      console.log(`📤 [Ephemeral] Sent ${events.length} events in sync response`);
+    }
+  }
+  
+  getLatestEphemeralTimestamp() {
+    let latest = 0;
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.timestamp > latest) latest = event.timestamp;
+    }
+    return latest;
+  }
+  
+  loadEphemeralLedger() {
+    const filePath = path.join(CONFIG.dataDir, 'communications-ledger.json');
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const now = Date.now();
+        for (const event of (data.events || [])) {
+          if (!event.expiresAt || event.expiresAt > now) {
+            this.ephemeralEvents.set(event.eventId, event);
+            if (event.eventType === 'CONTACT_ADDED' && event.payload) {
+              const { userId, contactId } = event.payload;
+              if (userId && contactId) {
+                if (!this.ephemeralContactsByUser.has(userId)) {
+                  this.ephemeralContactsByUser.set(userId, new Set());
+                }
+                this.ephemeralContactsByUser.get(userId).add(contactId);
+              }
+            }
+          }
+        }
+        console.log(`📚 Loaded ${this.ephemeralEvents.size} communications ledger events`);
+      }
+    } catch (e) {
+      console.error('Failed to load communications ledger:', e.message);
+    }
+  }
+  
+  saveEphemeralLedger() {
+    const filePath = path.join(CONFIG.dataDir, 'communications-ledger.json');
+    try {
+      const data = {
+        version: 1,
+        savedAt: Date.now(),
+        events: Array.from(this.ephemeralEvents.values()),
+      };
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    } catch (e) {
+      console.error('Failed to save communications ledger:', e.message);
     }
   }
 }
