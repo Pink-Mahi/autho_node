@@ -229,12 +229,40 @@
       color: #888;
     }
 
+    .media-buttons-row {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(30, 30, 30, 0.95);
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .media-buttons-row .media-btn {
+      flex: 1;
+      max-width: 100px;
+      padding: 0.4rem 0.6rem;
+      background: rgba(50, 50, 50, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      color: #d4af37;
+      font-size: 0.75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+
+    .media-buttons-row .media-btn:active {
+      background: rgba(212, 175, 55, 0.2);
+    }
+
     .chat-input-area {
       display: flex;
       gap: 0.5rem;
-      padding: 0.75rem;
+      padding: 0.5rem 0.75rem 0.75rem;
       background: rgba(30, 30, 30, 0.9);
-      border-top: 1px solid rgba(212, 175, 55, 0.2);
       align-items: center;
       flex-wrap: nowrap;
     }
@@ -952,12 +980,15 @@
         <button class="audio-send-btn" onclick="sendAudioRecording()">Send</button>
       </div>
 
+      <!-- Media buttons row (above input) -->
+      <div class="media-buttons-row">
+        <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷 Photo</button>
+        <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥 Video</button>
+        <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤 Audio</button>
+      </div>
+      
+      <!-- Text input row -->
       <div class="chat-input-area">
-        <div class="media-buttons">
-          <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷</button>
-          <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥</button>
-          <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤</button>
-        </div>
         <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..." 
                onkeypress="if(event.key==='Enter')sendMessage()">
         <button class="ptt-btn" id="pttBtn" title="Hold to talk">
