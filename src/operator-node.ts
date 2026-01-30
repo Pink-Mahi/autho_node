@@ -5195,6 +5195,73 @@ export class OperatorNode extends EventEmitter {
         }
         break;
 
+      // ============================================================
+      // EPHEMERAL MESSAGING P2P SYNC (via gateway connections)
+      // ============================================================
+      case 'ephemeral_event':
+        try {
+          const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
+          const eventData = message?.event as EphemeralEvent;
+
+          if (!eventData || !eventData.eventId || !eventData.eventType) {
+            break;
+          }
+
+          const imported = await this.ephemeralStore!.importEvent(eventData);
+
+          if (imported) {
+            console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from ${sourceOperatorId}: ${eventData.eventId}`);
+            // Re-broadcast to other peers (but not back to source)
+            this.broadcastEphemeralEvent(eventData, sourceOperatorId);
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error importing event:`, e?.message);
+        }
+        break;
+
+      case 'ephemeral_sync_request':
+        try {
+          const sinceTimestamp = Number(message?.since || 0);
+          const maxEvents = Math.min(Number(message?.limit || 500), 1000);
+          const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+
+          ws.send(JSON.stringify({
+            type: 'ephemeral_sync_response',
+            events,
+            sinceTimestamp,
+            latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
+          }));
+          console.log(`[Ephemeral] 📤 Sent ${events.length} events in sync response`);
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error handling sync request:`, e?.message);
+        }
+        break;
+
+      case 'ephemeral_sync_response':
+        try {
+          const events = message?.events as EphemeralEvent[];
+          if (Array.isArray(events)) {
+            let importedCount = 0;
+            for (const event of events) {
+              const imported = await this.ephemeralStore!.importEvent(event);
+              if (imported) importedCount++;
+            }
+            if (importedCount > 0) {
+              console.log(`[Ephemeral] 📥 Backfill: imported ${importedCount} events`);
+            }
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error processing sync response:`, e?.message);
+        }
+        break;
+
+      case 'ephemeral_event_ack':
+        // Acknowledgment received
+        break;
+      // ============================================================
+      // END EPHEMERAL MESSAGING P2P SYNC
+      // ============================================================
+
       default:
         console.log(`[Operator] Unknown message type from gateway: ${message.type}`);
     }
