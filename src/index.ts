@@ -54,7 +54,7 @@ async function main() {
     fallbackSeedUrls: fallbackSeeds,
     port: parseInt(process.env.PORT || '3000', 10),
     wsPort: parseInt(process.env.WS_PORT || '4001', 10),
-    dataDir: process.env.DATA_DIR || './data',
+    dataDir: process.env.DATA_DIR || '/data',
     network: (process.env.BITCOIN_NETWORK || 'testnet') as 'mainnet' | 'testnet',
     operatorName: process.env.OPERATOR_NAME,
     operatorDescription: process.env.OPERATOR_DESCRIPTION
