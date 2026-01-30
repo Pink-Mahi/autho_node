@@ -2123,9 +2123,11 @@
               </div>
             `;
           } else if (parsed.type === 'video') {
+            // Add #t=0.1 to show first frame as thumbnail on iOS
+            const videoSrc = parsed.content + (parsed.content.includes('#') ? '' : '#t=0.1');
             content = `
               <div class="message-media">
-                <video src="${parsed.content}" controls playsinline webkit-playsinline preload="metadata"></video>
+                <video src="${videoSrc}" controls playsinline webkit-playsinline preload="metadata"></video>
               </div>
             `;
           } else if (parsed.type === 'audio') {
