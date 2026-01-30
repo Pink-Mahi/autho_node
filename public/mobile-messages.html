@@ -1307,6 +1307,33 @@
       }).join('');
     }
 
+    // localStorage helpers for contact backup
+    function getLocalContacts() {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return [];
+        const key = `contacts_${wallet.publicKey.substring(0, 16)}`;
+        return JSON.parse(localStorage.getItem(key) || '[]');
+      } catch (e) { return []; }
+    }
+    
+    function saveLocalContacts(contacts) {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+        const key = `contacts_${wallet.publicKey.substring(0, 16)}`;
+        localStorage.setItem(key, JSON.stringify(contacts));
+      } catch (e) { console.error('Failed to save local contacts:', e); }
+    }
+    
+    function addLocalContact(contactId, displayName) {
+      const contacts = getLocalContacts();
+      if (!contacts.find(c => c.accountId === contactId)) {
+        contacts.push({ accountId: contactId, displayName: displayName || contactId.substring(0, 12) + '...' });
+        saveLocalContacts(contacts);
+      }
+    }
+
     async function loadContacts() {
       try {
         const response = await fetch('/api/messages/contacts', {
@@ -1318,10 +1345,45 @@
         const data = await response.json();
 
         if (data.success) {
-          renderContacts(data.contacts);
+          // Merge server contacts with local backup
+          const serverContacts = data.contacts || [];
+          const localContacts = getLocalContacts();
+          
+          // Build merged list (server takes priority for display names)
+          const merged = new Map();
+          for (const c of localContacts) {
+            merged.set(c.accountId, c);
+          }
+          for (const c of serverContacts) {
+            merged.set(c.accountId, c);
+          }
+          
+          const allContacts = Array.from(merged.values());
+          
+          // Save merged list back to localStorage
+          saveLocalContacts(allContacts);
+          
+          // Re-add any local-only contacts to server
+          for (const local of localContacts) {
+            if (!serverContacts.find(s => s.accountId === local.accountId)) {
+              // Silently re-add to server
+              fetch('/api/messages/contacts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+                body: JSON.stringify({ contactId: local.accountId, displayName: local.displayName })
+              }).catch(() => {});
+            }
+          }
+          
+          renderContacts(allContacts);
         }
       } catch (error) {
         console.error('Failed to load contacts:', error);
+        // Fall back to local contacts
+        const localContacts = getLocalContacts();
+        if (localContacts.length > 0) {
+          renderContacts(localContacts);
+        }
       }
     }
 
@@ -1859,6 +1921,9 @@
         return;
       }
       
+      // Always save to localStorage first (backup)
+      addLocalContact(contactId);
+      
       try {
         const res = await fetch('/api/messages/contacts', {
           method: 'POST',
@@ -1871,14 +1936,14 @@
         
         if (res.ok) {
           alert('Contact added! Tap their name in the list to start chatting.');
-          loadConversations();
+          loadContacts(); // Refresh contacts list
         } else {
           const data = await res.json().catch(() => ({}));
           alert('Failed to add contact: ' + (data.error || 'Unknown error'));
         }
       } catch (e) {
         console.error('Add contact error:', e);
-        alert('Error adding contact');
+        alert('Contact saved locally. Will sync when server is available.');
       }
     }
 
