@@ -576,12 +576,15 @@
     let currentFilter = 'all';
     let searchResults = [];
 
-    // Perform search
+    // Load all items on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      performSearch(); // Load all items initially
+    });
+
+    // Perform search (empty query = browse all)
     async function performSearch() {
       const query = document.getElementById('searchQuery').value.trim();
-      if (!query && !document.getElementById('manufacturerFilter').value && !document.getElementById('serialFilter').value) {
-        return;
-      }
+      // Allow empty search to browse all items
 
       showLoading(true);
       hideEmptyState();
@@ -608,10 +611,23 @@
         const data = await response.json();
 
         if (data.success && data.results) {
-          searchResults = data.results;
+          // Extract items from search results (API returns { item: {...}, score, ... })
+          searchResults = data.results.map(r => {
+            const item = r.item || r;
+            // Flatten metadata into item for easier access
+            return {
+              ...item,
+              name: item.metadata?.name || item.name,
+              category: item.metadata?.category || item.category,
+              brand: item.metadata?.brand || item.brand,
+              model: item.metadata?.model || item.model,
+              isDuplicate: r.isDuplicate,
+              duplicateOf: r.duplicateOf,
+            };
+          });
           displayResults(searchResults);
         } else {
-          showEmptyState('No results found', 'Try adjusting your search terms or filters.');
+          showEmptyState('No items on ledger yet', 'Items will appear here once manufacturers register them.');
         }
       } catch (error) {
         console.error('Search error:', error);
