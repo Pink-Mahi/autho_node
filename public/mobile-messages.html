@@ -899,7 +899,7 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
@@ -1451,36 +1451,25 @@
       const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
       document.getElementById('shareLink').value = shareUrl;
       
-      // Generate QR code using an img-based API as reliable fallback
+      // Generate QR code using qrcodejs library (same as mobile-verify.html)
       const qrContainer = document.getElementById('qrContainer');
-      qrContainer.innerHTML = '<div style="color:#999;padding:20px;">Generating QR...</div>';
+      qrContainer.innerHTML = '';
       
-      // Use QR Server API (reliable, no library needed)
-      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(shareUrl)}`;
-      const img = document.createElement('img');
-      img.src = qrApiUrl;
-      img.style.borderRadius = '12px';
-      img.style.width = '200px';
-      img.style.height = '200px';
-      img.alt = 'Contact QR Code';
-      img.onload = () => {
-        qrContainer.innerHTML = '';
-        qrContainer.appendChild(img);
-      };
-      img.onerror = () => {
-        // Fallback to local library if API fails
-        if (typeof QRCode !== 'undefined') {
-          QRCode.toDataURL(shareUrl, { width: 200, margin: 2 }).then(dataUrl => {
-            img.src = dataUrl;
-            qrContainer.innerHTML = '';
-            qrContainer.appendChild(img);
-          }).catch(() => {
-            qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR generation failed</div>';
-          });
-        } else {
-          qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR generation failed</div>';
+      try {
+        if (typeof QRCode !== 'function') {
+          qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR library not available</div>';
+          return;
         }
-      };
+        new QRCode(qrContainer, {
+          text: shareUrl,
+          width: 200,
+          height: 200,
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch (e) {
+        console.error('QR generation error:', e);
+        qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR generation failed</div>';
+      }
       
       document.getElementById('shareModal').style.display = 'flex';
     }
