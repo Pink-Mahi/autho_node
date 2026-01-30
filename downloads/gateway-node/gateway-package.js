@@ -1236,14 +1236,25 @@ class GatewayNode {
           const limit = Math.min(Number(message.limit || 500), 1000);
           const events = this.getEphemeralEventsSince(sinceTimestamp, limit);
           
-          if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
-            this.seedWs.send(JSON.stringify({
+          // Find the correct WebSocket to respond to (could be operator or seed connection)
+          let responseWs = null;
+          const opConn = this.operatorConnections.get(seed);
+          if (opConn && opConn.ws && opConn.ws.readyState === WebSocket.OPEN) {
+            responseWs = opConn.ws;
+          } else if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
+            responseWs = this.seedWs;
+          }
+          
+          if (responseWs) {
+            responseWs.send(JSON.stringify({
               type: 'ephemeral_sync_response',
               events,
               sinceTimestamp,
               latestTimestamp: this.getEphemeralLatestTimestamp(),
             }));
-            console.log(`📨 [Ephemeral] Sent ${events.length} events to operator (backfill)`);
+            console.log(`📨 [Ephemeral] Sent ${events.length} events to operator ${seed} (backfill)`);
+          } else {
+            console.log(`📨 [Ephemeral] No active connection to respond to ${seed}`);
           }
         } catch (e) {
           console.log(`📨 [Ephemeral] Error handling sync request:`, e.message);

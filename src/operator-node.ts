@@ -3653,7 +3653,7 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const { recipientId, encryptedContent, encryptedForSender, itemId, replyToMessageId } = req.body;
+        const { recipientId, encryptedContent, encryptedForSender, itemId, replyToMessageId, conversationId: providedConversationId } = req.body;
 
         if (!recipientId || !encryptedContent) {
           res.status(400).json({ success: false, error: 'recipientId and encryptedContent required' });
@@ -3666,8 +3666,8 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        // Generate conversation ID
-        const conversationId = this.ephemeralStore!.generateConversationId(
+        // Use provided conversationId (for replies) or generate new one
+        const conversationId = providedConversationId || this.ephemeralStore!.generateConversationId(
           account.accountId, recipientId, itemId
         );
 
@@ -3766,10 +3766,16 @@ export class OperatorNode extends EventEmitter {
 
         const messages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
 
-        // Filter to only show messages where user is sender or recipient
+        // Get user's walletAddress to match against recipientId (which may be Bitcoin address)
+        const fullAccount = this.state.accounts.get(account.accountId) as any;
+        const walletAddress = fullAccount?.walletAddress || fullAccount?.identityAddress;
+
+        // Filter to only show messages where user is sender or recipient (by accountId OR walletAddress)
         const filtered = messages.filter(m => {
           const p = m.payload as MessagePayload;
-          return p.senderId === account.accountId || p.recipientId === account.accountId;
+          const isUserSender = p.senderId === account.accountId || p.senderId === walletAddress;
+          const isUserRecipient = p.recipientId === account.accountId || p.recipientId === walletAddress;
+          return isUserSender || isUserRecipient;
         });
 
         res.json({
@@ -3779,7 +3785,7 @@ export class OperatorNode extends EventEmitter {
             messageId: m.payload.messageId,
             senderId: m.payload.senderId,
             recipientId: m.payload.recipientId,
-            encryptedContent: m.payload.senderId === account.accountId 
+            encryptedContent: (m.payload.senderId === account.accountId || m.payload.senderId === walletAddress)
               ? m.payload.encryptedForSender 
               : m.payload.encryptedContent,
             itemId: m.payload.itemId,
