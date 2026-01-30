@@ -925,7 +925,7 @@
         window.location.href = `/mobile-messages.html?itemId=${itemId}&to=${ownerId}`;
       } else {
         // Redirect to login first
-        window.location.href = `/m/login?redirect=${encodeURIComponent('/mobile-messages.html?itemId=' + itemId + '&to=' + ownerId)}`;
+        window.location.href = `/m/login?return=${encodeURIComponent('/mobile-messages.html?itemId=' + itemId + '&to=' + ownerId)}`;
       }
     }
 
