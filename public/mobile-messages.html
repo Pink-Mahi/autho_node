@@ -19,6 +19,27 @@
       margin-bottom: 1.5rem;
       padding-bottom: 1rem;
       border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .back-to-dashboard {
+      color: #d4af37;
+      text-decoration: none;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      border-radius: 6px;
+      background: rgba(212, 175, 55, 0.1);
+      transition: all 0.2s;
+    }
+
+    .back-to-dashboard:hover {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
     }
 
     .page-title {
@@ -752,6 +773,7 @@
     <!-- Inbox View -->
     <div id="inboxView">
       <div class="page-header">
+        <a href="/m/wallet" class="back-to-dashboard">← Dashboard</a>
         <div class="page-title">
           <span>💬</span> Messages
         </div>
@@ -914,6 +936,17 @@
     let myEncryptionKeyPair = null; // Derived X25519 keypair for E2E encryption
     let conversations = [];
 
+    // Helper: Check response for auth errors and redirect to login
+    function checkAuthAndRedirect(response) {
+      if (response.status === 401 || response.status === 403) {
+        WalletAuth.clearWallet();
+        alert('Session expired. Please log in again.');
+        window.location.href = '/m/login?redirect=/m/messages';
+        return true;
+      }
+      return false;
+    }
+
     // ============================================================
     // E2E ENCRYPTION (Signal-grade: Curve25519 + XSalsa20-Poly1305)
     // ============================================================
@@ -1065,11 +1098,10 @@
           headers: WalletAuth.getAuthHeaders()
         });
         
-        // Redirect to login if not authenticated
-        if (response.status === 401 || response.status === 403) {
-          WalletAuth.clearWallet();
-          window.location.href = '/m/login?redirect=/m/messages';
-          return;
+        if (checkAuthAndRedirect(response)) return;
+        
+        if (!response.ok) {
+          throw new Error('Failed to load conversations');
         }
         
         const data = await response.json();
@@ -1133,12 +1165,7 @@
           headers: WalletAuth.getAuthHeaders()
         });
         
-        // Redirect to login if not authenticated
-        if (response.status === 401 || response.status === 403) {
-          WalletAuth.clearWallet();
-          window.location.href = '/m/login?redirect=/m/messages';
-          return;
-        }
+        if (checkAuthAndRedirect(response)) return;
         
         const data = await response.json();
 
