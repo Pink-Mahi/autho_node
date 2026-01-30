@@ -1174,8 +1174,12 @@
       // For now, if the content looks like JSON, it might be our envelope format
       try {
         const parsed = JSON.parse(encryptedContent);
-        if (parsed.content) return parsed.content;
         if (parsed.ciphertext) return '[Encrypted - decryption pending]';
+        // Return full envelope for media, just content for text
+        if (parsed.type && parsed.type !== 'text') {
+          return JSON.stringify(parsed); // Return as string to be re-parsed by renderMessages
+        }
+        if (parsed.content) return parsed.content;
       } catch (e) {}
       return encryptedContent;
     }
