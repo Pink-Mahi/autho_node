@@ -1576,7 +1576,6 @@
 
     function handleQrResult(data) {
       console.log('QR scanned:', data);
-      stopQrScanner();
       
       // Extract contact ID from scanned data
       let contactId = data;
@@ -1590,14 +1589,14 @@
         } catch {}
       }
       
-      // Fill input and auto-add
-      document.getElementById('addContactInput').value = contactId;
-      document.getElementById('qrScannerStatus').textContent = 'Contact found!';
+      // Stop scanner and close modal immediately
+      stopQrScanner();
+      closeModals();
       
-      // Auto-add after short delay
-      setTimeout(() => {
-        addContactFromInput();
-      }, 500);
+      // Start chat with scanned contact
+      if (contactId) {
+        addContactAndStartChat(contactId);
+      }
     }
 
     function closeModals() {
