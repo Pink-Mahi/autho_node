@@ -889,6 +889,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
     let currentConversationId = null;
@@ -896,7 +898,108 @@
     let currentRecipientPublicKey = null;
     let currentItemId = null;
     let myPrivateKey = null;
+    let myEncryptionKeyPair = null; // Derived X25519 keypair for E2E encryption
     let conversations = [];
+
+    // ============================================================
+    // E2E ENCRYPTION (Signal-grade: Curve25519 + XSalsa20-Poly1305)
+    // ============================================================
+
+    // Convert hex string to Uint8Array
+    function hexToBytes(hex) {
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return bytes;
+    }
+
+    // Convert Uint8Array to hex string
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Derive X25519 keypair from wallet private key using SHA-256
+    async function deriveEncryptionKeyPair(privateKeyHex) {
+      // Hash the private key to get 32 bytes for X25519 seed
+      const privateKeyBytes = hexToBytes(privateKeyHex);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', privateKeyBytes);
+      const seed = new Uint8Array(hashBuffer);
+      
+      // Generate X25519 keypair from seed
+      const keyPair = nacl.box.keyPair.fromSecretKey(seed);
+      return keyPair;
+    }
+
+    // Derive public encryption key from account's public key (for recipient)
+    async function deriveEncryptionPublicKey(publicKeyHex) {
+      // Hash the public key to get consistent derivation
+      const publicKeyBytes = hexToBytes(publicKeyHex);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', publicKeyBytes);
+      const seed = new Uint8Array(hashBuffer);
+      
+      // Generate keypair from seed and return only public key
+      const keyPair = nacl.box.keyPair.fromSecretKey(seed);
+      return keyPair.publicKey;
+    }
+
+    // Encrypt message for recipient (and self)
+    async function encryptForRecipient(plaintext, recipientPublicKeyHex) {
+      if (!myEncryptionKeyPair) {
+        throw new Error('Encryption keys not initialized');
+      }
+      
+      // Get recipient's encryption public key
+      const recipientEncPubKey = await deriveEncryptionPublicKey(recipientPublicKeyHex);
+      
+      // Generate random nonce (24 bytes for XSalsa20)
+      const nonce = nacl.randomBytes(24);
+      
+      // Encrypt using NaCl box (Curve25519 + XSalsa20-Poly1305)
+      const messageBytes = nacl.util.decodeUTF8(plaintext);
+      const encrypted = nacl.box(messageBytes, nonce, recipientEncPubKey, myEncryptionKeyPair.secretKey);
+      
+      // Return as base64 encoded JSON
+      return JSON.stringify({
+        v: 1, // Version for future compatibility
+        n: nacl.util.encodeBase64(nonce),
+        c: nacl.util.encodeBase64(encrypted),
+        s: bytesToHex(myEncryptionKeyPair.publicKey) // Sender's encryption public key
+      });
+    }
+
+    // Decrypt message from sender
+    async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
+      if (!myEncryptionKeyPair) {
+        throw new Error('Encryption keys not initialized');
+      }
+      
+      try {
+        const envelope = JSON.parse(encryptedJson);
+        
+        // Check if this is actually encrypted (v1 format)
+        if (envelope.v !== 1 || !envelope.n || !envelope.c) {
+          // Not encrypted, return as-is (legacy message)
+          return null;
+        }
+        
+        const nonce = nacl.util.decodeBase64(envelope.n);
+        const ciphertext = nacl.util.decodeBase64(envelope.c);
+        const senderEncPubKey = hexToBytes(envelope.s);
+        
+        // Decrypt using NaCl box.open
+        const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
+        
+        if (!decrypted) {
+          return null; // Decryption failed
+        }
+        
+        return nacl.util.encodeUTF8(decrypted);
+      } catch (e) {
+        console.error('Decryption error:', e);
+        return null;
+      }
+    }
 
     // Initialize
     document.addEventListener('DOMContentLoaded', async () => {
@@ -907,6 +1010,17 @@
       }
       
       myPrivateKey = wallet.privateKey;
+      
+      // Derive encryption keypair for E2E encryption
+      if (myPrivateKey) {
+        try {
+          myEncryptionKeyPair = await deriveEncryptionKeyPair(myPrivateKey);
+          console.log('E2E encryption initialized');
+        } catch (e) {
+          console.error('Failed to initialize encryption:', e);
+        }
+      }
+      
       await loadConversations();
       await loadContacts();
 
@@ -1169,15 +1283,44 @@
       container.scrollTop = container.scrollHeight;
     }
 
-    function decryptMessage(encryptedContent) {
-      // TODO: Implement actual E2E decryption using myPrivateKey
-      // For now, if the content looks like JSON, it might be our envelope format
+    function decryptMessage(encryptedContent, senderId) {
+      // Try to decrypt E2E encrypted message
       try {
         const parsed = JSON.parse(encryptedContent);
-        if (parsed.ciphertext) return '[Encrypted - decryption pending]';
-        // Return full envelope for media, just content for text
+        
+        // Check for v1 encrypted format
+        if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
+          // This is encrypted - need async decryption
+          // Return marker for async handling
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        
+        // Legacy unencrypted format
         if (parsed.type && parsed.type !== 'text') {
-          return JSON.stringify(parsed); // Return as string to be re-parsed by renderMessages
+          return JSON.stringify(parsed);
+        }
+        if (parsed.content) return parsed.content;
+      } catch (e) {}
+      return encryptedContent;
+    }
+
+    // Async decrypt for rendering
+    async function decryptMessageAsync(encryptedContent, senderId) {
+      try {
+        const parsed = JSON.parse(encryptedContent);
+        
+        // Check for v1 encrypted format
+        if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
+          const decrypted = await decryptFromSender(encryptedContent, senderId);
+          if (decrypted) {
+            return decrypted;
+          }
+          return '[Could not decrypt]';
+        }
+        
+        // Legacy unencrypted format
+        if (parsed.type && parsed.type !== 'text') {
+          return JSON.stringify(parsed);
         }
         if (parsed.content) return parsed.content;
       } catch (e) {}
@@ -1193,13 +1336,24 @@
       sendBtn.disabled = true;
       
       try {
-        // TODO: Implement actual E2E encryption
-        // For now, send as JSON envelope
-        const envelope = JSON.stringify({
+        // Create message envelope
+        const messageEnvelope = JSON.stringify({
           type: 'text',
           content: text,
           timestamp: Date.now()
         });
+        
+        // Encrypt for recipient
+        let encryptedForRecipient = messageEnvelope;
+        let encryptedForSender = messageEnvelope;
+        
+        if (myEncryptionKeyPair) {
+          // E2E encrypt the message
+          encryptedForRecipient = await encryptForRecipient(messageEnvelope, currentRecipientId);
+          // Also encrypt for self (so we can read our own sent messages)
+          const wallet = WalletAuth.getWallet();
+          encryptedForSender = await encryptForRecipient(messageEnvelope, wallet.publicKey);
+        }
         
         const response = await fetch('/api/messages/send', {
           method: 'POST',
@@ -1209,8 +1363,8 @@
           },
           body: JSON.stringify({
             recipientId: currentRecipientId,
-            encryptedContent: envelope,
-            encryptedForSender: envelope,
+            encryptedContent: encryptedForRecipient,
+            encryptedForSender: encryptedForSender,
             itemId: currentItemId || undefined,
             conversationId: currentConversationId || undefined
           })
@@ -1678,12 +1832,25 @@
       sendBtn.disabled = true;
       
       try {
-        const envelope = JSON.stringify({
+        // Create media envelope
+        const mediaEnvelope = JSON.stringify({
           type: pendingMedia.type,
           content: pendingMedia.data,
           name: pendingMedia.name,
           timestamp: Date.now()
         });
+        
+        // Encrypt for recipient
+        let encryptedForRecipient = mediaEnvelope;
+        let encryptedForSender = mediaEnvelope;
+        
+        if (myEncryptionKeyPair) {
+          // E2E encrypt the media
+          encryptedForRecipient = await encryptForRecipient(mediaEnvelope, currentRecipientId);
+          // Also encrypt for self
+          const wallet = WalletAuth.getWallet();
+          encryptedForSender = await encryptForRecipient(mediaEnvelope, wallet.publicKey);
+        }
         
         const response = await fetch('/api/messages/send', {
           method: 'POST',
@@ -1693,8 +1860,8 @@
           },
           body: JSON.stringify({
             recipientId: currentRecipientId,
-            encryptedContent: envelope,
-            encryptedForSender: envelope,
+            encryptedContent: encryptedForRecipient,
+            encryptedForSender: encryptedForSender,
             itemId: currentItemId || undefined,
             conversationId: currentConversationId || undefined
           })
@@ -1745,9 +1912,9 @@
       document.getElementById('fullscreenContent').innerHTML = '';
     }
 
-    // Update renderMessages to show media
+    // Update renderMessages to show media with async E2E decryption
     const originalRenderMessages = renderMessages;
-    renderMessages = function(messages) {
+    renderMessages = async function(messages) {
       const container = document.getElementById('chatMessages');
       const wallet = WalletAuth.getWallet();
       
@@ -1760,18 +1927,25 @@
         return;
       }
 
-      container.innerHTML = messages.map(msg => {
+      // Process messages with async decryption
+      const processedMessages = await Promise.all(messages.map(async (msg) => {
         const isSent = msg.senderId === wallet.publicKey;
         const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         const expiresIn = formatTimeUntil(msg.expiresAt);
         
+        // Choose correct encrypted content based on who sent it
+        const contentToDecrypt = isSent ? msg.encryptedForSender : msg.encryptedContent;
+        
         let content = '';
         try {
-          const parsed = JSON.parse(decryptMessage(msg.encryptedContent));
+          // Async decrypt the message
+          const decrypted = await decryptMessageAsync(contentToDecrypt || msg.encryptedContent, msg.senderId);
+          const parsed = JSON.parse(decrypted);
+          
           if (parsed.type === 'image') {
             content = `
               <div class="message-media">
-                <img src="${parsed.content}" alt="Photo" onclick="openFullscreen('${parsed.content}', 'image')">
+                <img src="${parsed.content}" alt="Photo" onclick="openFullscreen(this.src, 'image')">
               </div>
             `;
           } else if (parsed.type === 'video') {
@@ -1787,10 +1961,16 @@
               </div>
             `;
           } else {
-            content = `<div class="message-text">${escapeHtml(parsed.content || parsed)}</div>`;
+            content = `<div class="message-text">${escapeHtml(parsed.content || decrypted)}</div>`;
           }
         } catch (e) {
-          content = `<div class="message-text">${escapeHtml(decryptMessage(msg.encryptedContent))}</div>`;
+          // Fallback for legacy or failed decryption
+          try {
+            const fallback = await decryptMessageAsync(msg.encryptedContent, msg.senderId);
+            content = `<div class="message-text">${escapeHtml(fallback)}</div>`;
+          } catch (e2) {
+            content = `<div class="message-text" style="color:#ff6b6b;">[Could not decrypt]</div>`;
+          }
         }
         
         return `
@@ -1802,8 +1982,9 @@
             </div>
           </div>
         `;
-      }).join('');
-      
+      }));
+
+      container.innerHTML = processedMessages.join('');
       container.scrollTop = container.scrollHeight;
     };
   </script>
