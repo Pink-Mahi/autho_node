@@ -3956,7 +3956,7 @@ export class OperatorNode extends EventEmitter {
           // Look up account by their Bitcoin address to get their accountId (public key)
           for (const [accId, acc] of this.state.accounts.entries()) {
             const accAny = acc as any;
-            if (accAny.address === ownerAddress || accAny.paymentAddress === ownerAddress || accId === ownerAddress) {
+            if (accAny.walletAddress === ownerAddress || accId === ownerAddress) {
               ownerAccountId = accId;
               break;
             }
