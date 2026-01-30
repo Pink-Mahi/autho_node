@@ -1451,8 +1451,18 @@
       const qrContainer = document.getElementById('qrContainer');
       qrContainer.innerHTML = '';
       if (typeof QRCode !== 'undefined') {
-        QRCode.toCanvas(shareUrl, { width: 200, margin: 2 }, (err, canvas) => {
-          if (!err) qrContainer.appendChild(canvas);
+        const canvas = document.createElement('canvas');
+        QRCode.toCanvas(canvas, shareUrl, { 
+          width: 200, 
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' }
+        }, (err) => {
+          if (!err) {
+            canvas.style.borderRadius = '12px';
+            qrContainer.appendChild(canvas);
+          } else {
+            console.error('QR generation error:', err);
+          }
         });
       }
       
