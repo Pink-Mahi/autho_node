@@ -935,6 +935,9 @@
     let myPrivateKey = null;
     let myEncryptionKeyPair = null; // Derived X25519 keypair for E2E encryption
     let conversations = [];
+    let messagePollingInterval = null;
+    let inboxPollingInterval = null;
+    const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
 
     // Helper: Check response for auth errors and redirect to login
     function checkAuthAndRedirect(response) {
@@ -1069,6 +1072,9 @@
       
       await loadConversations();
       await loadContacts();
+      
+      // Start inbox polling for new conversations
+      startInboxPolling();
 
       // Check for URL parameters
       const params = new URLSearchParams(window.location.search);
@@ -1226,6 +1232,40 @@
       document.getElementById('chatParticipantName').textContent = participant?.displayName || recipientId.substring(0, 12) + '...';
       
       await loadMessages(conversationId);
+      
+      // Stop inbox polling, start message polling
+      stopInboxPolling();
+      startMessagePolling();
+    }
+    
+    function startMessagePolling() {
+      stopMessagePolling(); // Clear any existing interval
+      messagePollingInterval = setInterval(async () => {
+        if (currentConversationId) {
+          await loadMessages(currentConversationId);
+        }
+      }, POLL_INTERVAL_MS);
+    }
+    
+    function stopMessagePolling() {
+      if (messagePollingInterval) {
+        clearInterval(messagePollingInterval);
+        messagePollingInterval = null;
+      }
+    }
+    
+    function startInboxPolling() {
+      stopInboxPolling();
+      inboxPollingInterval = setInterval(async () => {
+        await loadConversations();
+      }, POLL_INTERVAL_MS);
+    }
+    
+    function stopInboxPolling() {
+      if (inboxPollingInterval) {
+        clearInterval(inboxPollingInterval);
+        inboxPollingInterval = null;
+      }
     }
 
     async function openConversationWithItem(recipientId, itemId) {
@@ -1251,6 +1291,10 @@
       document.getElementById('chatParticipantName').textContent = 'Item Owner';
       
       await loadMessages(convId);
+      
+      // Stop inbox polling, start message polling
+      stopInboxPolling();
+      startMessagePolling();
     }
 
     async function generateConversationId(p1, p2, itemId) {
@@ -1436,6 +1480,11 @@
       document.getElementById('inboxView').style.display = 'block';
       currentConversationId = null;
       currentRecipientId = null;
+      
+      // Stop message polling, start inbox polling
+      stopMessagePolling();
+      startInboxPolling();
+      
       loadConversations();
     }
 
