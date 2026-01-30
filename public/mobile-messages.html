@@ -258,13 +258,18 @@
       background: rgba(212, 175, 55, 0.2);
     }
 
-    .chat-input-area {
+    .chat-input-row {
       display: flex;
-      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(30, 30, 30, 0.9);
+    }
+
+    .chat-actions-row {
+      display: flex;
+      gap: 0.75rem;
       padding: 0.5rem 0.75rem 0.75rem;
       background: rgba(30, 30, 30, 0.9);
-      align-items: center;
-      flex-wrap: nowrap;
+      justify-content: center;
     }
 
     .chat-input {
@@ -285,17 +290,17 @@
     .chat-send-btn {
       background: #d4af37;
       border: none;
-      border-radius: 50%;
-      width: 44px;
-      min-width: 44px;
+      border-radius: 12px;
+      flex: 1;
       height: 44px;
       color: #000;
-      font-size: 1.25rem;
+      font-size: 1rem;
+      font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
+      gap: 0.5rem;
     }
 
     .chat-send-btn:disabled {
@@ -307,17 +312,16 @@
     .ptt-btn {
       background: linear-gradient(145deg, #2a5d2a, #1a3d1a);
       border: 2px solid #4CAF50;
-      border-radius: 50%;
-      width: 44px;
-      min-width: 44px;
+      border-radius: 12px;
+      flex: 1;
       height: 44px;
       color: #fff;
       cursor: pointer;
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
+      gap: 0.5rem;
       transition: all 0.2s;
       -webkit-user-select: none;
       user-select: none;
@@ -988,14 +992,18 @@
       </div>
       
       <!-- Text input row -->
-      <div class="chat-input-area">
+      <div class="chat-input-row">
         <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..." 
                onkeypress="if(event.key==='Enter')sendMessage()">
+      </div>
+      
+      <!-- Action buttons row (below input) -->
+      <div class="chat-actions-row">
         <button class="ptt-btn" id="pttBtn" title="Hold to talk">
           <span class="ptt-icon">🎙️</span>
-          <span class="ptt-text">Hold</span>
+          <span class="ptt-text">Hold to Talk</span>
         </button>
-        <button class="chat-send-btn" onclick="sendMessage()" id="sendBtn">➤</button>
+        <button class="chat-send-btn" onclick="sendMessage()" id="sendBtn">➤ Send</button>
       </div>
       
       <!-- Push-to-Talk Recording Indicator -->
