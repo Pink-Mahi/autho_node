@@ -1731,7 +1731,26 @@
       return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     }
 
-    // Audio Recording
+    // Audio Recording - detect best supported format for iOS/Android compatibility
+    function getSupportedAudioMimeType() {
+      const types = [
+        'audio/mp4',           // iOS Safari preferred
+        'audio/aac',           // iOS fallback
+        'audio/webm;codecs=opus', // Chrome/Firefox preferred
+        'audio/webm',          // Generic WebM
+        'audio/ogg;codecs=opus',
+        ''                     // Let browser choose default
+      ];
+      for (const type of types) {
+        if (type === '' || MediaRecorder.isTypeSupported(type)) {
+          return type;
+        }
+      }
+      return '';
+    }
+
+    let audioMimeType = '';
+
     async function toggleAudioRecording() {
       if (audioRecorder && audioRecorder.state === 'recording') {
         // Already recording - stop will be handled by sendAudioRecording
@@ -1740,8 +1759,15 @@
       
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioRecorder = new MediaRecorder(stream);
+        
+        // Use iOS-compatible format if available
+        audioMimeType = getSupportedAudioMimeType();
+        const options = audioMimeType ? { mimeType: audioMimeType } : {};
+        
+        audioRecorder = new MediaRecorder(stream, options);
         audioChunks = [];
+        
+        console.log('Recording with MIME type:', audioRecorder.mimeType);
         
         audioRecorder.ondataavailable = (e) => {
           audioChunks.push(e.data);
@@ -1804,7 +1830,10 @@
       // Wait for data to be available
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      // Use the actual MIME type from the recorder (handles iOS MP4 vs Chrome WebM)
+      const actualMimeType = audioRecorder?.mimeType || audioMimeType || 'audio/webm';
+      const blob = new Blob(audioChunks, { type: actualMimeType });
+      console.log('Audio blob created with type:', actualMimeType);
       const data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);

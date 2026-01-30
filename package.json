@@ -41,6 +41,8 @@
     "bip32": "^5.0.0",
     "bip39": "^3.1.0",
     "ts-node": "^10.9.2",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
     "typescript": "^5.3.3"
   },
   "engines": {
