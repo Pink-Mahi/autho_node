@@ -534,6 +534,212 @@
       border-color: #4CAF50;
       color: #4CAF50;
     }
+
+    /* Media Messaging Styles */
+    .media-buttons {
+      display: flex;
+      gap: 0.25rem;
+      padding-right: 0.5rem;
+    }
+
+    .media-btn {
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 1.25rem;
+      padding: 0.5rem;
+      cursor: pointer;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .media-btn:hover {
+      color: #d4af37;
+      background: rgba(212, 175, 55, 0.1);
+    }
+
+    .media-btn.recording {
+      color: #ff4444;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .media-preview {
+      background: rgba(30, 30, 30, 0.95);
+      padding: 0.75rem;
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+      display: none;
+    }
+
+    .media-preview.active {
+      display: block;
+    }
+
+    .media-preview-content {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .media-preview img,
+    .media-preview video {
+      max-width: 120px;
+      max-height: 80px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .media-preview-info {
+      flex: 1;
+      color: #888;
+      font-size: 0.75rem;
+    }
+
+    .media-preview-name {
+      color: #fff;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .media-preview-remove {
+      background: rgba(255, 68, 68, 0.2);
+      border: none;
+      color: #ff4444;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .audio-recorder {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(30, 30, 30, 0.95);
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .audio-recorder.active {
+      display: flex;
+    }
+
+    .audio-timer {
+      color: #ff4444;
+      font-family: monospace;
+      font-size: 1rem;
+      min-width: 50px;
+    }
+
+    .audio-waveform {
+      flex: 1;
+      height: 30px;
+      background: rgba(255, 68, 68, 0.1);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .audio-bar {
+      width: 3px;
+      background: #ff4444;
+      border-radius: 2px;
+      animation: audioWave 0.5s ease-in-out infinite;
+    }
+
+    @keyframes audioWave {
+      0%, 100% { height: 5px; }
+      50% { height: 20px; }
+    }
+
+    .audio-cancel-btn {
+      background: rgba(255, 68, 68, 0.2);
+      border: none;
+      color: #ff4444;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .audio-send-btn {
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .message-media {
+      margin-top: 0.5rem;
+      max-width: 250px;
+    }
+
+    .message-media img {
+      width: 100%;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .message-media video {
+      width: 100%;
+      border-radius: 8px;
+    }
+
+    .message-media audio {
+      width: 100%;
+      height: 36px;
+    }
+
+    .media-fullscreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .media-fullscreen.active {
+      display: flex;
+    }
+
+    .media-fullscreen img,
+    .media-fullscreen video {
+      max-width: 95%;
+      max-height: 95%;
+      object-fit: contain;
+    }
+
+    .media-fullscreen-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: #fff;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    .hidden-input {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -600,12 +806,53 @@
         <span>🔒</span> End-to-end encrypted
       </div>
 
+      <!-- Media Preview -->
+      <div class="media-preview" id="mediaPreview">
+        <div class="media-preview-content">
+          <div id="mediaPreviewThumb"></div>
+          <div class="media-preview-info">
+            <div class="media-preview-name" id="mediaPreviewName">Photo</div>
+            <div id="mediaPreviewSize">0 KB</div>
+          </div>
+          <button class="media-preview-remove" onclick="clearMediaPreview()">×</button>
+        </div>
+      </div>
+
+      <!-- Audio Recorder -->
+      <div class="audio-recorder" id="audioRecorder">
+        <div class="audio-timer" id="audioTimer">0:00</div>
+        <div class="audio-waveform">
+          <div class="audio-bar" style="animation-delay: 0s"></div>
+          <div class="audio-bar" style="animation-delay: 0.1s"></div>
+          <div class="audio-bar" style="animation-delay: 0.2s"></div>
+          <div class="audio-bar" style="animation-delay: 0.3s"></div>
+          <div class="audio-bar" style="animation-delay: 0.4s"></div>
+        </div>
+        <button class="audio-cancel-btn" onclick="cancelAudioRecording()">Cancel</button>
+        <button class="audio-send-btn" onclick="sendAudioRecording()">Send</button>
+      </div>
+
       <div class="chat-input-area">
+        <div class="media-buttons">
+          <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷</button>
+          <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥</button>
+          <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤</button>
+        </div>
         <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..." 
                onkeypress="if(event.key==='Enter')sendMessage()">
         <button class="chat-send-btn" onclick="sendMessage()" id="sendBtn">➤</button>
       </div>
+
+      <!-- Hidden file inputs -->
+      <input type="file" id="photoInput" class="hidden-input" accept="image/*" capture="environment" onchange="handlePhotoSelect(event)">
+      <input type="file" id="videoInput" class="hidden-input" accept="video/*" capture="environment" onchange="handleVideoSelect(event)">
     </div>
+  </div>
+
+  <!-- Fullscreen Media Viewer -->
+  <div class="media-fullscreen" id="mediaFullscreen" onclick="closeFullscreen()">
+    <button class="media-fullscreen-close">×</button>
+    <div id="fullscreenContent"></div>
   </div>
 
   <!-- Share Contact Modal -->
@@ -1173,6 +1420,388 @@
         btn.classList.remove('added');
       }
     }
+
+    // ============================================================
+    // MEDIA MESSAGING FUNCTIONS
+    // ============================================================
+    
+    let pendingMedia = null; // { type: 'image'|'video'|'audio', data: base64, name: string, size: number }
+    let audioRecorder = null;
+    let audioChunks = [];
+    let audioTimerInterval = null;
+    let audioStartTime = null;
+    const MAX_AUDIO_SECONDS = 30;
+    const MAX_VIDEO_SECONDS = 15;
+    const MAX_IMAGE_SIZE = 500 * 1024; // 500KB after compression
+    const MAX_VIDEO_SIZE = 5 * 1024 * 1024; // 5MB
+
+    async function handlePhotoSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      try {
+        const compressed = await compressImage(file, MAX_IMAGE_SIZE);
+        pendingMedia = {
+          type: 'image',
+          data: compressed.data,
+          name: file.name || 'Photo',
+          size: compressed.size
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('Photo processing error:', e);
+        alert('Failed to process photo');
+      }
+      event.target.value = ''; // Reset input
+    }
+
+    async function handleVideoSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      if (file.size > MAX_VIDEO_SIZE) {
+        alert(`Video too large. Maximum size is ${Math.round(MAX_VIDEO_SIZE / 1024 / 1024)}MB`);
+        event.target.value = '';
+        return;
+      }
+      
+      try {
+        const data = await fileToBase64(file);
+        pendingMedia = {
+          type: 'video',
+          data: data,
+          name: file.name || 'Video',
+          size: file.size
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('Video processing error:', e);
+        alert('Failed to process video');
+      }
+      event.target.value = '';
+    }
+
+    async function compressImage(file, maxSize) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Scale down if needed
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round(height * maxDim / width);
+                width = maxDim;
+              } else {
+                width = Math.round(width * maxDim / height);
+                height = maxDim;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Try different quality levels
+            let quality = 0.8;
+            let data = canvas.toDataURL('image/jpeg', quality);
+            
+            while (data.length > maxSize * 1.37 && quality > 0.1) { // base64 is ~37% larger
+              quality -= 0.1;
+              data = canvas.toDataURL('image/jpeg', quality);
+            }
+            
+            resolve({
+              data: data,
+              size: Math.round(data.length * 0.73) // Approximate actual size
+            });
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function showMediaPreview() {
+      if (!pendingMedia) return;
+      
+      const preview = document.getElementById('mediaPreview');
+      const thumb = document.getElementById('mediaPreviewThumb');
+      const name = document.getElementById('mediaPreviewName');
+      const size = document.getElementById('mediaPreviewSize');
+      
+      name.textContent = pendingMedia.type.charAt(0).toUpperCase() + pendingMedia.type.slice(1);
+      size.textContent = formatFileSize(pendingMedia.size);
+      
+      if (pendingMedia.type === 'image') {
+        thumb.innerHTML = `<img src="${pendingMedia.data}" alt="Preview">`;
+      } else if (pendingMedia.type === 'video') {
+        thumb.innerHTML = `<video src="${pendingMedia.data}" muted></video>`;
+      } else if (pendingMedia.type === 'audio') {
+        thumb.innerHTML = `<div style="font-size:2rem">🎵</div>`;
+      }
+      
+      preview.classList.add('active');
+    }
+
+    function clearMediaPreview() {
+      pendingMedia = null;
+      document.getElementById('mediaPreview').classList.remove('active');
+      document.getElementById('mediaPreviewThumb').innerHTML = '';
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // Audio Recording
+    async function toggleAudioRecording() {
+      if (audioRecorder && audioRecorder.state === 'recording') {
+        // Already recording - stop will be handled by sendAudioRecording
+        return;
+      }
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        audioRecorder.ondataavailable = (e) => {
+          audioChunks.push(e.data);
+        };
+        
+        audioRecorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+        };
+        
+        audioRecorder.start();
+        audioStartTime = Date.now();
+        
+        // Show recorder UI
+        document.getElementById('audioRecorder').classList.add('active');
+        document.getElementById('audioBtn').classList.add('recording');
+        
+        // Start timer
+        audioTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - audioStartTime) / 1000);
+          document.getElementById('audioTimer').textContent = 
+            `${Math.floor(elapsed / 60)}:${(elapsed % 60).toString().padStart(2, '0')}`;
+          
+          // Auto-stop at max duration
+          if (elapsed >= MAX_AUDIO_SECONDS) {
+            sendAudioRecording();
+          }
+        }, 100);
+        
+      } catch (e) {
+        console.error('Audio recording error:', e);
+        alert('Could not access microphone. Please grant permission.');
+      }
+    }
+
+    function cancelAudioRecording() {
+      if (audioRecorder && audioRecorder.state === 'recording') {
+        audioRecorder.stop();
+      }
+      clearAudioRecorder();
+    }
+
+    function clearAudioRecorder() {
+      if (audioTimerInterval) {
+        clearInterval(audioTimerInterval);
+        audioTimerInterval = null;
+      }
+      audioRecorder = null;
+      audioChunks = [];
+      audioStartTime = null;
+      document.getElementById('audioRecorder').classList.remove('active');
+      document.getElementById('audioBtn').classList.remove('recording');
+      document.getElementById('audioTimer').textContent = '0:00';
+    }
+
+    async function sendAudioRecording() {
+      if (!audioRecorder || audioRecorder.state !== 'recording') return;
+      
+      audioRecorder.stop();
+      
+      // Wait for data to be available
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const blob = new Blob(audioChunks, { type: 'audio/webm' });
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      pendingMedia = {
+        type: 'audio',
+        data: data,
+        name: 'Voice message',
+        size: blob.size
+      };
+      
+      clearAudioRecorder();
+      
+      // Send immediately
+      await sendMediaMessage();
+    }
+
+    async function sendMediaMessage() {
+      if (!pendingMedia || !currentRecipientId) return;
+      
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = true;
+      
+      try {
+        const envelope = JSON.stringify({
+          type: pendingMedia.type,
+          content: pendingMedia.data,
+          name: pendingMedia.name,
+          timestamp: Date.now()
+        });
+        
+        const response = await fetch('/api/messages/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            recipientId: currentRecipientId,
+            encryptedContent: envelope,
+            encryptedForSender: envelope,
+            itemId: currentItemId || undefined,
+            conversationId: currentConversationId || undefined
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          clearMediaPreview();
+          if (data.conversationId) {
+            currentConversationId = data.conversationId;
+          }
+          await loadMessages(currentConversationId);
+          loadConversations();
+        } else {
+          alert(data.error || 'Failed to send media');
+        }
+      } catch (error) {
+        console.error('Send media error:', error);
+        alert('Failed to send media');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    // Override sendMessage to handle pending media
+    const originalSendMessage = sendMessage;
+    sendMessage = async function() {
+      if (pendingMedia) {
+        await sendMediaMessage();
+      } else {
+        await originalSendMessage();
+      }
+    };
+
+    // Fullscreen media viewer
+    function openFullscreen(src, type) {
+      const container = document.getElementById('fullscreenContent');
+      if (type === 'image') {
+        container.innerHTML = `<img src="${src}" alt="Fullscreen">`;
+      } else if (type === 'video') {
+        container.innerHTML = `<video src="${src}" controls autoplay></video>`;
+      }
+      document.getElementById('mediaFullscreen').classList.add('active');
+    }
+
+    function closeFullscreen() {
+      document.getElementById('mediaFullscreen').classList.remove('active');
+      document.getElementById('fullscreenContent').innerHTML = '';
+    }
+
+    // Update renderMessages to show media
+    const originalRenderMessages = renderMessages;
+    renderMessages = function(messages) {
+      const container = document.getElementById('chatMessages');
+      const wallet = WalletAuth.getWallet();
+      
+      if (messages.length === 0) {
+        container.innerHTML = `
+          <div style="text-align:center;color:#888;padding:2rem;">
+            Start the conversation by sending a message
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = messages.map(msg => {
+        const isSent = msg.senderId === wallet.publicKey;
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const expiresIn = formatTimeUntil(msg.expiresAt);
+        
+        let content = '';
+        try {
+          const parsed = JSON.parse(decryptMessage(msg.encryptedContent));
+          if (parsed.type === 'image') {
+            content = `
+              <div class="message-media">
+                <img src="${parsed.content}" alt="Photo" onclick="openFullscreen('${parsed.content}', 'image')">
+              </div>
+            `;
+          } else if (parsed.type === 'video') {
+            content = `
+              <div class="message-media">
+                <video src="${parsed.content}" controls></video>
+              </div>
+            `;
+          } else if (parsed.type === 'audio') {
+            content = `
+              <div class="message-media">
+                <audio src="${parsed.content}" controls></audio>
+              </div>
+            `;
+          } else {
+            content = `<div class="message-text">${escapeHtml(parsed.content || parsed)}</div>`;
+          }
+        } catch (e) {
+          content = `<div class="message-text">${escapeHtml(decryptMessage(msg.encryptedContent))}</div>`;
+        }
+        
+        return `
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+            ${content}
+            <div class="message-meta">
+              ${timeStr}
+              <span class="message-expires">• expires ${expiresIn}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+      
+      container.scrollTop = container.scrollHeight;
+    };
   </script>
 </body>
 </html>
