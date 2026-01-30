@@ -1,17 +1,22 @@
 /**
- * Ephemeral Event Store
+ * Message Ledger (formerly Ephemeral Event Store)
  * 
- * A parallel ledger for temporary, encrypted messaging.
- * Key differences from CanonicalEventStore:
- * - Messages auto-delete after 10 days (configurable)
+ * A parallel ledger for encrypted messaging with selective pruning:
+ * - CONTACTS: Permanent, never pruned
+ * - MESSAGES: Pruned after 10 days (configurable)
+ * 
+ * Key features:
+ * - Proper event-sourced architecture like main registry
  * - All message content is E2E encrypted
  * - Platform never sees plaintext content
+ * - P2P sync between operators
  * - Designed for Snapchat/Signal-style ephemeral communication
  * 
  * Use cases:
  * - Negotiate item purchases with owners
  * - Coordinate meetups for in-person sales
  * - General decentralized messaging
+ * - Persistent contact list management
  */
 
 import { EventEmitter } from 'events';
@@ -86,13 +91,15 @@ export class EphemeralEventStore extends EventEmitter {
   private pruneIntervalMs: number;
   private pruneTimer?: NodeJS.Timeout;
   private persistPath: string;
+  private contactsPath: string;  // Separate file for permanent contacts
 
   constructor(options: EphemeralStoreOptions) {
     super();
     this.dataDir = options.dataDir;
     this.retentionMs = options.retentionMs || DEFAULT_RETENTION_MS;
     this.pruneIntervalMs = options.pruneIntervalMs || PRUNE_INTERVAL_MS;
-    this.persistPath = path.join(this.dataDir, 'ephemeral-messages.json');
+    this.persistPath = path.join(this.dataDir, 'message-ledger.json');
+    this.contactsPath = path.join(this.dataDir, 'contacts-ledger.json');  // Permanent contacts
     
     // Ensure data directory exists
     if (!fs.existsSync(this.dataDir)) {
@@ -535,33 +542,60 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
-   * Persist events to disk
+   * Persist events to disk (messages and contacts in separate files)
    */
   private async persistToDisk(): Promise<void> {
-    const data = {
-      version: 1,
+    // Messages file (prunable after 10 days)
+    const messageData = {
+      version: 2,
+      ledgerType: 'messages',
       events: Array.from(this.events.values()),
+      lastPersisted: Date.now(),
+    };
+    await fs.promises.writeFile(this.persistPath, JSON.stringify(messageData, null, 2));
+    
+    // Contacts file (permanent, never pruned)
+    const contactData = {
+      version: 2,
+      ledgerType: 'contacts',
       contacts: Object.fromEntries(
         Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
       ),
       blocked: Object.fromEntries(
         Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
       ),
+      lastPersisted: Date.now(),
     };
-    
-    await fs.promises.writeFile(this.persistPath, JSON.stringify(data, null, 2));
+    await fs.promises.writeFile(this.contactsPath, JSON.stringify(contactData, null, 2));
   }
 
   /**
-   * Load events from disk
+   * Load events from disk (messages and contacts from separate files)
    */
   private loadFromDisk(): void {
+    // Load messages (prunable)
+    this.loadMessagesFromDisk();
+    
+    // Load contacts (permanent) - also try legacy file for migration
+    this.loadContactsFromDisk();
+    
+    console.log(`[MessageLedger] Loaded ${this.events.size} messages, ${this.contactsByUser.size} users with contacts`);
+  }
+
+  private loadMessagesFromDisk(): void {
     try {
-      if (!fs.existsSync(this.persistPath)) {
-        return;
+      // Try new file first
+      let filePath = this.persistPath;
+      
+      // Fall back to legacy file if new one doesn't exist
+      const legacyPath = path.join(this.dataDir, 'ephemeral-messages.json');
+      if (!fs.existsSync(filePath) && fs.existsSync(legacyPath)) {
+        filePath = legacyPath;
       }
       
-      const raw = fs.readFileSync(this.persistPath, 'utf8');
+      if (!fs.existsSync(filePath)) return;
+      
+      const raw = fs.readFileSync(filePath, 'utf8');
       const data = JSON.parse(raw);
       
       // Load events
@@ -573,19 +607,48 @@ export class EphemeralEventStore extends EventEmitter {
         this.indexEvent(event);
       }
       
-      // Load contacts
+      // Migration: if legacy file had contacts, load them too
+      if (data.contacts) {
+        for (const [userId, contacts] of Object.entries(data.contacts || {})) {
+          this.contactsByUser.set(userId, new Set(contacts as string[]));
+        }
+      }
+      if (data.blocked) {
+        for (const [userId, blocked] of Object.entries(data.blocked || {})) {
+          this.blockedByUser.set(userId, new Set(blocked as string[]));
+        }
+      }
+    } catch (error) {
+      console.error('[MessageLedger] Failed to load messages:', error);
+    }
+  }
+
+  private loadContactsFromDisk(): void {
+    try {
+      if (!fs.existsSync(this.contactsPath)) return;
+      
+      const raw = fs.readFileSync(this.contactsPath, 'utf8');
+      const data = JSON.parse(raw);
+      
+      // Load contacts (permanent)
       for (const [userId, contacts] of Object.entries(data.contacts || {})) {
-        this.contactsByUser.set(userId, new Set(contacts as string[]));
+        const existing = this.contactsByUser.get(userId) || new Set<string>();
+        for (const c of contacts as string[]) {
+          existing.add(c);
+        }
+        this.contactsByUser.set(userId, existing);
       }
       
       // Load blocked
       for (const [userId, blocked] of Object.entries(data.blocked || {})) {
-        this.blockedByUser.set(userId, new Set(blocked as string[]));
+        const existing = this.blockedByUser.get(userId) || new Set<string>();
+        for (const b of blocked as string[]) {
+          existing.add(b);
+        }
+        this.blockedByUser.set(userId, existing);
       }
-      
-      console.log(`[Ephemeral] Loaded ${this.events.size} messages from disk`);
     } catch (error) {
-      console.error('[Ephemeral] Failed to load from disk:', error);
+      console.error('[MessageLedger] Failed to load contacts:', error);
     }
   }
 }
