@@ -947,7 +947,7 @@ class GatewayNode {
       ws.on('message', (data) => {
         try {
           const message = JSON.parse(data.toString());
-          this.handleSeedMessage(seed, message);
+          this.handleSeedMessage(seed, message, ws);
         } catch (error) {
           console.error(` Invalid message from seed ${seed}:`, error);
         }
@@ -1074,7 +1074,7 @@ class GatewayNode {
         try {
           connectionInfo.lastSeen = Date.now();
           const message = JSON.parse(data.toString());
-          this.handleSeedMessage(operatorId, message);
+          this.handleSeedMessage(operatorId, message, ws);
         } catch (error) {
           console.error(`❌ Invalid message from operator ${operatorId}:`, error);
         }
@@ -1106,7 +1106,7 @@ class GatewayNode {
     }
   }
 
-  handleSeedMessage(seed, message) {
+  handleSeedMessage(seed, message, ws = null) {
     switch (message.type) {
       case 'sync_response':
         console.log(`📥 Received sync data from seed: ${seed}`);
@@ -1142,7 +1142,7 @@ class GatewayNode {
         break;
       
       case 'ephemeral_sync_request':
-        this.handleEphemeralSyncRequest(message);
+        this.handleEphemeralSyncRequest(message, ws || this.getOperatorWs(seed));
         break;
       
       case 'ephemeral_sync_response':
@@ -1484,7 +1484,7 @@ class GatewayNode {
     return true;
   }
   
-  handleEphemeralSyncRequest(message) {
+  handleEphemeralSyncRequest(message, responseWs) {
     const sinceTimestamp = Number(message.since || 0);
     const maxEvents = Math.min(Number(message.limit || 500), 1000);
     const now = Date.now();
@@ -1499,8 +1499,10 @@ class GatewayNode {
     
     events.sort((a, b) => a.timestamp - b.timestamp);
     
-    if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
-      this.seedWs.send(JSON.stringify({
+    // Respond on the WebSocket that sent the request (not always seedWs)
+    const ws = responseWs || this.seedWs;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
         type: 'ephemeral_sync_response',
         events,
         sinceTimestamp,
@@ -1508,6 +1510,12 @@ class GatewayNode {
       }));
       console.log(`📤 [Ephemeral] Sent ${events.length} events in sync response`);
     }
+  }
+  
+  // Helper to get operator WebSocket by ID
+  getOperatorWs(operatorId) {
+    const conn = this.operatorConnections.get(operatorId);
+    return conn?.ws || null;
   }
   
   getLatestEphemeralTimestamp() {
