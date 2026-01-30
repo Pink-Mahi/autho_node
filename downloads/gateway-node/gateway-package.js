@@ -21,9 +21,9 @@ const UI_CACHE_TTL_MS = (() => {
 // HARD-CODED CONFIGURATION - USERS CANNOT MODIFY
 const CONFIG = {
   // Seed nodes - hardcoded to prevent modification
-  seedNodes: ['autho.pinkmahi.com:3000', 'autho.cartpathcleaning.com'],
+  seedNodes: ['autho.pinkmahi.com:3000', 'autho.cartpathcleaning.com', 'autho2.cartpathcleaning.com'],
 
-  operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'http://autho.pinkmahi.com:3000'],
+  operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'https://autho2.cartpathcleaning.com', 'http://autho.pinkmahi.com:3000'],
   
   // Network settings
   port: 3001,
