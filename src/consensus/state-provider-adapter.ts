@@ -6,6 +6,7 @@
  */
 
 import { StateProvider } from './event-validator';
+import { createHash } from 'crypto';
 
 export interface OperatorNodeState {
   accounts: Map<string, any>;
@@ -71,12 +72,37 @@ export class StateProviderAdapter implements StateProvider {
   }
 
   hasAccountWithEmail(email: string): boolean {
+    // Compute hash for lookup
+    const emailHash = createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+    
     for (const account of this.state.accounts.values()) {
-      if (account.email === email) {
+      // Check by hash first (new accounts + migrated accounts)
+      if (account.emailHash === emailHash) {
+        return true;
+      }
+      // Fallback: check legacy plaintext email for old accounts
+      if (account.email && account.email.toLowerCase().trim() === email.toLowerCase().trim()) {
         return true;
       }
     }
     return false;
+  }
+
+  getAccountByEmail(email: string): any | undefined {
+    // Compute hash for lookup
+    const emailHash = createHash('sha256').update(email.toLowerCase().trim()).digest('hex');
+    
+    for (const account of this.state.accounts.values()) {
+      // Check by hash first (new accounts + migrated accounts)
+      if (account.emailHash === emailHash) {
+        return account;
+      }
+      // Fallback: check legacy plaintext email for old accounts
+      if (account.email && account.email.toLowerCase().trim() === email.toLowerCase().trim()) {
+        return account;
+      }
+    }
+    return undefined;
   }
 
   getActiveOperators(): any[] {

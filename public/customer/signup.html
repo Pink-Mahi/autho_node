@@ -544,17 +544,17 @@
                 createBtn.textContent = 'Registering Account...';
 
                 // Step 2: Register account with wallet info
+                // NOTE: Only emailHash is sent to ledger - plaintext email never stored
                 const registerResponse = await fetch('/api/users/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         username: accountData.username,
-                        email: accountData.email,
+                        emailHash,  // Only hash - no plaintext email on ledger
                         password: accountData.password,
                         role: 'customer',
                         bitcoinAddress: address,
                         publicKey,
-                        emailHash,
                         walletVault,
                         passwordKdf: walletVault.kdf
                     })
