@@ -3895,6 +3895,36 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // Debug endpoint - show all messages in ephemeral store (for testing P2P sync)
+    this.app.get('/api/messages/debug', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        const allEvents = this.ephemeralStore!.getAllEvents();
+        const stats = this.ephemeralStore!.getStats();
+        
+        // Summarize messages (don't expose encrypted content)
+        const messageSummary = allEvents
+          .filter(e => e.eventType === 'MESSAGE_SENT')
+          .map(e => ({
+            eventId: e.eventId,
+            senderId: e.payload?.senderId,
+            recipientId: e.payload?.recipientId,
+            conversationId: e.payload?.conversationId,
+            timestamp: new Date(e.timestamp).toISOString(),
+          }));
+
+        res.json({
+          success: true,
+          currentUser: account?.accountId || 'not authenticated',
+          stats,
+          totalEvents: allEvents.length,
+          messageSummary,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Start a conversation about an item (convenience endpoint)
     this.app.post('/api/messages/start-about-item', async (req: Request, res: Response) => {
       try {
