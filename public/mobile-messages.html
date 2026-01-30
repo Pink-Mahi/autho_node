@@ -2188,6 +2188,29 @@
         reader.readAsDataURL(file);
       });
     }
+    
+    // Convert base64 data URL to Blob URL for better iOS video compatibility
+    function base64ToBlobUrl(base64DataUrl) {
+      try {
+        const parts = base64DataUrl.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'video/mp4';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.error('Failed to convert base64 to blob:', e);
+        return base64DataUrl; // Fallback to original
+      }
+    }
+    
+    // Track blob URLs for cleanup
+    const videoBlobUrls = new Map();
 
     function showMediaPreview() {
       if (!pendingMedia) return;
@@ -2534,12 +2557,14 @@
     document.addEventListener('DOMContentLoaded', initPushToTalk);
 
     // Fullscreen media viewer
-    function openFullscreen(src, type) {
+    function openFullscreen(srcOrId, type) {
       const container = document.getElementById('fullscreenContent');
       if (type === 'image') {
-        container.innerHTML = `<img src="${src}" alt="Fullscreen">`;
+        container.innerHTML = `<img src="${srcOrId}" alt="Fullscreen">`;
       } else if (type === 'video') {
-        container.innerHTML = `<video src="${src}" controls autoplay playsinline webkit-playsinline></video>`;
+        // srcOrId might be a video element ID - get the blob URL from our map
+        const blobUrl = videoBlobUrls.get(srcOrId) || srcOrId;
+        container.innerHTML = `<video src="${blobUrl}" controls autoplay playsinline webkit-playsinline></video>`;
       }
       document.getElementById('mediaFullscreen').classList.add('active');
     }
@@ -2586,11 +2611,16 @@
               </div>
             `;
           } else if (parsed.type === 'video') {
-            // Add #t=0.1 to show first frame as thumbnail on iOS
-            const videoSrc = parsed.content + (parsed.content.includes('#') ? '' : '#t=0.1');
+            // Convert base64 to Blob URL for iOS compatibility (iOS Safari can't play base64 videos)
+            const videoId = 'vid_' + msg.timestamp + '_' + Math.random().toString(36).substr(2, 9);
+            const blobUrl = base64ToBlobUrl(parsed.content);
+            videoBlobUrls.set(videoId, blobUrl);
             content = `
               <div class="message-media">
-                <video src="${videoSrc}" controls playsinline webkit-playsinline preload="metadata"></video>
+                <video id="${videoId}" src="${blobUrl}#t=0.1" controls playsinline webkit-playsinline preload="metadata" 
+                       onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                       onclick="openFullscreen('${videoId}', 'video')"></video>
+                <div style="display:none; color:#ff6b6b; padding:10px;">Video playback error</div>
               </div>
             `;
           } else if (parsed.type === 'audio') {
