@@ -1343,6 +1343,11 @@ export class OperatorNode extends EventEmitter {
       if (fs.existsSync(fp)) return res.sendFile(fp);
       res.status(404).send('UI not available');
     });
+    this.app.get('/m/messages', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('mobile-messages.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('UI not available');
+    });
 
     this.app.get('/verify', (req: Request, res: Response) => {
       const id = String((req.query as any)?.id || (req.query as any)?.itemId || '').trim();
