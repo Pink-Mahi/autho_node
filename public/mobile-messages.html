@@ -357,6 +357,166 @@
       cursor: pointer;
       font-size: 0.8rem;
     }
+
+    .share-btn {
+      background: rgba(212, 175, 55, 0.2);
+      border: 1px solid #d4af37;
+      color: #d4af37;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .add-contact-btn {
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .contact-buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 1rem;
+    }
+
+    .modal-content {
+      background: #1a1a1a;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 16px;
+      padding: 1.5rem;
+      max-width: 400px;
+      width: 100%;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #d4af37;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    .qr-container {
+      background: #fff;
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    .qr-container canvas, .qr-container img {
+      max-width: 200px;
+    }
+
+    .share-link-container {
+      background: rgba(50, 50, 50, 0.5);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      border-radius: 8px;
+      padding: 0.75rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .share-link-input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .copy-btn {
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .modal-input {
+      width: 100%;
+      background: rgba(50, 50, 50, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: #fff;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-input:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+
+    .modal-btn {
+      width: 100%;
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .modal-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .share-instructions {
+      text-align: center;
+      color: #888;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
   </style>
 </head>
 <body>
@@ -388,6 +548,14 @@
       </div>
 
       <div id="contactsTab" style="display: none;">
+        <div class="contact-buttons">
+          <button class="share-btn" onclick="showShareModal()">
+            <span>📤</span> Share My Contact
+          </button>
+          <button class="add-contact-btn" onclick="showAddContactModal()">
+            <span>➕</span> Add Contact
+          </button>
+        </div>
         <div id="contactsList" class="contacts-list"></div>
       </div>
 
@@ -420,6 +588,40 @@
     </div>
   </div>
 
+  <!-- Share Contact Modal -->
+  <div id="shareModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">📤 Share My Contact</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <div class="share-instructions">
+        Others can scan this QR code or use the link to message you
+      </div>
+      <div class="qr-container" id="qrContainer"></div>
+      <div class="share-link-container">
+        <input type="text" class="share-link-input" id="shareLink" readonly>
+        <button class="copy-btn" onclick="copyShareLink()">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Contact Modal -->
+  <div id="addContactModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">➕ Add Contact</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <div class="share-instructions">
+        Paste a contact link or enter their account ID
+      </div>
+      <input type="text" class="modal-input" id="addContactInput" placeholder="Paste link or account ID...">
+      <button class="modal-btn" onclick="addContactFromInput()">Add & Start Chat</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
     let currentConversationId = null;
@@ -441,11 +643,16 @@
       await loadConversations();
       await loadContacts();
 
-      // Check for itemId in URL (coming from item page)
+      // Check for URL parameters
       const params = new URLSearchParams(window.location.search);
       const itemId = params.get('itemId');
       const recipientId = params.get('to');
-      if (itemId && recipientId) {
+      const contactId = params.get('contact');
+      
+      if (contactId) {
+        // Coming from a shared contact link - add and start chat
+        await addContactAndStartChat(contactId);
+      } else if (itemId && recipientId) {
         openConversationWithItem(recipientId, itemId);
       }
     });
@@ -773,6 +980,117 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // ============================================================
+    // CONTACT SHARING FUNCTIONS
+    // ============================================================
+
+    function showShareModal() {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet) return;
+      
+      // Generate shareable link
+      const baseUrl = window.location.origin;
+      const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
+      document.getElementById('shareLink').value = shareUrl;
+      
+      // Generate QR code
+      const qrContainer = document.getElementById('qrContainer');
+      qrContainer.innerHTML = '';
+      if (typeof QRCode !== 'undefined') {
+        QRCode.toCanvas(shareUrl, { width: 200, margin: 2 }, (err, canvas) => {
+          if (!err) qrContainer.appendChild(canvas);
+        });
+      }
+      
+      document.getElementById('shareModal').style.display = 'flex';
+    }
+
+    function showAddContactModal() {
+      document.getElementById('addContactInput').value = '';
+      document.getElementById('addContactModal').style.display = 'flex';
+    }
+
+    function closeModals() {
+      document.getElementById('shareModal').style.display = 'none';
+      document.getElementById('addContactModal').style.display = 'none';
+    }
+
+    function copyShareLink() {
+      const input = document.getElementById('shareLink');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        const btn = input.nextElementSibling;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
+
+    function addContactFromInput() {
+      const input = document.getElementById('addContactInput').value.trim();
+      if (!input) return;
+      
+      // Extract accountId from input (could be full URL or just the ID)
+      let contactId = input;
+      
+      // Check if it's a URL with contact parameter
+      if (input.includes('contact=')) {
+        const match = input.match(/contact=([^&]+)/);
+        if (match) contactId = match[1];
+      } else if (input.includes('/m/messages?')) {
+        const url = new URL(input);
+        contactId = url.searchParams.get('contact') || input;
+      }
+      
+      if (contactId) {
+        addContactAndStartChat(contactId);
+        closeModals();
+      }
+    }
+
+    async function addContactAndStartChat(contactId) {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet || contactId === wallet.publicKey) {
+        alert("You can't add yourself as a contact");
+        return;
+      }
+      
+      // Add to contacts via API
+      try {
+        await fetch('/api/messages/contacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ contactId })
+        });
+      } catch (e) {
+        console.log('Contact add request:', e);
+      }
+      
+      // Clear URL parameters
+      window.history.replaceState({}, '', '/m/messages');
+      
+      // Start conversation with the contact
+      currentRecipientId = contactId;
+      currentRecipientPublicKey = contactId;
+      currentItemId = null;
+      currentConversationId = null;
+      
+      document.getElementById('inboxView').style.display = 'none';
+      document.getElementById('chatView').classList.add('active');
+      document.getElementById('chatParticipantName').textContent = contactId.substring(0, 12) + '...';
+      document.getElementById('chatItemContext').textContent = '';
+      
+      // Load any existing messages (might be empty for new contact)
+      const convId = await generateConversationId(wallet.publicKey, contactId, null);
+      currentConversationId = convId;
+      await loadMessages(convId);
+      
+      // Refresh contacts
+      loadContacts();
     }
   </script>
 </body>
