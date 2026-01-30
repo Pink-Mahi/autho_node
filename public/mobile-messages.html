@@ -211,9 +211,11 @@
     .chat-input-area {
       display: flex;
       gap: 0.5rem;
-      padding: 1rem;
+      padding: 0.75rem;
       background: rgba(30, 30, 30, 0.9);
       border-top: 1px solid rgba(212, 175, 55, 0.2);
+      align-items: center;
+      flex-wrap: nowrap;
     }
 
     .chat-input {
@@ -236,6 +238,7 @@
       border: none;
       border-radius: 50%;
       width: 44px;
+      min-width: 44px;
       height: 44px;
       color: #000;
       font-size: 1.25rem;
@@ -243,6 +246,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
 
     .chat-send-btn:disabled {
@@ -2077,7 +2081,7 @@
       if (type === 'image') {
         container.innerHTML = `<img src="${src}" alt="Fullscreen">`;
       } else if (type === 'video') {
-        container.innerHTML = `<video src="${src}" controls autoplay></video>`;
+        container.innerHTML = `<video src="${src}" controls autoplay playsinline webkit-playsinline></video>`;
       }
       document.getElementById('mediaFullscreen').classList.add('active');
     }
@@ -2126,7 +2130,7 @@
           } else if (parsed.type === 'video') {
             content = `
               <div class="message-media">
-                <video src="${parsed.content}" controls></video>
+                <video src="${parsed.content}" controls playsinline webkit-playsinline preload="metadata"></video>
               </div>
             `;
           } else if (parsed.type === 'audio') {
