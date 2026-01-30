@@ -1550,12 +1550,12 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
-    // Debug endpoint to inspect account events for email privacy verification
+    // Debug endpoint to inspect account events for email/username privacy verification
     this.app.get('/api/ledger/accounts/privacy-check', async (req: Request, res: Response) => {
       try {
         const events = await this.canonicalEventStore.getAllEvents();
         
-        // Find all ACCOUNT_CREATED events and check for plaintext email
+        // Find all ACCOUNT_CREATED events and check for plaintext email/username
         const accountEvents = events
           .filter((e: any) => e?.payload?.type === EventType.ACCOUNT_CREATED)
           .map((e: any) => ({
@@ -1566,22 +1566,27 @@ export class OperatorNode extends EventEmitter {
             hasEmailHash: !!e.payload?.emailHash,
             emailHashPreview: e.payload?.emailHash ? String(e.payload.emailHash).substring(0, 16) + '...' : null,
             plaintextEmailPreview: e.payload?.email ? `${String(e.payload.email).substring(0, 3)}***` : null,
+            hasPlaintextUsername: !!e.payload?.username,
+            hasUsernameHash: !!e.payload?.usernameHash,
+            usernameHashPreview: e.payload?.usernameHash ? String(e.payload.usernameHash).substring(0, 16) + '...' : null,
+            plaintextUsernamePreview: e.payload?.username ? `${String(e.payload.username).substring(0, 3)}***` : null,
             timestamp: e.payload?.timestamp,
           }));
 
         const summary = {
           totalAccounts: accountEvents.length,
           withPlaintextEmail: accountEvents.filter((a: any) => a.hasPlaintextEmail).length,
-          withHashOnly: accountEvents.filter((a: any) => !a.hasPlaintextEmail && a.hasEmailHash).length,
+          withPlaintextUsername: accountEvents.filter((a: any) => a.hasPlaintextUsername).length,
+          fullyPrivate: accountEvents.filter((a: any) => !a.hasPlaintextEmail && !a.hasPlaintextUsername && a.hasEmailHash && a.hasUsernameHash).length,
         };
 
         res.json({
           success: true,
           summary,
           accounts: accountEvents.slice(-20), // Last 20 accounts
-          message: summary.withPlaintextEmail > 0 
-            ? `⚠️ ${summary.withPlaintextEmail} legacy accounts have plaintext email (created before privacy fix)`
-            : '✅ All accounts use hashed email only',
+          message: (summary.withPlaintextEmail > 0 || summary.withPlaintextUsername > 0)
+            ? `⚠️ ${summary.withPlaintextEmail} legacy accounts have plaintext email, ${summary.withPlaintextUsername} have plaintext username`
+            : '✅ All accounts use hashed email and username only',
         });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });

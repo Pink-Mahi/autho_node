@@ -660,14 +660,15 @@ Non-Custodial Wallet Backup
             }
 
             // Create account (send only public data to server)
-            // NOTE: Only emailHash is sent - plaintext email never stored on ledger
+            // NOTE: Only hashes are sent - no plaintext email/username stored on ledger
             try {
                 const emailHash = await sha256Hex(userData.email.trim().toLowerCase());
+                const usernameHash = await sha256Hex(userData.username.trim().toLowerCase());
                 const response = await fetch('/api/users/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        username: userData.username,
+                        usernameHash,  // Only hash - no plaintext username on ledger
                         emailHash,  // Only hash - no plaintext email on ledger
                         password: userData.password,
                         // ONLY send public addresses - NEVER private keys!
