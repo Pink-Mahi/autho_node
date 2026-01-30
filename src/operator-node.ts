@@ -3712,7 +3712,27 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const conversations = this.ephemeralStore!.getUserConversations(account.accountId);
+        // Get conversations by accountId (public key)
+        const conversationsByAccountId = this.ephemeralStore!.getUserConversations(account.accountId);
+        
+        // Also get conversations by walletAddress (Bitcoin address) since some messages use that as recipientId
+        const fullAccount = this.state.accounts.get(account.accountId) as any;
+        const walletAddress = fullAccount?.walletAddress || fullAccount?.identityAddress;
+        const conversationsByWallet = walletAddress 
+          ? this.ephemeralStore!.getUserConversations(walletAddress)
+          : [];
+        
+        // Merge and deduplicate conversations
+        const conversationMap = new Map<string, typeof conversationsByAccountId[0]>();
+        for (const conv of conversationsByAccountId) {
+          conversationMap.set(conv.conversationId, conv);
+        }
+        for (const conv of conversationsByWallet) {
+          if (!conversationMap.has(conv.conversationId)) {
+            conversationMap.set(conv.conversationId, conv);
+          }
+        }
+        const conversations = Array.from(conversationMap.values());
 
         // Enrich with participant info
         const enriched = conversations.map(conv => ({
