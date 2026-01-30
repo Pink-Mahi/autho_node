@@ -3954,12 +3954,24 @@ export class OperatorNode extends EventEmitter {
           let ownerAccountId: string | null = null;
           
           // Look up account by their Bitcoin address to get their accountId (public key)
+          console.log(`[Messaging] Looking for owner with address: ${ownerAddress}`);
+          console.log(`[Messaging] Total accounts: ${this.state.accounts.size}`);
+          
           for (const [accId, acc] of this.state.accounts.entries()) {
             const accAny = acc as any;
-            if (accAny.walletAddress === ownerAddress || accId === ownerAddress) {
+            // Check multiple possible address fields
+            const accWallet = String(accAny.walletAddress || '').trim();
+            const accIdentity = String(accAny.identityAddress || '').trim();
+            
+            if (accWallet === ownerAddress || accIdentity === ownerAddress || accId === ownerAddress) {
               ownerAccountId = accId;
+              console.log(`[Messaging] Found owner accountId: ${accId}`);
               break;
             }
+          }
+          
+          if (!ownerAccountId) {
+            console.log(`[Messaging] No account found for address ${ownerAddress}, using address as recipientId`);
           }
           
           // If no account found by address lookup, use the address directly (fallback)
