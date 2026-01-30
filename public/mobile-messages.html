@@ -425,6 +425,7 @@
     let currentConversationId = null;
     let currentRecipientId = null;
     let currentRecipientPublicKey = null;
+    let currentItemId = null;
     let myPrivateKey = null;
     let conversations = [];
 
@@ -563,6 +564,8 @@
     async function openConversation(conversationId, recipientId) {
       currentConversationId = conversationId;
       currentRecipientId = recipientId;
+      currentItemId = null;
+      document.getElementById('chatItemContext').textContent = '';
       
       // Get recipient's public key for encryption
       currentRecipientPublicKey = recipientId; // In our system, accountId IS the public key
@@ -581,6 +584,7 @@
     async function openConversationWithItem(recipientId, itemId) {
       currentRecipientId = recipientId;
       currentRecipientPublicKey = recipientId;
+      currentItemId = itemId;
       
       // Generate conversation ID
       const wallet = WalletAuth.getWallet();
@@ -709,15 +713,21 @@
           body: JSON.stringify({
             recipientId: currentRecipientId,
             encryptedContent: envelope,
-            encryptedForSender: envelope
+            encryptedForSender: envelope,
+            itemId: currentItemId || undefined
           })
         });
         
         const data = await response.json();
         if (data.success) {
           input.value = '';
+          if (data.conversationId) {
+            currentConversationId = data.conversationId;
+          }
           // Reload messages to show the new one
           await loadMessages(currentConversationId);
+          // Refresh inbox list so you can see the conversation immediately
+          loadConversations();
         } else {
           alert(data.error || 'Failed to send message');
         }
