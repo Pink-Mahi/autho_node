@@ -91,8 +91,93 @@ class GatewayNode {
       lastWorkAt: 0,
     };
     
+    // Ephemeral message ledger backup - gateways store messages to help operators recover after restart
+    this.ephemeralEvents = new Map(); // eventId -> event
+    this.ephemeralRetentionMs = 10 * 24 * 60 * 60 * 1000; // 10 days
+    this.ephemeralPersistPath = path.join(CONFIG.dataDir, 'ephemeral-messages.json');
+    this.loadEphemeralEvents();
+    this.startEphemeralPruning();
+    
     this.setupMiddleware();
     this.setupRoutes();
+  }
+
+  // ============================================================
+  // EPHEMERAL MESSAGE LEDGER BACKUP
+  // ============================================================
+  
+  loadEphemeralEvents() {
+    try {
+      if (!fs.existsSync(this.ephemeralPersistPath)) return;
+      const raw = fs.readFileSync(this.ephemeralPersistPath, 'utf8');
+      const data = JSON.parse(raw);
+      const now = Date.now();
+      let loaded = 0;
+      for (const event of (data.events || [])) {
+        if (event.expiresAt > now) {
+          this.ephemeralEvents.set(event.eventId, event);
+          loaded++;
+        }
+      }
+      console.log(`📨 [Ephemeral] Loaded ${loaded} messages from disk`);
+    } catch (e) {
+      console.log(`📨 [Ephemeral] No previous messages to load`);
+    }
+  }
+
+  saveEphemeralEvents() {
+    try {
+      const events = Array.from(this.ephemeralEvents.values());
+      fs.writeFileSync(this.ephemeralPersistPath, JSON.stringify({ events }, null, 2));
+    } catch (e) {
+      console.error(`📨 [Ephemeral] Failed to save:`, e.message);
+    }
+  }
+
+  startEphemeralPruning() {
+    setInterval(() => {
+      const now = Date.now();
+      let pruned = 0;
+      for (const [id, event] of this.ephemeralEvents) {
+        if (event.expiresAt <= now) {
+          this.ephemeralEvents.delete(id);
+          pruned++;
+        }
+      }
+      if (pruned > 0) {
+        console.log(`📨 [Ephemeral] Pruned ${pruned} expired messages`);
+        this.saveEphemeralEvents();
+      }
+    }, 60 * 60 * 1000); // Prune every hour
+  }
+
+  importEphemeralEvent(event) {
+    if (!event || !event.eventId) return false;
+    if (this.ephemeralEvents.has(event.eventId)) return false;
+    if (event.expiresAt <= Date.now()) return false;
+    
+    this.ephemeralEvents.set(event.eventId, event);
+    this.saveEphemeralEvents();
+    return true;
+  }
+
+  getEphemeralEventsSince(sinceTimestamp, limit = 500) {
+    const events = [];
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.timestamp > sinceTimestamp && event.expiresAt > Date.now()) {
+        events.push(event);
+      }
+    }
+    events.sort((a, b) => a.timestamp - b.timestamp);
+    return events.slice(0, limit);
+  }
+
+  getEphemeralLatestTimestamp() {
+    let latest = 0;
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.timestamp > latest) latest = event.timestamp;
+    }
+    return latest;
   }
 
   getOperatorUrls() {
@@ -1129,6 +1214,60 @@ class GatewayNode {
         // Gateway acknowledges consensus verification from network
         console.log(`✓ State verification from ${message.nodeId} (seq: ${message.sequenceNumber})`);
         break;
+
+      // ============================================================
+      // EPHEMERAL MESSAGE LEDGER - Gateway stores as backup
+      // ============================================================
+      case 'ephemeral_event':
+        try {
+          const event = message.event;
+          if (event && this.importEphemeralEvent(event)) {
+            console.log(`📨 [Ephemeral] Stored ${event.eventType}: ${event.eventId}`);
+          }
+        } catch (e) {
+          console.log(`📨 [Ephemeral] Error storing event:`, e.message);
+        }
+        break;
+
+      case 'ephemeral_sync_request':
+        // Operator is requesting ephemeral events (after restart)
+        try {
+          const sinceTimestamp = Number(message.since || 0);
+          const limit = Math.min(Number(message.limit || 500), 1000);
+          const events = this.getEphemeralEventsSince(sinceTimestamp, limit);
+          
+          if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
+            this.seedWs.send(JSON.stringify({
+              type: 'ephemeral_sync_response',
+              events,
+              sinceTimestamp,
+              latestTimestamp: this.getEphemeralLatestTimestamp(),
+            }));
+            console.log(`📨 [Ephemeral] Sent ${events.length} events to operator (backfill)`);
+          }
+        } catch (e) {
+          console.log(`📨 [Ephemeral] Error handling sync request:`, e.message);
+        }
+        break;
+
+      case 'ephemeral_sync_response':
+        // Operator is sending us ephemeral events
+        try {
+          const events = message.events || [];
+          let imported = 0;
+          for (const event of events) {
+            if (this.importEphemeralEvent(event)) imported++;
+          }
+          if (imported > 0) {
+            console.log(`📨 [Ephemeral] Imported ${imported} events from operator`);
+          }
+        } catch (e) {
+          console.log(`📨 [Ephemeral] Error processing sync response:`, e.message);
+        }
+        break;
+      // ============================================================
+      // END EPHEMERAL MESSAGE LEDGER
+      // ============================================================
       
       default:
         console.log(`📨 Unknown message from seed ${seed}:`, message.type);

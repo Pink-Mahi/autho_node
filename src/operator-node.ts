@@ -5140,6 +5140,20 @@ export class OperatorNode extends EventEmitter {
         isUi: false,
       });
 
+      // Request ephemeral message sync from this gateway after a short delay
+      // Gateways store ephemeral messages as backup - helps operators recover after restart
+      setTimeout(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          const sinceTimestamp = this.ephemeralStore?.getLatestTimestamp() || 0;
+          ws.send(JSON.stringify({
+            type: 'ephemeral_sync_request',
+            since: sinceTimestamp,
+            limit: 500,
+          }));
+          console.log(`[Ephemeral] 📤 Requesting ephemeral sync from gateway (since ${sinceTimestamp})`);
+        }
+      }, 3000);
+
       ws.on('message', (data: Buffer) => {
         try {
           const message = JSON.parse(data.toString());
@@ -5356,7 +5370,8 @@ export class OperatorNode extends EventEmitter {
   }
 
   /**
-   * Broadcast an ephemeral event to all operator peers (for decentralized messaging)
+   * Broadcast an ephemeral event to all operator peers AND gateways (for decentralized messaging)
+   * Gateways serve as backup storage - they persist messages and can restore them to operators after restart
    */
   private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string): void {
     const message = {
@@ -5367,11 +5382,21 @@ export class OperatorNode extends EventEmitter {
     };
     const msgStr = JSON.stringify(message);
 
+    // Broadcast to operator peers
     for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
       if (excludePeerId && peerId === excludePeerId) continue;
       try {
         if (peer.ws.readyState === WebSocket.OPEN) {
           peer.ws.send(msgStr);
+        }
+      } catch {}
+    }
+
+    // Also broadcast to connected gateways (they store as backup)
+    for (const [ws, conn] of this.gatewayConnections.entries()) {
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(msgStr);
         }
       } catch {}
     }
