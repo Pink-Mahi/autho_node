@@ -124,6 +124,29 @@ const WalletAuth = {
   logout() {
     this.lock();
     window.location.href = '/m/login';
+  },
+
+  /**
+   * Get authentication headers for API requests
+   */
+  getAuthHeaders() {
+    const wallet = this.getWallet();
+    if (!wallet) {
+      return {};
+    }
+    return {
+      'Content-Type': 'application/json',
+      'X-Wallet-Address': wallet.address || wallet.publicKey,
+      'X-Public-Key': wallet.publicKey
+    };
+  },
+
+  /**
+   * Get public key from wallet
+   */
+  getPublicKey() {
+    const wallet = this.getWallet();
+    return wallet ? wallet.publicKey : null;
   }
 };
 
