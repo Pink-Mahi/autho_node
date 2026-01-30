@@ -1447,23 +1447,29 @@
       const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
       document.getElementById('shareLink').value = shareUrl;
       
-      // Generate QR code
+      // Generate QR code using toDataURL (more reliable)
       const qrContainer = document.getElementById('qrContainer');
-      qrContainer.innerHTML = '';
+      qrContainer.innerHTML = '<div style="color:#999;padding:20px;">Generating QR...</div>';
+      
       if (typeof QRCode !== 'undefined') {
-        const canvas = document.createElement('canvas');
-        QRCode.toCanvas(canvas, shareUrl, { 
+        QRCode.toDataURL(shareUrl, { 
           width: 200, 
           margin: 2,
           color: { dark: '#000000', light: '#ffffff' }
-        }, (err) => {
-          if (!err) {
-            canvas.style.borderRadius = '12px';
-            qrContainer.appendChild(canvas);
-          } else {
-            console.error('QR generation error:', err);
-          }
+        }).then(dataUrl => {
+          const img = document.createElement('img');
+          img.src = dataUrl;
+          img.style.borderRadius = '12px';
+          img.style.width = '200px';
+          img.style.height = '200px';
+          qrContainer.innerHTML = '';
+          qrContainer.appendChild(img);
+        }).catch(err => {
+          console.error('QR generation error:', err);
+          qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR failed to generate</div>';
         });
+      } else {
+        qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR library not loaded</div>';
       }
       
       document.getElementById('shareModal').style.display = 'flex';
