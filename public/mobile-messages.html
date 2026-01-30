@@ -1577,6 +1577,9 @@
     function handleQrResult(data) {
       console.log('QR scanned:', data);
       
+      // Stop scanner FIRST and ensure camera is fully released
+      stopQrScanner();
+      
       // Extract contact ID from scanned data
       let contactId = data;
       if (data.includes('contact=')) {
@@ -1589,13 +1592,41 @@
         } catch {}
       }
       
-      // Stop scanner and close modal immediately
-      stopQrScanner();
+      // Close modal and add contact (don't auto-open conversation to avoid camera conflicts)
       closeModals();
       
-      // Start chat with scanned contact
       if (contactId) {
-        addContactAndStartChat(contactId);
+        // Just add contact to list, don't open conversation immediately
+        addContactOnly(contactId);
+      }
+    }
+    
+    async function addContactOnly(contactId) {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet || contactId === wallet.publicKey) {
+        alert("You can't add yourself as a contact");
+        return;
+      }
+      
+      try {
+        const res = await fetch('/api/messages/contacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            accountId: wallet.publicKey, 
+            contactId: contactId 
+          })
+        });
+        
+        if (res.ok) {
+          alert('Contact added! Tap their name in the list to start chatting.');
+          loadConversations();
+        } else {
+          alert('Failed to add contact');
+        }
+      } catch (e) {
+        console.error('Add contact error:', e);
+        alert('Error adding contact');
       }
     }
 
