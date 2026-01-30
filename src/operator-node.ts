@@ -23,6 +23,7 @@ import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
 import { ItemProvenanceService } from './provenance';
 import { EntityRegistry, EntityType, EntityCategory, GlobalEntity } from './registry/entity-registry';
 import { BitcoinTransactionService } from './bitcoin/transaction-service';
+import { EphemeralEventStore, EphemeralEventType, MessagePayload, ContactPayload } from './messaging';
 
 interface OperatorConfig {
   operatorId: string;
@@ -111,6 +112,9 @@ export class OperatorNode extends EventEmitter {
   
   // Global entity registry for manufacturers, artists, athletes, etc.
   private entityRegistry?: EntityRegistry;
+  
+  // Ephemeral messaging store (parallel ledger with auto-pruning)
+  private ephemeralStore?: EphemeralEventStore;
 
   constructor(config: OperatorConfig) {
     super();
@@ -133,6 +137,11 @@ export class OperatorNode extends EventEmitter {
       lastSyncedAt: 0,
       lastSyncedHash: ''
     };
+
+    // Initialize ephemeral messaging store
+    this.ephemeralStore = new EphemeralEventStore({
+      dataDir: path.join(this.config.dataDir, 'messaging'),
+    });
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -3629,6 +3638,333 @@ export class OperatorNode extends EventEmitter {
 
     // ============================================================
     // END ENTITY REGISTRY API
+    // ============================================================
+
+    // ============================================================
+    // EPHEMERAL MESSAGING API - Encrypted, auto-deleting messages
+    // ============================================================
+
+    // Send a message (E2E encrypted - platform never sees content)
+    this.app.post('/api/messages/send', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { recipientId, encryptedContent, encryptedForSender, itemId, replyToMessageId } = req.body;
+
+        if (!recipientId || !encryptedContent) {
+          res.status(400).json({ success: false, error: 'recipientId and encryptedContent required' });
+          return;
+        }
+
+        // Check if blocked
+        if (this.ephemeralStore?.isBlocked(recipientId, account.accountId)) {
+          res.status(403).json({ success: false, error: 'You are blocked by this user' });
+          return;
+        }
+
+        // Generate conversation ID
+        const conversationId = this.ephemeralStore!.generateConversationId(
+          account.accountId, recipientId, itemId
+        );
+
+        const messageId = `msg_${Date.now()}_${randomBytes(8).toString('hex')}`;
+
+        const payload: MessagePayload = {
+          messageId,
+          senderId: account.accountId,
+          recipientId,
+          encryptedContent,
+          encryptedForSender: encryptedForSender || encryptedContent,
+          itemId,
+          conversationId,
+          replyToMessageId,
+        };
+
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.MESSAGE_SENT,
+          payload
+        );
+
+        res.json({
+          success: true,
+          messageId,
+          conversationId,
+          expiresAt: event.expiresAt,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get user's conversations (inbox)
+    this.app.get('/api/messages/conversations', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const conversations = this.ephemeralStore!.getUserConversations(account.accountId);
+
+        // Enrich with participant info
+        const enriched = conversations.map(conv => ({
+          ...conv,
+          participantInfo: conv.participants.map(p => {
+            const acc = this.state.accounts.get(p);
+            return {
+              accountId: p,
+              displayName: acc?.username || acc?.companyName || p.substring(0, 12) + '...',
+            };
+          }),
+        }));
+
+        res.json({
+          success: true,
+          conversations: enriched,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get messages in a conversation
+    this.app.get('/api/messages/conversation/:conversationId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const messages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+
+        // Filter to only show messages where user is sender or recipient
+        const filtered = messages.filter(m => {
+          const p = m.payload as MessagePayload;
+          return p.senderId === account.accountId || p.recipientId === account.accountId;
+        });
+
+        res.json({
+          success: true,
+          conversationId: req.params.conversationId,
+          messages: filtered.map(m => ({
+            messageId: m.payload.messageId,
+            senderId: m.payload.senderId,
+            recipientId: m.payload.recipientId,
+            encryptedContent: m.payload.senderId === account.accountId 
+              ? m.payload.encryptedForSender 
+              : m.payload.encryptedContent,
+            itemId: m.payload.itemId,
+            timestamp: m.timestamp,
+            expiresAt: m.expiresAt,
+            replyToMessageId: m.payload.replyToMessageId,
+          })),
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Delete a message early (paid feature)
+    this.app.delete('/api/messages/:messageId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        // TODO: Verify payment for early deletion
+
+        const deleted = await this.ephemeralStore!.deleteMessage(
+          req.params.messageId,
+          account.accountId
+        );
+
+        if (!deleted) {
+          res.status(404).json({ success: false, error: 'Message not found or not authorized' });
+          return;
+        }
+
+        res.json({ success: true, message: 'Message deleted' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Add a contact
+    this.app.post('/api/messages/contacts', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { contactId, displayName } = req.body;
+        if (!contactId) {
+          res.status(400).json({ success: false, error: 'contactId required' });
+          return;
+        }
+
+        const payload: ContactPayload = {
+          userId: account.accountId,
+          contactId,
+          displayName,
+        };
+
+        await this.ephemeralStore!.appendEvent(EphemeralEventType.CONTACT_ADDED, payload);
+
+        res.json({ success: true, message: 'Contact added' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get contacts
+    this.app.get('/api/messages/contacts', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const contactIds = this.ephemeralStore!.getUserContacts(account.accountId);
+
+        // Enrich with account info
+        const contacts = contactIds.map(id => {
+          const acc = this.state.accounts.get(id);
+          return {
+            accountId: id,
+            displayName: acc?.username || acc?.companyName || id.substring(0, 12) + '...',
+            isManufacturer: acc?.role === 'manufacturer',
+            isAuthenticator: acc?.role === 'authenticator',
+          };
+        });
+
+        res.json({ success: true, contacts });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Block a user
+    this.app.post('/api/messages/block', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { blockId } = req.body;
+        if (!blockId) {
+          res.status(400).json({ success: false, error: 'blockId required' });
+          return;
+        }
+
+        const payload: ContactPayload = {
+          userId: account.accountId,
+          contactId: blockId,
+        };
+
+        await this.ephemeralStore!.appendEvent(EphemeralEventType.CONTACT_BLOCKED, payload);
+
+        res.json({ success: true, message: 'User blocked' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get messaging stats
+    this.app.get('/api/messages/stats', (req: Request, res: Response) => {
+      try {
+        const stats = this.ephemeralStore!.getStats();
+        res.json({ success: true, stats });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Start a conversation about an item (convenience endpoint)
+    this.app.post('/api/messages/start-about-item', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { itemId, recipientId, encryptedContent, encryptedForSender } = req.body;
+
+        if (!itemId || !encryptedContent) {
+          res.status(400).json({ success: false, error: 'itemId and encryptedContent required' });
+          return;
+        }
+
+        // Get item owner if recipientId not provided
+        let targetRecipient = recipientId;
+        if (!targetRecipient) {
+          const item = this.state.items.get(itemId);
+          if (!item) {
+            res.status(404).json({ success: false, error: 'Item not found' });
+            return;
+          }
+          targetRecipient = item.currentOwner;
+        }
+
+        if (targetRecipient === account.accountId) {
+          res.status(400).json({ success: false, error: 'Cannot message yourself' });
+          return;
+        }
+
+        // Check if blocked
+        if (this.ephemeralStore?.isBlocked(targetRecipient, account.accountId)) {
+          res.status(403).json({ success: false, error: 'You are blocked by this user' });
+          return;
+        }
+
+        const conversationId = this.ephemeralStore!.generateConversationId(
+          account.accountId, targetRecipient, itemId
+        );
+
+        const messageId = `msg_${Date.now()}_${randomBytes(8).toString('hex')}`;
+
+        const payload: MessagePayload = {
+          messageId,
+          senderId: account.accountId,
+          recipientId: targetRecipient,
+          encryptedContent,
+          encryptedForSender: encryptedForSender || encryptedContent,
+          itemId,
+          conversationId,
+        };
+
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.MESSAGE_SENT,
+          payload
+        );
+
+        res.json({
+          success: true,
+          messageId,
+          conversationId,
+          recipientId: targetRecipient,
+          expiresAt: event.expiresAt,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // END EPHEMERAL MESSAGING API
     // ============================================================
 
     // ============================================================

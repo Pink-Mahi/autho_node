@@ -465,6 +465,36 @@
       font-size: 10px;
       color: #666;
     }
+
+    .result-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(212, 175, 55, 0.1);
+    }
+
+    .action-btn {
+      background: none;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      color: #d4af37;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
+    }
+
+    .message-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
   </style>
 </head>
 <body>
@@ -572,6 +602,7 @@
     </div>
   </div>
 
+  <script src="/js/wallet-auth.js"></script>
   <script>
     let currentFilter = 'all';
     let searchResults = [];
@@ -685,6 +716,11 @@
                 <div class="detail-label">No sales yet</div>
               `}
             </div>
+          </div>
+          <div class="result-actions">
+            <button class="action-btn message-btn" onclick="event.stopPropagation(); messageOwner('${item.itemId}', '${item.currentOwner || ''}')">
+              💬 Message Owner
+            </button>
           </div>
         </div>
       `).join('');
@@ -875,6 +911,22 @@
         return (sats / 100000000).toFixed(2) + ' BTC';
       }
       return sats.toLocaleString() + ' sats';
+    }
+
+    // Message item owner
+    function messageOwner(itemId, ownerId) {
+      // Check if user is logged in
+      if (typeof WalletAuth !== 'undefined' && WalletAuth.getWallet()) {
+        const wallet = WalletAuth.getWallet();
+        if (ownerId === wallet.publicKey) {
+          alert('This is your item!');
+          return;
+        }
+        window.location.href = `/mobile-messages.html?itemId=${itemId}&to=${ownerId}`;
+      } else {
+        // Redirect to login first
+        window.location.href = `/m/login?redirect=${encodeURIComponent('/mobile-messages.html?itemId=' + itemId + '&to=' + ownerId)}`;
+      }
     }
 
     // Handle enter key in search
