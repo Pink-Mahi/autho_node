@@ -3852,7 +3852,9 @@ export class OperatorNode extends EventEmitter {
           displayName,
         };
 
-        await this.ephemeralStore!.appendEvent(EphemeralEventType.CONTACT_ADDED, payload);
+        // Contacts are permanent - set expiration 100 years in the future
+        const permanentExpiry = Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
+        await this.ephemeralStore!.appendEvent(EphemeralEventType.CONTACT_ADDED, payload, permanentExpiry);
 
         res.json({ success: true, message: 'Contact added' });
       } catch (error: any) {
