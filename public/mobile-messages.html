@@ -275,6 +275,99 @@
       cursor: not-allowed;
     }
 
+    /* Push-to-Talk Button */
+    .ptt-btn {
+      background: linear-gradient(145deg, #2a5d2a, #1a3d1a);
+      border: 2px solid #4CAF50;
+      border-radius: 50%;
+      width: 44px;
+      min-width: 44px;
+      height: 44px;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .ptt-btn:active, .ptt-btn.recording {
+      background: linear-gradient(145deg, #4CAF50, #2E7D32);
+      transform: scale(1.1);
+      box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+    }
+
+    .ptt-icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .ptt-text {
+      font-size: 0.5rem;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+
+    .ptt-recording {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #4CAF50;
+      border-radius: 20px;
+      padding: 2rem 3rem;
+      z-index: 1000;
+      text-align: center;
+    }
+
+    .ptt-recording.active {
+      display: block;
+    }
+
+    .ptt-pulse {
+      width: 60px;
+      height: 60px;
+      background: #4CAF50;
+      border-radius: 50%;
+      margin: 0 auto 1rem;
+      animation: ptt-pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes ptt-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.7; }
+    }
+
+    .ptt-status {
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    /* Auto-play indicator for voice messages */
+    .voice-message {
+      background: rgba(76, 175, 80, 0.2);
+      border: 1px solid rgba(76, 175, 80, 0.4);
+      border-radius: 12px;
+      padding: 0.5rem;
+    }
+
+    .voice-message.new {
+      animation: voice-new 0.5s ease-out;
+    }
+
+    @keyframes voice-new {
+      0% { transform: scale(0.9); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
     .encryption-notice {
       text-align: center;
       font-size: 0.7rem;
@@ -867,7 +960,17 @@
         </div>
         <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..." 
                onkeypress="if(event.key==='Enter')sendMessage()">
+        <button class="ptt-btn" id="pttBtn" title="Hold to talk">
+          <span class="ptt-icon">🎙️</span>
+          <span class="ptt-text">Hold</span>
+        </button>
         <button class="chat-send-btn" onclick="sendMessage()" id="sendBtn">➤</button>
+      </div>
+      
+      <!-- Push-to-Talk Recording Indicator -->
+      <div class="ptt-recording" id="pttRecording">
+        <div class="ptt-pulse"></div>
+        <div class="ptt-status">🎙️ Recording... Release to send</div>
       </div>
 
       <!-- Hidden file inputs -->
@@ -2177,6 +2280,122 @@
         await originalSendMessage();
       }
     };
+
+    // ============================================================
+    // PUSH-TO-TALK (WALKIE-TALKIE) FUNCTIONS
+    // ============================================================
+    
+    let pttRecorder = null;
+    let pttChunks = [];
+    let pttStream = null;
+    let pttActive = false;
+    
+    function initPushToTalk() {
+      const pttBtn = document.getElementById('pttBtn');
+      if (!pttBtn) return;
+      
+      // Mouse events (desktop)
+      pttBtn.addEventListener('mousedown', startPTT);
+      pttBtn.addEventListener('mouseup', stopPTT);
+      pttBtn.addEventListener('mouseleave', stopPTT);
+      
+      // Touch events (mobile)
+      pttBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startPTT();
+      });
+      pttBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopPTT();
+      });
+      pttBtn.addEventListener('touchcancel', stopPTT);
+    }
+    
+    async function startPTT() {
+      if (pttActive || !currentRecipientId) return;
+      
+      try {
+        pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        const mimeType = getSupportedAudioMimeType();
+        const options = mimeType ? { mimeType } : {};
+        
+        pttRecorder = new MediaRecorder(pttStream, options);
+        pttChunks = [];
+        
+        pttRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) pttChunks.push(e.data);
+        };
+        
+        pttRecorder.onstop = async () => {
+          // Clean up stream
+          if (pttStream) {
+            pttStream.getTracks().forEach(t => t.stop());
+            pttStream = null;
+          }
+          
+          // Only send if we have audio data
+          if (pttChunks.length > 0) {
+            await sendPTTAudio();
+          }
+        };
+        
+        pttRecorder.start();
+        pttActive = true;
+        
+        // Show recording UI
+        document.getElementById('pttBtn').classList.add('recording');
+        document.getElementById('pttRecording').classList.add('active');
+        
+      } catch (e) {
+        console.error('PTT start error:', e);
+        alert('Could not access microphone');
+      }
+    }
+    
+    function stopPTT() {
+      if (!pttActive || !pttRecorder) return;
+      
+      pttActive = false;
+      document.getElementById('pttBtn').classList.remove('recording');
+      document.getElementById('pttRecording').classList.remove('active');
+      
+      if (pttRecorder.state === 'recording') {
+        pttRecorder.stop();
+      }
+    }
+    
+    async function sendPTTAudio() {
+      if (pttChunks.length === 0) return;
+      
+      const actualMimeType = pttRecorder?.mimeType || 'audio/webm';
+      const blob = new Blob(pttChunks, { type: actualMimeType });
+      
+      // Convert to base64
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      // Set as pending media and send
+      pendingMedia = {
+        type: 'audio',
+        data: data,
+        name: 'Voice message',
+        size: blob.size,
+        isPTT: true // Mark as push-to-talk for auto-play
+      };
+      
+      pttChunks = [];
+      pttRecorder = null;
+      
+      await sendMediaMessage();
+    }
+    
+    // Initialize PTT when DOM is ready
+    document.addEventListener('DOMContentLoaded', initPushToTalk);
 
     // Fullscreen media viewer
     function openFullscreen(src, type) {
