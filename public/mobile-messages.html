@@ -517,6 +517,23 @@
       font-size: 0.875rem;
       margin-bottom: 1rem;
     }
+
+    .add-contact-chat-btn {
+      background: rgba(212, 175, 55, 0.2);
+      border: 1px solid #d4af37;
+      color: #d4af37;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .add-contact-chat-btn.added {
+      background: rgba(76, 175, 80, 0.2);
+      border-color: #4CAF50;
+      color: #4CAF50;
+    }
   </style>
 </head>
 <body>
@@ -568,10 +585,13 @@
     <div id="chatView" class="chat-view">
       <div class="chat-header">
         <button class="chat-back-btn" onclick="showInbox()">←</button>
-        <div>
+        <div style="flex:1">
           <div class="chat-participant-name" id="chatParticipantName">Loading...</div>
           <div class="chat-item-context" id="chatItemContext"></div>
         </div>
+        <button class="add-contact-chat-btn" id="addContactChatBtn" onclick="addCurrentRecipientToContacts()">
+          ➕ Add
+        </button>
       </div>
 
       <div class="chat-messages" id="chatMessages"></div>
@@ -1091,6 +1111,48 @@
       
       // Refresh contacts
       loadContacts();
+    }
+
+    async function addCurrentRecipientToContacts() {
+      if (!currentRecipientId) return;
+      
+      const btn = document.getElementById('addContactChatBtn');
+      btn.disabled = true;
+      
+      try {
+        const response = await fetch('/api/messages/contacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ contactId: currentRecipientId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          btn.textContent = '✓ Added';
+          btn.classList.add('added');
+          loadContacts();
+        } else {
+          alert(data.error || 'Failed to add contact');
+        }
+      } catch (e) {
+        console.error('Add contact error:', e);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function updateAddContactButton(isAlreadyContact) {
+      const btn = document.getElementById('addContactChatBtn');
+      if (isAlreadyContact) {
+        btn.textContent = '✓ Contact';
+        btn.classList.add('added');
+      } else {
+        btn.textContent = '➕ Add';
+        btn.classList.remove('added');
+      }
     }
   </script>
 </body>
