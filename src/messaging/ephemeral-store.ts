@@ -401,6 +401,103 @@ export class EphemeralEventStore extends EventEmitter {
     }
   }
 
+  // ============================================================
+  // P2P REPLICATION METHODS - For decentralized sync across operators
+  // ============================================================
+
+  /**
+   * Check if an event already exists (for dedupe during gossip)
+   */
+  hasEvent(eventId: string): boolean {
+    return this.events.has(eventId);
+  }
+
+  /**
+   * Import an event from a peer operator (with dedupe)
+   * Returns true if the event was new and imported, false if already exists or expired
+   */
+  async importEvent(event: EphemeralEvent): Promise<boolean> {
+    // Skip if already have this event
+    if (this.events.has(event.eventId)) {
+      return false;
+    }
+
+    // Skip if expired
+    if (event.expiresAt <= Date.now()) {
+      return false;
+    }
+
+    // Validate basic structure
+    if (!event.eventId || !event.eventType || !event.timestamp || !event.payload) {
+      console.log(`[Ephemeral] Invalid event structure, skipping import`);
+      return false;
+    }
+
+    // Store event
+    this.events.set(event.eventId, event);
+
+    // Update indexes
+    this.indexEvent(event);
+
+    // Persist to disk
+    await this.persistToDisk();
+
+    // Emit event for real-time delivery
+    this.emit('event', event);
+    this.emit('imported', event);
+
+    return true;
+  }
+
+  /**
+   * Get all events since a given timestamp (for backfill sync)
+   * Returns events sorted by timestamp, limited to maxEvents
+   */
+  getEventsSince(sinceTimestamp: number, maxEvents: number = 1000): EphemeralEvent[] {
+    const now = Date.now();
+    const events: EphemeralEvent[] = [];
+
+    for (const event of this.events.values()) {
+      // Only include non-expired events newer than sinceTimestamp
+      if (event.timestamp > sinceTimestamp && event.expiresAt > now) {
+        events.push(event);
+      }
+    }
+
+    // Sort by timestamp ascending
+    events.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Limit results
+    return events.slice(0, maxEvents);
+  }
+
+  /**
+   * Get the latest event timestamp (for sync cursor)
+   */
+  getLatestTimestamp(): number {
+    let latest = 0;
+    for (const event of this.events.values()) {
+      if (event.timestamp > latest) {
+        latest = event.timestamp;
+      }
+    }
+    return latest;
+  }
+
+  /**
+   * Get all current events (for full sync)
+   */
+  getAllEvents(): EphemeralEvent[] {
+    const now = Date.now();
+    return Array.from(this.events.values())
+      .filter(e => e.expiresAt > now)
+      .sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  // ============================================================
+  // END P2P REPLICATION METHODS
+  // ============================================================
+
   /**
    * Get stats about the ephemeral store
    */

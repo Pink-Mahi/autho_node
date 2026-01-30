@@ -23,7 +23,7 @@ import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
 import { ItemProvenanceService } from './provenance';
 import { EntityRegistry, EntityType, EntityCategory, GlobalEntity } from './registry/entity-registry';
 import { BitcoinTransactionService } from './bitcoin/transaction-service';
-import { EphemeralEventStore, EphemeralEventType, MessagePayload, ContactPayload } from './messaging';
+import { EphemeralEventStore, EphemeralEventType, EphemeralEvent, MessagePayload, ContactPayload } from './messaging';
 
 interface OperatorConfig {
   operatorId: string;
@@ -3689,6 +3689,9 @@ export class OperatorNode extends EventEmitter {
           payload
         );
 
+        // Broadcast to operator peers for decentralized delivery
+        this.broadcastEphemeralEvent(event);
+
         res.json({
           success: true,
           messageId,
@@ -3950,6 +3953,9 @@ export class OperatorNode extends EventEmitter {
           EphemeralEventType.MESSAGE_SENT,
           payload
         );
+
+        // Broadcast to operator peers for decentralized delivery
+        this.broadcastEphemeralEvent(event);
 
         res.json({
           success: true,
@@ -5226,6 +5232,28 @@ export class OperatorNode extends EventEmitter {
     }
   }
 
+  /**
+   * Broadcast an ephemeral event to all operator peers (for decentralized messaging)
+   */
+  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string): void {
+    const message = {
+      type: 'ephemeral_event',
+      event,
+      sourceOperatorId: this.config.operatorId,
+      timestamp: Date.now(),
+    };
+    const msgStr = JSON.stringify(message);
+
+    for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
+      if (excludePeerId && peerId === excludePeerId) continue;
+      try {
+        if (peer.ws.readyState === WebSocket.OPEN) {
+          peer.ws.send(msgStr);
+        }
+      } catch {}
+    }
+  }
+
   private broadcastRegistryUpdate(): void {
     const data = this.getGatewaySyncData();
     const msg = { type: 'registry_update', data, timestamp: Date.now() };
@@ -5263,6 +5291,11 @@ export class OperatorNode extends EventEmitter {
 
     void tick();
     this.peerDiscoveryTimer = setInterval(() => void tick(), 5 * 60 * 1000);
+
+    // Also start periodic ephemeral message sync (every 2 minutes)
+    setInterval(() => {
+      this.requestEphemeralSyncFromAllPeers();
+    }, 2 * 60 * 1000);
   }
 
   private async connectToPeer(peer: OperatorPeerInfo): Promise<void> {
@@ -5288,6 +5321,41 @@ export class OperatorNode extends EventEmitter {
       connectedAt: Date.now(),
       lastSeen: Date.now(),
     });
+
+    // Request ephemeral message sync from the new peer after a short delay
+    setTimeout(() => {
+      this.requestEphemeralSyncFromPeer(peerId);
+    }, 2000);
+  }
+
+  /**
+   * Request ephemeral events from a peer since our latest timestamp (backfill sync)
+   */
+  private requestEphemeralSyncFromPeer(peerId: string): void {
+    const peer = this.operatorPeerConnections.get(peerId);
+    if (!peer || peer.ws.readyState !== WebSocket.OPEN) return;
+
+    const sinceTimestamp = this.ephemeralStore?.getLatestTimestamp() || 0;
+    
+    try {
+      peer.ws.send(JSON.stringify({
+        type: 'ephemeral_sync_request',
+        since: sinceTimestamp,
+        limit: 500,
+      }));
+      console.log(`[Ephemeral] 📤 Requesting sync from peer ${peerId} since ${new Date(sinceTimestamp).toISOString()}`);
+    } catch (e: any) {
+      console.log(`[Ephemeral] Failed to request sync from peer ${peerId}:`, e?.message);
+    }
+  }
+
+  /**
+   * Request ephemeral sync from all connected peers (periodic backfill)
+   */
+  private requestEphemeralSyncFromAllPeers(): void {
+    for (const [peerId] of this.operatorPeerConnections) {
+      this.requestEphemeralSyncFromPeer(peerId);
+    }
   }
 
   private async handleOperatorPeerMessage(peerId: string, message: any): Promise<void> {
@@ -5454,6 +5522,89 @@ export class OperatorNode extends EventEmitter {
       case 'new_event_ack':
         // Acknowledgment from peer that they received our event
         break;
+
+      // ============================================================
+      // EPHEMERAL MESSAGING P2P SYNC - Decentralized message delivery
+      // ============================================================
+      case 'ephemeral_event':
+        try {
+          const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
+          const eventData = message?.event as EphemeralEvent;
+
+          if (!eventData || !eventData.eventId || !eventData.eventType) {
+            console.log(`[Ephemeral] Invalid ephemeral_event payload from peer`);
+            break;
+          }
+
+          // Import the event (with dedupe)
+          const imported = await this.ephemeralStore!.importEvent(eventData);
+
+          if (imported) {
+            console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from peer ${sourceOperatorId}: ${eventData.eventId}`);
+
+            // Re-broadcast to other peers (gossip protocol)
+            // Don't send back to the source
+            this.broadcastEphemeralEvent(eventData, sourceOperatorId);
+
+            // Send ack back
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'ephemeral_event_ack',
+                ok: true,
+                eventId: eventData.eventId,
+              }));
+            }
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Could not import ephemeral_event from peer:`, e?.message);
+        }
+        break;
+
+      case 'ephemeral_event_ack':
+        // Acknowledgment from peer that they received our ephemeral event
+        break;
+
+      case 'ephemeral_sync_request':
+        // Peer is requesting ephemeral events since a timestamp (backfill sync)
+        try {
+          const sinceTimestamp = Number(message?.since || 0);
+          const maxEvents = Math.min(Number(message?.limit || 500), 1000);
+          const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'ephemeral_sync_response',
+              events,
+              sinceTimestamp,
+              latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
+            }));
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error handling sync request:`, e?.message);
+        }
+        break;
+
+      case 'ephemeral_sync_response':
+        // Response to our sync request - import all events
+        try {
+          const events = message?.events as EphemeralEvent[];
+          if (Array.isArray(events)) {
+            let importedCount = 0;
+            for (const event of events) {
+              const imported = await this.ephemeralStore!.importEvent(event);
+              if (imported) importedCount++;
+            }
+            if (importedCount > 0) {
+              console.log(`[Ephemeral] 📥 Backfill sync: imported ${importedCount} events from peer`);
+            }
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error processing sync response:`, e?.message);
+        }
+        break;
+      // ============================================================
+      // END EPHEMERAL MESSAGING P2P SYNC
+      // ============================================================
 
       // Handle append_event from peer operators - allows direct operator-to-operator sync when main node is offline
       case 'append_event':
