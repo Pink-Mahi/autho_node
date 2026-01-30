@@ -1336,18 +1336,50 @@
       
       await loadMessages(conversationId);
       
+      // Reset message count for new conversation
+      lastMessageCount = 0;
+      
       // Stop inbox polling, start message polling
       stopInboxPolling();
       startMessagePolling();
     }
     
+    let lastMessageCount = 0;
+    
     function startMessagePolling() {
       stopMessagePolling(); // Clear any existing interval
       messagePollingInterval = setInterval(async () => {
         if (currentConversationId) {
-          await loadMessages(currentConversationId);
+          await pollForNewMessages(currentConversationId);
         }
       }, POLL_INTERVAL_MS);
+    }
+    
+    async function pollForNewMessages(conversationId) {
+      try {
+        const response = await fetch(`/api/messages/conversation/${conversationId}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+        
+        if (data.success && data.messages) {
+          // Only update if message count changed (new messages arrived)
+          if (data.messages.length !== lastMessageCount) {
+            const container = document.getElementById('chatMessages');
+            const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+            
+            lastMessageCount = data.messages.length;
+            await renderMessages(data.messages);
+            
+            // Auto-scroll to bottom only if user was already at bottom
+            if (wasAtBottom) {
+              container.scrollTop = container.scrollHeight;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Poll error:', error);
+      }
     }
     
     function stopMessagePolling() {
