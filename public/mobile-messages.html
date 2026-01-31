@@ -2229,19 +2229,25 @@
     // DISAPPEARING MESSAGES FUNCTIONS
     // ============================================================
 
-    let currentDisappearTimer = 0;  // 0 = use default by media type
-    let currentExpiresAfterView = false;
-
     function updateDisappearTimer() {
+      // Called on change for UI feedback if needed
       const select = document.getElementById('disappearTimer');
-      currentDisappearTimer = parseInt(select.value) || 0;
-      currentExpiresAfterView = document.getElementById('expiresAfterView').checked;
+      const timer = parseInt(select.value) || 0;
+      console.log('[Disappear] Timer changed to:', timer, 'ms');
     }
 
     function getDisappearSettings() {
+      // Always read directly from DOM to get current values
+      const select = document.getElementById('disappearTimer');
+      const checkbox = document.getElementById('expiresAfterView');
+      const timerValue = select ? parseInt(select.value) || 0 : 0;
+      const afterView = checkbox ? checkbox.checked : false;
+      
+      console.log('[Disappear] Sending with timer:', timerValue, 'afterView:', afterView);
+      
       return {
-        selfDestructAfter: currentDisappearTimer > 0 ? currentDisappearTimer : undefined,
-        expiresAfterView: currentExpiresAfterView
+        selfDestructAfter: timerValue > 0 ? timerValue : undefined,
+        expiresAfterView: afterView
       };
     }
 

@@ -264,10 +264,12 @@ export class EphemeralEventStore extends EventEmitter {
       if (eventType === EphemeralEventType.MESSAGE_SENT || eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
         // For messages, use media-aware retention
         const msgPayload = payload as MessagePayload | GroupMessagePayload;
-        // If expiresAfterView is true, set very long initial expiry (will be updated on view)
-        if (msgPayload.expiresAfterView) {
+        
+        // If expiresAfterView AND no custom timer, wait for view to start countdown
+        if (msgPayload.expiresAfterView && !msgPayload.selfDestructAfter) {
           expiresAt = now + (365 * 24 * 60 * 60 * 1000); // 1 year max, will be shortened on view
         } else {
+          // Use custom selfDestructAfter timer or media-type default
           expiresAt = now + this.calculateRetention(msgPayload);
         }
       } else {
