@@ -2375,10 +2375,18 @@
         return;
       }
 
+      // Track which messages need to be marked as viewed
+      const messagesToMarkViewed = [];
+      
       container.innerHTML = messages.map(msg => {
         const isSent = msg.senderId === wallet.publicKey;
         const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         const expiresIn = formatTimeUntil(msg.expiresAt);
+        
+        // Mark received messages with expiresAfterView as viewed
+        if (!isSent && msg.expiresAfterView && !msg.viewedAt) {
+          messagesToMarkViewed.push(msg.messageId);
+        }
         
         // Decrypt message (in production, use actual decryption)
         let decryptedText = '[Encrypted]';
@@ -2389,11 +2397,14 @@
           decryptedText = '[Could not decrypt]';
         }
         
+        // Show disappearing indicator for expiresAfterView messages
+        const disappearIcon = msg.expiresAfterView ? '👁️ ' : '';
+        
         return `
           <div class="message-bubble ${isSent ? 'sent' : 'received'}">
             <div class="message-text">${escapeHtml(decryptedText)}</div>
             <div class="message-meta">
-              ${timeStr}
+              ${disappearIcon}${timeStr}
               <span class="message-expires">• expires ${expiresIn}</span>
             </div>
           </div>
@@ -2402,6 +2413,11 @@
       
       // Scroll to bottom
       container.scrollTop = container.scrollHeight;
+      
+      // Mark viewed messages (fire-and-forget, don't await)
+      messagesToMarkViewed.forEach(messageId => {
+        markMessageViewed(messageId);
+      });
     }
 
     function decryptMessage(encryptedContent, senderId) {

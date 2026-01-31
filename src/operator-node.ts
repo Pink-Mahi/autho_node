@@ -3812,6 +3812,11 @@ export class OperatorNode extends EventEmitter {
             timestamp: m.timestamp,
             expiresAt: m.expiresAt,
             replyToMessageId: m.payload.replyToMessageId,
+            // Disappearing message fields
+            mediaType: m.payload.mediaType,
+            expiresAfterView: m.payload.expiresAfterView,
+            viewedAt: m.payload.viewedAt,
+            selfDestructAfter: m.payload.selfDestructAfter,
           })),
         });
       } catch (error: any) {
