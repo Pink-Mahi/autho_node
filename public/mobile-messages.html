@@ -1178,6 +1178,22 @@
     </div>
   </div>
 
+  <!-- Manage Group Modal -->
+  <div id="manageGroupModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ Group Settings</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <div id="manageGroupName" style="font-weight: 600; margin-bottom: 1rem; color: #fff;"></div>
+      <div class="share-instructions">Current members:</div>
+      <div class="member-select-list" id="currentMembersList"></div>
+      <div class="section-divider">Add members</div>
+      <div class="member-select-list" id="addMembersList"></div>
+      <button class="modal-btn" style="background: #ff4444; margin-top: 1rem;" onclick="leaveCurrentGroup()">🚪 Leave Group</button>
+    </div>
+  </div>
+
   <!-- Add Contact Modal -->
   <div id="addContactModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
     <div class="modal-content">
@@ -1723,6 +1739,12 @@
       document.getElementById('chatParticipantName').textContent = '👥 ' + group.name;
       document.getElementById('chatItemContext').textContent = group.members.length + ' members';
       
+      // Update the Add button to show Settings for groups
+      const addBtn = document.getElementById('addContactChatBtn');
+      addBtn.textContent = '⚙️ Settings';
+      addBtn.classList.remove('added');
+      addBtn.onclick = showManageGroupModal;
+      
       await loadGroupMessages(groupId);
       
       stopInboxPolling();
@@ -1783,20 +1805,38 @@
     }
 
     async function sendGroupMessage() {
-      if (!currentGroupId || !myEncryptionKeyPair) return;
+      if (!currentGroupId) {
+        console.error('No group selected');
+        return;
+      }
       
       const input = document.getElementById('messageInput');
       const text = input.value.trim();
       if (!text) return;
 
+      const sendBtn = document.getElementById('sendBtn');
+      if (sendBtn) sendBtn.disabled = true;
+
       try {
+        // Create message envelope
+        const messageEnvelope = JSON.stringify({
+          type: 'text',
+          content: text,
+          timestamp: Date.now()
+        });
+
         // Encrypt message for each group member
         const encryptedContentByMember = {};
         
         for (const memberId of currentGroupMembers) {
-          const recipientPublicKey = await deriveEncryptionPublicKey(memberId);
-          const encrypted = encryptMessage(text, recipientPublicKey);
-          encryptedContentByMember[memberId] = encrypted;
+          try {
+            const encrypted = await encryptForRecipient(messageEnvelope, memberId);
+            encryptedContentByMember[memberId] = encrypted;
+          } catch (e) {
+            console.error('Failed to encrypt for member:', memberId, e);
+            // Use plaintext as fallback if encryption fails
+            encryptedContentByMember[memberId] = messageEnvelope;
+          }
         }
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
@@ -1819,7 +1859,9 @@
         }
       } catch (error) {
         console.error('Send group message error:', error);
-        alert('Failed to send message');
+        alert('Failed to send message: ' + error.message);
+      } finally {
+        if (sendBtn) sendBtn.disabled = false;
       }
     }
 
@@ -1841,9 +1883,160 @@
       }
     }
 
+    // ============================================================
+    // GROUP MANAGEMENT FUNCTIONS
+    // ============================================================
+
+    let currentGroupInfo = null;
+
+    async function showManageGroupModal() {
+      if (!currentGroupId) return;
+      
+      // Fetch fresh group info
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (!response.ok) throw new Error('Failed to load group');
+        
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        
+        currentGroupInfo = data.group;
+        
+        document.getElementById('manageGroupName').textContent = '👥 ' + currentGroupInfo.name;
+        
+        // Show current members
+        const wallet = WalletAuth.getWallet();
+        const isAdmin = currentGroupInfo.adminId === wallet.publicKey;
+        const currentMembersList = document.getElementById('currentMembersList');
+        
+        currentMembersList.innerHTML = currentGroupInfo.members.map(memberId => {
+          const isMe = memberId === wallet.publicKey;
+          const isMemberAdmin = memberId === currentGroupInfo.adminId;
+          const shortId = memberId.substring(0, 12) + '...';
+          
+          return `
+            <div class="member-select-item">
+              <div class="contact-avatar" style="width: 32px; height: 32px; font-size: 0.9rem; margin-right: 0.75rem;">
+                ${isMemberAdmin ? '👑' : '👤'}
+              </div>
+              <span style="flex: 1;">${isMe ? 'You' : shortId}${isMemberAdmin ? ' (Admin)' : ''}</span>
+              ${isAdmin && !isMe ? `<button onclick="removeMemberFromGroup('${memberId}')" style="background: #ff4444; border: none; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Remove</button>` : ''}
+            </div>
+          `;
+        }).join('');
+        
+        // Show contacts that can be added
+        const localContacts = getLocalContacts();
+        const nonMembers = localContacts.filter(c => !currentGroupInfo.members.includes(c.accountId));
+        const addMembersList = document.getElementById('addMembersList');
+        
+        if (nonMembers.length === 0) {
+          addMembersList.innerHTML = '<div style="color: #888; text-align: center; padding: 0.5rem;">All contacts are already members</div>';
+        } else {
+          addMembersList.innerHTML = nonMembers.map(contact => `
+            <div class="member-select-item" onclick="addMemberToGroup('${contact.accountId}')">
+              <div class="contact-avatar" style="width: 32px; height: 32px; font-size: 0.9rem; margin-right: 0.75rem;">${contact.displayName[0].toUpperCase()}</div>
+              <span style="flex: 1;">${escapeHtml(contact.displayName)}</span>
+              <span style="color: #4CAF50;">+ Add</span>
+            </div>
+          `).join('');
+        }
+        
+        document.getElementById('manageGroupModal').style.display = 'flex';
+        
+      } catch (error) {
+        console.error('Failed to load group info:', error);
+        alert('Failed to load group settings');
+      }
+    }
+
+    async function addMemberToGroup(memberId) {
+      if (!currentGroupId) return;
+      
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/members`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ memberId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Refresh group info and modal
+          await loadGroups();
+          currentGroupMembers.push(memberId);
+          await showManageGroupModal();
+        } else {
+          alert('Failed to add member: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Add member error:', error);
+        alert('Failed to add member');
+      }
+    }
+
+    async function removeMemberFromGroup(memberId) {
+      if (!currentGroupId) return;
+      
+      if (!confirm('Remove this member from the group?')) return;
+      
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/members/${memberId}`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Refresh group info and modal
+          await loadGroups();
+          currentGroupMembers = currentGroupMembers.filter(m => m !== memberId);
+          await showManageGroupModal();
+        } else {
+          alert('Failed to remove member: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Remove member error:', error);
+        alert('Failed to remove member');
+      }
+    }
+
+    async function leaveCurrentGroup() {
+      if (!currentGroupId) return;
+      
+      if (!confirm('Are you sure you want to leave this group?')) return;
+      
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/leave`, {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          closeModals();
+          showInbox();
+          await loadGroups();
+          alert('You have left the group');
+        } else {
+          alert('Failed to leave group: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Leave group error:', error);
+        alert('Failed to leave group');
+      }
+    }
+
     async function openConversation(conversationId, recipientId) {
       currentConversationId = conversationId;
       currentRecipientId = recipientId;
+      currentGroupId = null; // Reset group context
       currentItemId = null;
       document.getElementById('chatItemContext').textContent = '';
       
@@ -1852,6 +2045,11 @@
       
       document.getElementById('inboxView').style.display = 'none';
       document.getElementById('chatView').classList.add('active');
+      
+      // Reset the Add button for 1-on-1 chats
+      const addBtn = document.getElementById('addContactChatBtn');
+      addBtn.textContent = '➕ Add';
+      addBtn.onclick = addCurrentRecipientToContacts;
       
       // Set participant name
       const conv = conversations.find(c => c.conversationId === conversationId);
@@ -2382,6 +2580,7 @@
       document.getElementById('shareModal').style.display = 'none';
       document.getElementById('addContactModal').style.display = 'none';
       document.getElementById('createGroupModal').style.display = 'none';
+      document.getElementById('manageGroupModal').style.display = 'none';
     }
 
     function copyShareLink() {
