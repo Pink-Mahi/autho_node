@@ -24,16 +24,45 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash, randomBytes } from 'crypto';
 
-// Message retention period (10 days in milliseconds)
-const DEFAULT_RETENTION_MS = 10 * 24 * 60 * 60 * 1000;
+// Message retention periods by media type (in milliseconds)
+const RETENTION_MS = {
+  TEXT: 10 * 24 * 60 * 60 * 1000,      // 10 days
+  IMAGE: 7 * 24 * 60 * 60 * 1000,      // 7 days
+  AUDIO: 5 * 24 * 60 * 60 * 1000,      // 5 days
+  VIDEO: 3 * 24 * 60 * 60 * 1000,      // 3 days
+};
+
+// Per-conversation rolling limits for media
+const MEDIA_LIMITS = {
+  IMAGE: 10,   // Max 10 images per conversation
+  AUDIO: 5,    // Max 5 audio messages per conversation
+  VIDEO: 3,    // Max 3 videos per conversation
+};
+
+// Disappearing message timer options (in milliseconds)
+export const DISAPPEAR_TIMERS = {
+  SECONDS_30: 30 * 1000,
+  MINUTES_5: 5 * 60 * 1000,
+  HOUR_1: 60 * 60 * 1000,
+  HOURS_24: 24 * 60 * 60 * 1000,
+  DAYS_3: 3 * 24 * 60 * 60 * 1000,
+  DAYS_10: 10 * 24 * 60 * 60 * 1000,  // Default
+  OFF: 0,  // No auto-delete (uses media type default)
+};
+
+const DEFAULT_RETENTION_MS = RETENTION_MS.TEXT;
 
 // Pruning interval (run every hour)
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+
+// Media type detection
+export type MediaType = 'text' | 'image' | 'audio' | 'video';
 
 export enum EphemeralEventType {
   MESSAGE_SENT = 'MESSAGE_SENT',
   MESSAGE_DELETED = 'MESSAGE_DELETED',
   MESSAGE_READ = 'MESSAGE_READ',
+  MESSAGE_VIEWED = 'MESSAGE_VIEWED',  // For disappearing messages - starts the timer
   CONTACT_ADDED = 'CONTACT_ADDED',
   CONTACT_REMOVED = 'CONTACT_REMOVED',
   CONTACT_BLOCKED = 'CONTACT_BLOCKED',
@@ -64,6 +93,11 @@ export interface MessagePayload {
   itemId?: string;            // Optional: if message is about a specific item
   conversationId: string;     // Groups messages into conversations
   replyToMessageId?: string;  // Optional: if replying to a specific message
+  // Media and disappearing message fields
+  mediaType?: MediaType;      // Type of content: text, image, audio, video
+  selfDestructAfter?: number; // Custom expiry time in ms (0 = use default, undefined = use media type default)
+  viewedAt?: number;          // Timestamp when recipient viewed (for disappearing messages)
+  expiresAfterView?: boolean; // If true, timer starts on view; if false/undefined, starts on send
 }
 
 export interface ContactPayload {
@@ -96,6 +130,29 @@ export interface GroupMessagePayload {
   // Map of memberId -> encrypted content (each member gets their own encrypted copy)
   encryptedContentByMember: { [memberId: string]: string };
   replyToMessageId?: string;
+  // Media and disappearing message fields
+  mediaType?: MediaType;
+  selfDestructAfter?: number;
+  viewedBy?: { [memberId: string]: number }; // memberId -> viewedAt timestamp
+  expiresAfterView?: boolean;
+}
+
+// Message deletion payload
+export interface MessageDeletePayload {
+  messageId: string;
+  deletedBy: string;
+  deletedAt: number;
+  conversationId?: string;
+  groupId?: string;
+}
+
+// Message viewed payload (for disappearing messages)
+export interface MessageViewedPayload {
+  messageId: string;
+  viewedBy: string;
+  viewedAt: number;
+  conversationId?: string;
+  groupId?: string;
 }
 
 export interface GroupMemberPayload {
@@ -177,15 +234,52 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
+   * Calculate retention based on media type and custom settings
+   */
+  private calculateRetention(payload: MessagePayload | GroupMessagePayload): number {
+    // If custom selfDestructAfter is set, use it
+    if (payload.selfDestructAfter && payload.selfDestructAfter > 0) {
+      return payload.selfDestructAfter;
+    }
+    
+    // Otherwise, use media type defaults
+    const mediaType = payload.mediaType || 'text';
+    switch (mediaType) {
+      case 'image': return RETENTION_MS.IMAGE;
+      case 'audio': return RETENTION_MS.AUDIO;
+      case 'video': return RETENTION_MS.VIDEO;
+      default: return RETENTION_MS.TEXT;
+    }
+  }
+
+  /**
    * Append a new event to the ephemeral store
    */
   async appendEvent(eventType: EphemeralEventType, payload: any, customExpiresAt?: number): Promise<EphemeralEvent> {
     const now = Date.now();
+    
+    // Calculate expiry based on event type and media
+    let expiresAt = customExpiresAt;
+    if (!expiresAt) {
+      if (eventType === EphemeralEventType.MESSAGE_SENT || eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
+        // For messages, use media-aware retention
+        const msgPayload = payload as MessagePayload | GroupMessagePayload;
+        // If expiresAfterView is true, set very long initial expiry (will be updated on view)
+        if (msgPayload.expiresAfterView) {
+          expiresAt = now + (365 * 24 * 60 * 60 * 1000); // 1 year max, will be shortened on view
+        } else {
+          expiresAt = now + this.calculateRetention(msgPayload);
+        }
+      } else {
+        expiresAt = now + this.retentionMs;
+      }
+    }
+    
     const event: EphemeralEvent = {
       eventId: this.generateEventId(),
       eventType,
       timestamp: now,
-      expiresAt: customExpiresAt || (now + this.retentionMs),
+      expiresAt,
       payload,
     };
 
@@ -195,6 +289,13 @@ export class EphemeralEventStore extends EventEmitter {
     // Update indexes
     this.indexEvent(event);
 
+    // Enforce per-conversation media limits
+    if (eventType === EphemeralEventType.MESSAGE_SENT) {
+      await this.enforceMediaLimits(payload.conversationId, payload.mediaType);
+    } else if (eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
+      await this.enforceGroupMediaLimits(payload.groupId, payload.mediaType);
+    }
+
     // Persist to disk
     await this.persistToDisk();
 
@@ -203,6 +304,102 @@ export class EphemeralEventStore extends EventEmitter {
     this.emit(eventType, event);
 
     return event;
+  }
+
+  /**
+   * Enforce per-conversation media limits (rolling window)
+   */
+  private async enforceMediaLimits(conversationId: string, mediaType?: MediaType): Promise<void> {
+    if (!mediaType || mediaType === 'text') return;
+    
+    const limit = MEDIA_LIMITS[mediaType.toUpperCase() as keyof typeof MEDIA_LIMITS];
+    if (!limit) return;
+    
+    const messageIds = this.messagesByConversation.get(conversationId);
+    if (!messageIds) return;
+    
+    // Get all messages of this media type in the conversation
+    const mediaMessages: EphemeralEvent[] = [];
+    for (const id of messageIds) {
+      const event = this.events.get(id);
+      if (event && event.eventType === EphemeralEventType.MESSAGE_SENT) {
+        const payload = event.payload as MessagePayload;
+        if (payload.mediaType === mediaType) {
+          mediaMessages.push(event);
+        }
+      }
+    }
+    
+    // Sort by timestamp (oldest first)
+    mediaMessages.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Remove oldest if over limit
+    while (mediaMessages.length > limit) {
+      const oldest = mediaMessages.shift()!;
+      await this.deleteMessageInternal(oldest.eventId);
+      console.log(`[Ephemeral] Auto-pruned oldest ${mediaType} in conversation (limit: ${limit})`);
+    }
+  }
+
+  /**
+   * Enforce per-group media limits (rolling window)
+   */
+  private async enforceGroupMediaLimits(groupId: string, mediaType?: MediaType): Promise<void> {
+    if (!mediaType || mediaType === 'text') return;
+    
+    const limit = MEDIA_LIMITS[mediaType.toUpperCase() as keyof typeof MEDIA_LIMITS];
+    if (!limit) return;
+    
+    const messageIds = this.messagesByGroup.get(groupId);
+    if (!messageIds) return;
+    
+    // Get all messages of this media type in the group
+    const mediaMessages: EphemeralEvent[] = [];
+    for (const id of messageIds) {
+      const event = this.events.get(id);
+      if (event && event.eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
+        const payload = event.payload as GroupMessagePayload;
+        if (payload.mediaType === mediaType) {
+          mediaMessages.push(event);
+        }
+      }
+    }
+    
+    // Sort by timestamp (oldest first)
+    mediaMessages.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Remove oldest if over limit
+    while (mediaMessages.length > limit) {
+      const oldest = mediaMessages.shift()!;
+      await this.deleteGroupMessageInternal(oldest.eventId);
+      console.log(`[Ephemeral] Auto-pruned oldest ${mediaType} in group (limit: ${limit})`);
+    }
+  }
+
+  /**
+   * Internal delete without creating event (for auto-pruning)
+   */
+  private async deleteMessageInternal(eventId: string): Promise<void> {
+    const event = this.events.get(eventId);
+    if (!event) return;
+    
+    const payload = event.payload as MessagePayload;
+    this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
+    this.messagesByUser.get(payload.senderId)?.delete(eventId);
+    this.messagesByUser.get(payload.recipientId)?.delete(eventId);
+    this.events.delete(eventId);
+  }
+
+  /**
+   * Internal delete for group messages (for auto-pruning)
+   */
+  private async deleteGroupMessageInternal(eventId: string): Promise<void> {
+    const event = this.events.get(eventId);
+    if (!event) return;
+    
+    const payload = event.payload as GroupMessagePayload;
+    this.messagesByGroup.get(payload.groupId)?.delete(eventId);
+    this.events.delete(eventId);
   }
 
   /**
@@ -474,6 +671,106 @@ export class EphemeralEventStore extends EventEmitter {
     }
     
     return messages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  /**
+   * Mark a message as viewed (starts disappearing timer if expiresAfterView is true)
+   */
+  async markMessageViewed(messageId: string, viewerId: string): Promise<boolean> {
+    const event = this.events.get(messageId);
+    if (!event) return false;
+    
+    const now = Date.now();
+    
+    if (event.eventType === EphemeralEventType.MESSAGE_SENT) {
+      const payload = event.payload as MessagePayload;
+      
+      // Only recipient can mark as viewed
+      if (payload.recipientId !== viewerId) return false;
+      
+      // Already viewed
+      if (payload.viewedAt) return true;
+      
+      // Mark as viewed
+      payload.viewedAt = now;
+      
+      // If expiresAfterView, update the expiry time now
+      if (payload.expiresAfterView) {
+        const retention = this.calculateRetention(payload);
+        event.expiresAt = now + retention;
+      }
+      
+      // Create viewed event
+      await this.appendEvent(EphemeralEventType.MESSAGE_VIEWED, {
+        messageId,
+        viewedBy: viewerId,
+        viewedAt: now,
+        conversationId: payload.conversationId,
+      } as MessageViewedPayload);
+      
+      await this.persistToDisk();
+      return true;
+      
+    } else if (event.eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
+      const payload = event.payload as GroupMessagePayload;
+      
+      // Initialize viewedBy if needed
+      if (!payload.viewedBy) {
+        payload.viewedBy = {};
+      }
+      
+      // Already viewed by this user
+      if (payload.viewedBy[viewerId]) return true;
+      
+      // Mark as viewed by this user
+      payload.viewedBy[viewerId] = now;
+      
+      // For group messages with expiresAfterView, expire when ALL members have viewed
+      // (or use sender's view time as trigger - simpler approach)
+      
+      await this.persistToDisk();
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Delete a group message
+   */
+  async deleteGroupMessage(messageId: string, requesterId: string): Promise<boolean> {
+    const event = this.events.get(messageId);
+    if (!event || event.eventType !== EphemeralEventType.GROUP_MESSAGE_SENT) return false;
+    
+    const payload = event.payload as GroupMessagePayload;
+    
+    // Only sender can delete
+    if (payload.senderId !== requesterId) return false;
+    
+    // Remove from indexes
+    this.messagesByGroup.get(payload.groupId)?.delete(messageId);
+    this.events.delete(messageId);
+    
+    // Record deletion event
+    await this.appendEvent(EphemeralEventType.MESSAGE_DELETED, {
+      messageId,
+      deletedBy: requesterId,
+      deletedAt: Date.now(),
+      groupId: payload.groupId,
+    } as MessageDeletePayload);
+    
+    await this.persistToDisk();
+    return true;
+  }
+
+  /**
+   * Get a message by ID
+   */
+  getMessage(messageId: string): EphemeralEvent | null {
+    const event = this.events.get(messageId);
+    if (!event) return null;
+    if (event.expiresAt <= Date.now()) return null;
+    return event;
   }
 
   /**

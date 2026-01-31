@@ -1001,6 +1001,89 @@
       height: 1px;
       background: rgba(212, 175, 55, 0.2);
     }
+
+    /* Disappearing Messages Styles */
+    .timer-selector {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(30, 30, 30, 0.9);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+    }
+
+    .timer-selector select {
+      background: #333;
+      border: 1px solid #555;
+      color: #fff;
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .timer-label {
+      color: #888;
+      font-size: 0.8rem;
+    }
+
+    .message-expiry {
+      font-size: 0.65rem;
+      color: #ff9800;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+
+    .message-expiry.urgent {
+      color: #f44336;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .message-delete-btn {
+      position: absolute;
+      top: 0.25rem;
+      right: 0.25rem;
+      background: rgba(244, 67, 54, 0.8);
+      border: none;
+      color: white;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .message-bubble:hover .message-delete-btn {
+      opacity: 1;
+    }
+
+    .message-bubble {
+      position: relative;
+    }
+
+    .disappearing-indicator {
+      display: inline-block;
+      margin-left: 0.25rem;
+      color: #ff9800;
+    }
+
+    .media-type-badge {
+      font-size: 0.65rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      margin-left: 0.25rem;
+    }
   </style>
 </head>
 <body>
@@ -1111,6 +1194,23 @@
         <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷 Photo</button>
         <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥 Video</button>
         <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤 Audio</button>
+      </div>
+      
+      <!-- Disappearing message timer selector -->
+      <div class="timer-selector" id="timerSelector">
+        <span class="timer-label">⏱️ Auto-delete:</span>
+        <select id="disappearTimer" onchange="updateDisappearTimer()">
+          <option value="0">Default (by media type)</option>
+          <option value="30000">30 seconds</option>
+          <option value="300000">5 minutes</option>
+          <option value="3600000">1 hour</option>
+          <option value="86400000">24 hours</option>
+          <option value="259200000">3 days</option>
+          <option value="864000000">10 days</option>
+        </select>
+        <label style="display: flex; align-items: center; gap: 0.25rem; color: #888; font-size: 0.75rem;">
+          <input type="checkbox" id="expiresAfterView"> After view
+        </label>
       </div>
       
       <!-- Text input row -->
@@ -2125,6 +2225,80 @@
       }
     }
 
+    // ============================================================
+    // DISAPPEARING MESSAGES FUNCTIONS
+    // ============================================================
+
+    let currentDisappearTimer = 0;  // 0 = use default by media type
+    let currentExpiresAfterView = false;
+
+    function updateDisappearTimer() {
+      const select = document.getElementById('disappearTimer');
+      currentDisappearTimer = parseInt(select.value) || 0;
+      currentExpiresAfterView = document.getElementById('expiresAfterView').checked;
+    }
+
+    function getDisappearSettings() {
+      return {
+        selfDestructAfter: currentDisappearTimer > 0 ? currentDisappearTimer : undefined,
+        expiresAfterView: currentExpiresAfterView
+      };
+    }
+
+    function formatTimeRemaining(expiresAt) {
+      const now = Date.now();
+      const remaining = expiresAt - now;
+      
+      if (remaining <= 0) return 'Expired';
+      
+      if (remaining < 60000) {
+        return Math.ceil(remaining / 1000) + 's';
+      } else if (remaining < 3600000) {
+        return Math.ceil(remaining / 60000) + 'm';
+      } else if (remaining < 86400000) {
+        return Math.ceil(remaining / 3600000) + 'h';
+      } else {
+        return Math.ceil(remaining / 86400000) + 'd';
+      }
+    }
+
+    async function deleteMessage(messageId) {
+      if (!confirm('Delete this message for everyone?')) return;
+      
+      try {
+        const response = await fetch(`/api/messages/${messageId}`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Refresh messages
+          if (currentConversationId) {
+            await loadMessages(currentConversationId);
+          } else if (currentGroupId) {
+            await loadGroupMessages(currentGroupId);
+          }
+        } else {
+          alert('Failed to delete: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Delete message error:', error);
+        alert('Failed to delete message');
+      }
+    }
+
+    async function markMessageViewed(messageId) {
+      try {
+        await fetch(`/api/messages/${messageId}/viewed`, {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+      } catch (error) {
+        console.error('Mark viewed error:', error);
+      }
+    }
+
     async function openConversationWithItem(recipientId, itemId) {
       currentRecipientId = recipientId;
       currentRecipientPublicKey = recipientId;
@@ -2301,6 +2475,9 @@
           encryptedForSender = await encryptForRecipient(messageEnvelope, wallet.publicKey);
         }
         
+        // Get disappearing message settings
+        const disappearSettings = getDisappearSettings();
+        
         const response = await fetch('/api/messages/send', {
           method: 'POST',
           headers: {
@@ -2312,7 +2489,10 @@
             encryptedContent: encryptedForRecipient,
             encryptedForSender: encryptedForSender,
             itemId: currentItemId || undefined,
-            conversationId: currentConversationId || undefined
+            conversationId: currentConversationId || undefined,
+            mediaType: 'text',
+            selfDestructAfter: disappearSettings.selfDestructAfter,
+            expiresAfterView: disappearSettings.expiresAfterView
           })
         });
         

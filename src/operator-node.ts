@@ -3658,7 +3658,18 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const { recipientId, encryptedContent, encryptedForSender, itemId, replyToMessageId, conversationId: providedConversationId } = req.body;
+        const { 
+          recipientId, 
+          encryptedContent, 
+          encryptedForSender, 
+          itemId, 
+          replyToMessageId, 
+          conversationId: providedConversationId,
+          // New disappearing message fields
+          mediaType,
+          selfDestructAfter,
+          expiresAfterView,
+        } = req.body;
 
         if (!recipientId || !encryptedContent) {
           res.status(400).json({ success: false, error: 'recipientId and encryptedContent required' });
@@ -3687,6 +3698,10 @@ export class OperatorNode extends EventEmitter {
           itemId,
           conversationId,
           replyToMessageId,
+          // Disappearing message fields
+          mediaType: mediaType || 'text',
+          selfDestructAfter: selfDestructAfter || undefined,
+          expiresAfterView: expiresAfterView || false,
         };
 
         const event = await this.ephemeralStore!.appendEvent(
@@ -4112,7 +4127,14 @@ export class OperatorNode extends EventEmitter {
         }
 
         const { groupId } = req.params;
-        const { encryptedContentByMember, replyToMessageId } = req.body;
+        const { 
+          encryptedContentByMember, 
+          replyToMessageId,
+          // Disappearing message fields
+          mediaType,
+          selfDestructAfter,
+          expiresAfterView,
+        } = req.body;
 
         if (!encryptedContentByMember || typeof encryptedContentByMember !== 'object') {
           res.status(400).json({ success: false, error: 'encryptedContentByMember object required' });
@@ -4132,6 +4154,10 @@ export class OperatorNode extends EventEmitter {
           senderId: account.accountId,
           encryptedContentByMember,
           replyToMessageId,
+          // Disappearing message fields
+          mediaType: mediaType || 'text',
+          selfDestructAfter: selfDestructAfter || undefined,
+          expiresAfterView: expiresAfterView || false,
         };
 
         const event = await this.ephemeralStore!.appendEvent(
@@ -4260,6 +4286,127 @@ export class OperatorNode extends EventEmitter {
         this.broadcastEphemeralEvent(event);
 
         res.json({ success: true, message: 'Left group' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // MESSAGE MANAGEMENT ENDPOINTS (Delete, View, Disappearing)
+    // ============================================================
+
+    // Delete a message (1-on-1)
+    this.app.delete('/api/messages/:messageId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { messageId } = req.params;
+        const deleted = await this.ephemeralStore!.deleteMessage(messageId, account.accountId);
+        
+        if (!deleted) {
+          res.status(404).json({ success: false, error: 'Message not found or not authorized' });
+          return;
+        }
+
+        res.json({ success: true, message: 'Message deleted' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Delete a group message
+    this.app.delete('/api/messages/groups/:groupId/messages/:messageId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { messageId } = req.params;
+        const deleted = await this.ephemeralStore!.deleteGroupMessage(messageId, account.accountId);
+        
+        if (!deleted) {
+          res.status(404).json({ success: false, error: 'Message not found or not authorized' });
+          return;
+        }
+
+        res.json({ success: true, message: 'Message deleted' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Mark message as viewed (for disappearing messages)
+    this.app.post('/api/messages/:messageId/viewed', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { messageId } = req.params;
+        const marked = await this.ephemeralStore!.markMessageViewed(messageId, account.accountId);
+        
+        if (!marked) {
+          res.status(404).json({ success: false, error: 'Message not found or not authorized' });
+          return;
+        }
+
+        // Get the updated message to return expiry info
+        const message = this.ephemeralStore!.getMessage(messageId);
+        
+        res.json({ 
+          success: true, 
+          message: 'Message marked as viewed',
+          expiresAt: message?.expiresAt
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get message details (including expiry info)
+    this.app.get('/api/messages/:messageId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { messageId } = req.params;
+        const message = this.ephemeralStore!.getMessage(messageId);
+        
+        if (!message) {
+          res.status(404).json({ success: false, error: 'Message not found' });
+          return;
+        }
+
+        // Verify user is participant
+        const payload = message.payload as MessagePayload;
+        if (payload.senderId !== account.accountId && payload.recipientId !== account.accountId) {
+          res.status(403).json({ success: false, error: 'Not authorized to view this message' });
+          return;
+        }
+
+        res.json({ 
+          success: true, 
+          message: {
+            messageId: message.eventId,
+            timestamp: message.timestamp,
+            expiresAt: message.expiresAt,
+            mediaType: payload.mediaType,
+            viewedAt: payload.viewedAt,
+            expiresAfterView: payload.expiresAfterView,
+            selfDestructAfter: payload.selfDestructAfter,
+          }
+        });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
       }
