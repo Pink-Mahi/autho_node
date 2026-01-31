@@ -23,7 +23,7 @@ import { ItemSearchEngine, hashImage, verifyImageHash } from './search';
 import { ItemProvenanceService } from './provenance';
 import { EntityRegistry, EntityType, EntityCategory, GlobalEntity } from './registry/entity-registry';
 import { BitcoinTransactionService } from './bitcoin/transaction-service';
-import { EphemeralEventStore, EphemeralEventType, EphemeralEvent, MessagePayload, ContactPayload } from './messaging';
+import { EphemeralEventStore, EphemeralEventType, EphemeralEvent, MessagePayload, ContactPayload, GroupPayload, GroupMessagePayload, GroupMemberPayload } from './messaging';
 
 interface OperatorConfig {
   operatorId: string;
@@ -3953,6 +3953,313 @@ export class OperatorNode extends EventEmitter {
           totalEvents: allEvents.length,
           messageSummary,
         });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // GROUP CHAT ENDPOINTS
+    // ============================================================
+
+    // Create a new group
+    this.app.post('/api/messages/groups', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { name, memberIds } = req.body;
+        if (!name || !memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+          res.status(400).json({ success: false, error: 'name and memberIds array required' });
+          return;
+        }
+
+        // Creator is always a member and admin
+        const members = [account.accountId, ...memberIds.filter((id: string) => id !== account.accountId)];
+        const groupId = this.ephemeralStore!.generateGroupId();
+
+        const payload: GroupPayload = {
+          groupId,
+          name,
+          members,
+          admins: [account.accountId],
+          createdBy: account.accountId,
+          createdAt: Date.now(),
+        };
+
+        // Groups are permanent (100 year expiry like contacts)
+        const permanentExpiry = Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.GROUP_CREATED,
+          payload,
+          permanentExpiry
+        );
+
+        // Broadcast to P2P network
+        this.broadcastEphemeralEvent(event);
+
+        res.json({ success: true, groupId, group: payload });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get user's groups
+    this.app.get('/api/messages/groups', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const groups = this.ephemeralStore!.getUserGroups(account.accountId);
+        
+        // Add last message info for each group
+        const groupsWithMeta = groups.map(group => {
+          const messages = this.ephemeralStore!.getGroupMessages(group.groupId);
+          const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+          return {
+            ...group,
+            lastMessageAt: lastMessage?.timestamp || group.createdAt,
+            messageCount: messages.length,
+          };
+        });
+
+        // Sort by last activity
+        groupsWithMeta.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+
+        res.json({ success: true, groups: groupsWithMeta });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get group details
+    this.app.get('/api/messages/groups/:groupId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const group = this.ephemeralStore!.getGroup(req.params.groupId);
+        if (!group) {
+          res.status(404).json({ success: false, error: 'Group not found' });
+          return;
+        }
+
+        if (!group.members.includes(account.accountId)) {
+          res.status(403).json({ success: false, error: 'Not a member of this group' });
+          return;
+        }
+
+        res.json({ success: true, group });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get group messages
+    this.app.get('/api/messages/groups/:groupId/messages', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { groupId } = req.params;
+        
+        if (!this.ephemeralStore!.isGroupMember(groupId, account.accountId)) {
+          res.status(403).json({ success: false, error: 'Not a member of this group' });
+          return;
+        }
+
+        const messages = this.ephemeralStore!.getGroupMessages(groupId);
+        
+        // Return messages with the encrypted content for current user
+        const userMessages = messages.map(m => {
+          const payload = m.payload as GroupMessagePayload;
+          return {
+            messageId: payload.messageId,
+            groupId: payload.groupId,
+            senderId: payload.senderId,
+            encryptedContent: payload.encryptedContentByMember[account.accountId],
+            timestamp: m.timestamp,
+            expiresAt: m.expiresAt,
+            replyToMessageId: payload.replyToMessageId,
+          };
+        });
+
+        res.json({ success: true, groupId, messages: userMessages });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Send message to group
+    this.app.post('/api/messages/groups/:groupId/send', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { groupId } = req.params;
+        const { encryptedContentByMember, replyToMessageId } = req.body;
+
+        if (!encryptedContentByMember || typeof encryptedContentByMember !== 'object') {
+          res.status(400).json({ success: false, error: 'encryptedContentByMember object required' });
+          return;
+        }
+
+        if (!this.ephemeralStore!.isGroupMember(groupId, account.accountId)) {
+          res.status(403).json({ success: false, error: 'Not a member of this group' });
+          return;
+        }
+
+        const messageId = `gmsg_${Date.now()}_${randomBytes(8).toString('hex')}`;
+
+        const payload: GroupMessagePayload = {
+          messageId,
+          groupId,
+          senderId: account.accountId,
+          encryptedContentByMember,
+          replyToMessageId,
+        };
+
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.GROUP_MESSAGE_SENT,
+          payload
+        );
+
+        // Broadcast to P2P network
+        this.broadcastEphemeralEvent(event);
+
+        res.json({ success: true, messageId, expiresAt: event.expiresAt });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Add member to group (admin only)
+    this.app.post('/api/messages/groups/:groupId/members', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { groupId } = req.params;
+        const { memberId } = req.body;
+
+        if (!memberId) {
+          res.status(400).json({ success: false, error: 'memberId required' });
+          return;
+        }
+
+        if (!this.ephemeralStore!.isGroupAdmin(groupId, account.accountId)) {
+          res.status(403).json({ success: false, error: 'Only admins can add members' });
+          return;
+        }
+
+        const payload: GroupMemberPayload = {
+          groupId,
+          memberId,
+          actorId: account.accountId,
+        };
+
+        const permanentExpiry = Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.GROUP_MEMBER_ADDED,
+          payload,
+          permanentExpiry
+        );
+
+        this.broadcastEphemeralEvent(event);
+
+        res.json({ success: true, message: 'Member added' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Remove member from group (admin only)
+    this.app.delete('/api/messages/groups/:groupId/members/:memberId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { groupId, memberId } = req.params;
+
+        if (!this.ephemeralStore!.isGroupAdmin(groupId, account.accountId)) {
+          res.status(403).json({ success: false, error: 'Only admins can remove members' });
+          return;
+        }
+
+        const payload: GroupMemberPayload = {
+          groupId,
+          memberId,
+          actorId: account.accountId,
+        };
+
+        const permanentExpiry = Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.GROUP_MEMBER_REMOVED,
+          payload,
+          permanentExpiry
+        );
+
+        this.broadcastEphemeralEvent(event);
+
+        res.json({ success: true, message: 'Member removed' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Leave group
+    this.app.post('/api/messages/groups/:groupId/leave', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const { groupId } = req.params;
+
+        if (!this.ephemeralStore!.isGroupMember(groupId, account.accountId)) {
+          res.status(403).json({ success: false, error: 'Not a member of this group' });
+          return;
+        }
+
+        const payload: GroupMemberPayload = {
+          groupId,
+          memberId: account.accountId,
+          actorId: account.accountId,
+        };
+
+        const permanentExpiry = Date.now() + (100 * 365 * 24 * 60 * 60 * 1000);
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.GROUP_LEFT,
+          payload,
+          permanentExpiry
+        );
+
+        this.broadcastEphemeralEvent(event);
+
+        res.json({ success: true, message: 'Left group' });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
       }

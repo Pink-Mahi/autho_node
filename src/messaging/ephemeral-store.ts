@@ -38,6 +38,13 @@ export enum EphemeralEventType {
   CONTACT_REMOVED = 'CONTACT_REMOVED',
   CONTACT_BLOCKED = 'CONTACT_BLOCKED',
   CONVERSATION_STARTED = 'CONVERSATION_STARTED',
+  // Group chat events
+  GROUP_CREATED = 'GROUP_CREATED',
+  GROUP_MESSAGE_SENT = 'GROUP_MESSAGE_SENT',
+  GROUP_MEMBER_ADDED = 'GROUP_MEMBER_ADDED',
+  GROUP_MEMBER_REMOVED = 'GROUP_MEMBER_REMOVED',
+  GROUP_NAME_CHANGED = 'GROUP_NAME_CHANGED',
+  GROUP_LEFT = 'GROUP_LEFT',
 }
 
 export interface EphemeralEvent {
@@ -72,6 +79,37 @@ export interface ConversationPayload {
   createdBy: string;          // Who started the conversation
 }
 
+// Group chat interfaces
+export interface GroupPayload {
+  groupId: string;
+  name: string;
+  members: string[];          // All member account IDs (public keys)
+  admins: string[];           // Admin account IDs (can add/remove members)
+  createdBy: string;          // Creator's account ID
+  createdAt: number;
+}
+
+export interface GroupMessagePayload {
+  messageId: string;
+  groupId: string;
+  senderId: string;
+  // Map of memberId -> encrypted content (each member gets their own encrypted copy)
+  encryptedContentByMember: { [memberId: string]: string };
+  replyToMessageId?: string;
+}
+
+export interface GroupMemberPayload {
+  groupId: string;
+  memberId: string;           // The member being added/removed
+  actorId: string;            // Who performed the action
+}
+
+export interface GroupNamePayload {
+  groupId: string;
+  newName: string;
+  actorId: string;
+}
+
 export interface EphemeralStoreOptions {
   dataDir: string;
   retentionMs?: number;
@@ -85,6 +123,11 @@ export class EphemeralEventStore extends EventEmitter {
   private contactsByUser: Map<string, Set<string>> = new Map();
   private blockedByUser: Map<string, Set<string>> = new Map();
   private conversationsByUser: Map<string, Set<string>> = new Map();
+  
+  // Group chat storage
+  private groups: Map<string, GroupPayload> = new Map();           // groupId -> group data
+  private groupsByUser: Map<string, Set<string>> = new Map();      // userId -> set of groupIds
+  private messagesByGroup: Map<string, Set<string>> = new Map();   // groupId -> set of eventIds
   
   private dataDir: string;
   private retentionMs: number;
@@ -226,6 +269,65 @@ export class EphemeralEventStore extends EventEmitter {
         this.contactsByUser.get(payload.userId)?.delete(payload.contactId);
         break;
       }
+      
+      // Group chat indexing
+      case EphemeralEventType.GROUP_CREATED: {
+        const payload = event.payload as GroupPayload;
+        this.groups.set(payload.groupId, payload);
+        // Index group for all members
+        for (const memberId of payload.members) {
+          if (!this.groupsByUser.has(memberId)) {
+            this.groupsByUser.set(memberId, new Set());
+          }
+          this.groupsByUser.get(memberId)!.add(payload.groupId);
+        }
+        break;
+      }
+      
+      case EphemeralEventType.GROUP_MESSAGE_SENT: {
+        const payload = event.payload as GroupMessagePayload;
+        // Index by group
+        if (!this.messagesByGroup.has(payload.groupId)) {
+          this.messagesByGroup.set(payload.groupId, new Set());
+        }
+        this.messagesByGroup.get(payload.groupId)!.add(event.eventId);
+        break;
+      }
+      
+      case EphemeralEventType.GROUP_MEMBER_ADDED: {
+        const payload = event.payload as GroupMemberPayload;
+        const group = this.groups.get(payload.groupId);
+        if (group && !group.members.includes(payload.memberId)) {
+          group.members.push(payload.memberId);
+          // Index group for new member
+          if (!this.groupsByUser.has(payload.memberId)) {
+            this.groupsByUser.set(payload.memberId, new Set());
+          }
+          this.groupsByUser.get(payload.memberId)!.add(payload.groupId);
+        }
+        break;
+      }
+      
+      case EphemeralEventType.GROUP_MEMBER_REMOVED:
+      case EphemeralEventType.GROUP_LEFT: {
+        const payload = event.payload as GroupMemberPayload;
+        const group = this.groups.get(payload.groupId);
+        if (group) {
+          group.members = group.members.filter(m => m !== payload.memberId);
+          // Remove group from user's index
+          this.groupsByUser.get(payload.memberId)?.delete(payload.groupId);
+        }
+        break;
+      }
+      
+      case EphemeralEventType.GROUP_NAME_CHANGED: {
+        const payload = event.payload as GroupNamePayload;
+        const group = this.groups.get(payload.groupId);
+        if (group) {
+          group.name = payload.newName;
+        }
+        break;
+      }
     }
   }
 
@@ -311,6 +413,76 @@ export class EphemeralEventStore extends EventEmitter {
    */
   isBlocked(userId: string, potentiallyBlockedId: string): boolean {
     return this.blockedByUser.get(userId)?.has(potentiallyBlockedId) || false;
+  }
+
+  // ============================================================
+  // GROUP CHAT METHODS
+  // ============================================================
+
+  /**
+   * Get all groups for a user
+   */
+  getUserGroups(userId: string): GroupPayload[] {
+    const groupIds = this.groupsByUser.get(userId) || new Set();
+    const groups: GroupPayload[] = [];
+    
+    for (const groupId of groupIds) {
+      const group = this.groups.get(groupId);
+      if (group) {
+        groups.push(group);
+      }
+    }
+    
+    return groups;
+  }
+
+  /**
+   * Get a group by ID
+   */
+  getGroup(groupId: string): GroupPayload | null {
+    return this.groups.get(groupId) || null;
+  }
+
+  /**
+   * Check if user is a member of a group
+   */
+  isGroupMember(groupId: string, userId: string): boolean {
+    const group = this.groups.get(groupId);
+    return group ? group.members.includes(userId) : false;
+  }
+
+  /**
+   * Check if user is an admin of a group
+   */
+  isGroupAdmin(groupId: string, userId: string): boolean {
+    const group = this.groups.get(groupId);
+    return group ? group.admins.includes(userId) : false;
+  }
+
+  /**
+   * Get messages for a group
+   */
+  getGroupMessages(groupId: string): EphemeralEvent[] {
+    const messageIds = this.messagesByGroup.get(groupId) || new Set();
+    const messages: EphemeralEvent[] = [];
+    
+    for (const id of messageIds) {
+      const event = this.events.get(id);
+      if (event && event.expiresAt > Date.now()) {
+        messages.push(event);
+      }
+    }
+    
+    return messages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  /**
+   * Generate a unique group ID
+   */
+  generateGroupId(): string {
+    const timestamp = Date.now().toString(36);
+    const random = randomBytes(8).toString('hex');
+    return `grp_${timestamp}_${random}`;
   }
 
   /**

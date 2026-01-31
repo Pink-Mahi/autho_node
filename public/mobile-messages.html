@@ -891,6 +891,116 @@
     .hidden-input {
       display: none;
     }
+
+    /* Group Chat Styles */
+    .group-card {
+      background: rgba(30, 30, 30, 0.8);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      border-radius: 12px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .group-card:hover {
+      border-color: #4CAF50;
+      transform: translateY(-2px);
+    }
+
+    .group-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(76, 175, 80, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #4CAF50;
+      font-size: 1.2rem;
+      margin-right: 0.75rem;
+    }
+
+    .group-name {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .group-members-count {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .create-group-btn {
+      background: rgba(76, 175, 80, 0.2);
+      border: 1px solid #4CAF50;
+      color: #4CAF50;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .member-select-list {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 1rem;
+    }
+
+    .member-select-item {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .member-select-item:hover {
+      background: rgba(212, 175, 55, 0.1);
+    }
+
+    .member-select-item.selected {
+      background: rgba(76, 175, 80, 0.2);
+    }
+
+    .member-checkbox {
+      width: 20px;
+      height: 20px;
+      margin-right: 0.75rem;
+      accent-color: #4CAF50;
+    }
+
+    .group-header-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .group-message-sender {
+      font-size: 0.7rem;
+      color: #4CAF50;
+      margin-bottom: 0.25rem;
+    }
+
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1rem 0;
+      color: #666;
+      font-size: 0.8rem;
+    }
+
+    .section-divider::before,
+    .section-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(212, 175, 55, 0.2);
+    }
   </style>
 </head>
 <body>
@@ -907,7 +1017,10 @@
 
       <div class="nav-tabs">
         <div class="nav-tab active" data-tab="conversations" onclick="switchTab('conversations')">
-          Conversations
+          Chats
+        </div>
+        <div class="nav-tab" data-tab="groups" onclick="switchTab('groups')">
+          Groups
         </div>
         <div class="nav-tab" data-tab="contacts" onclick="switchTab('contacts')">
           Contacts
@@ -920,6 +1033,15 @@
             <div class="spinner"></div>
           </div>
         </div>
+      </div>
+
+      <div id="groupsTab" style="display: none;">
+        <div class="contact-buttons" style="margin-bottom: 1rem;">
+          <button class="create-group-btn" onclick="showCreateGroupModal()">
+            <span>👥</span> Create Group
+          </button>
+        </div>
+        <div id="groupsList" class="conversation-list"></div>
       </div>
 
       <div id="contactsTab" style="display: none;">
@@ -1039,6 +1161,20 @@
         <input type="text" class="share-link-input" id="shareLink" readonly>
         <button class="copy-btn" onclick="copyShareLink()">Copy</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div id="createGroupModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">👥 Create Group</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <input type="text" class="modal-input" id="groupNameInput" placeholder="Group name...">
+      <div class="share-instructions">Select members from your contacts:</div>
+      <div class="member-select-list" id="memberSelectList"></div>
+      <button class="modal-btn" onclick="createGroup()">Create Group</button>
     </div>
   </div>
 
@@ -1237,7 +1373,12 @@
       document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
       
       document.getElementById('conversationsTab').style.display = tab === 'conversations' ? 'block' : 'none';
+      document.getElementById('groupsTab').style.display = tab === 'groups' ? 'block' : 'none';
       document.getElementById('contactsTab').style.display = tab === 'contacts' ? 'block' : 'none';
+      
+      if (tab === 'groups') {
+        loadGroups();
+      }
     }
 
     async function loadConversations() {
@@ -1416,6 +1557,288 @@
           </div>
         </div>
       `).join('');
+    }
+
+    // ============================================================
+    // GROUP CHAT FUNCTIONS
+    // ============================================================
+    
+    let groups = [];
+    let currentGroupId = null;
+    let currentGroupMembers = [];
+    let selectedGroupMembers = new Set();
+
+    async function loadGroups() {
+      try {
+        const response = await fetch('/api/messages/groups', {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (checkAuthAndRedirect(response)) return;
+        
+        if (!response.ok) throw new Error('Failed to load groups');
+        
+        const data = await response.json();
+        if (data.success) {
+          groups = data.groups;
+          renderGroups();
+        }
+      } catch (error) {
+        console.error('Failed to load groups:', error);
+        document.getElementById('groupsList').innerHTML = 
+          '<div class="empty-inbox"><div class="empty-inbox-title">Failed to load groups</div></div>';
+      }
+    }
+
+    function renderGroups() {
+      const container = document.getElementById('groupsList');
+      
+      if (groups.length === 0) {
+        container.innerHTML = `
+          <div class="empty-inbox">
+            <div class="empty-inbox-icon">👥</div>
+            <div class="empty-inbox-title">No groups yet</div>
+            <div>Create a group to chat with multiple contacts</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = groups.map(group => {
+        const timeAgo = formatTimeAgo(group.lastMessageAt);
+        return `
+          <div class="group-card" onclick="openGroupChat('${group.groupId}')">
+            <div class="conversation-header">
+              <div style="display: flex; align-items: center;">
+                <div class="group-icon">👥</div>
+                <div>
+                  <div class="group-name">${escapeHtml(group.name)}</div>
+                  <div class="group-members-count">${group.members.length} members</div>
+                </div>
+              </div>
+              <div class="conversation-time">${timeAgo}</div>
+            </div>
+            <div class="conversation-preview">${group.messageCount} messages</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showCreateGroupModal() {
+      selectedGroupMembers.clear();
+      document.getElementById('groupNameInput').value = '';
+      
+      // Get contacts for member selection
+      const localContacts = getLocalContacts();
+      const container = document.getElementById('memberSelectList');
+      
+      if (localContacts.length === 0) {
+        container.innerHTML = '<div style="color: #888; text-align: center; padding: 1rem;">Add contacts first to create a group</div>';
+      } else {
+        container.innerHTML = localContacts.map(contact => `
+          <div class="member-select-item" onclick="toggleMemberSelection('${contact.accountId}', this)">
+            <input type="checkbox" class="member-checkbox" id="member_${contact.accountId}">
+            <div class="contact-avatar" style="width: 32px; height: 32px; font-size: 0.9rem;">${contact.displayName[0].toUpperCase()}</div>
+            <span>${escapeHtml(contact.displayName)}</span>
+          </div>
+        `).join('');
+      }
+      
+      document.getElementById('createGroupModal').style.display = 'flex';
+    }
+
+    function toggleMemberSelection(memberId, element) {
+      const checkbox = element.querySelector('.member-checkbox');
+      
+      if (selectedGroupMembers.has(memberId)) {
+        selectedGroupMembers.delete(memberId);
+        checkbox.checked = false;
+        element.classList.remove('selected');
+      } else {
+        selectedGroupMembers.add(memberId);
+        checkbox.checked = true;
+        element.classList.add('selected');
+      }
+    }
+
+    async function createGroup() {
+      const name = document.getElementById('groupNameInput').value.trim();
+      
+      if (!name) {
+        alert('Please enter a group name');
+        return;
+      }
+      
+      if (selectedGroupMembers.size === 0) {
+        alert('Please select at least one member');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/messages/groups', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            name,
+            memberIds: Array.from(selectedGroupMembers)
+          })
+        });
+
+        if (checkAuthAndRedirect(response)) return;
+
+        const data = await response.json();
+        if (data.success) {
+          closeModals();
+          await loadGroups();
+          switchTab('groups');
+          alert('Group created successfully!');
+        } else {
+          alert('Failed to create group: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Create group error:', error);
+        alert('Failed to create group');
+      }
+    }
+
+    async function openGroupChat(groupId) {
+      currentGroupId = groupId;
+      currentConversationId = null;
+      currentRecipientId = null;
+      
+      // Get group info
+      const group = groups.find(g => g.groupId === groupId);
+      if (!group) {
+        alert('Group not found');
+        return;
+      }
+      
+      currentGroupMembers = group.members;
+      
+      document.getElementById('inboxView').style.display = 'none';
+      document.getElementById('chatView').classList.add('active');
+      document.getElementById('chatParticipantName').textContent = '👥 ' + group.name;
+      document.getElementById('chatItemContext').textContent = group.members.length + ' members';
+      
+      await loadGroupMessages(groupId);
+      
+      stopInboxPolling();
+      startGroupMessagePolling();
+    }
+
+    async function loadGroupMessages(groupId) {
+      try {
+        const response = await fetch(`/api/messages/groups/${groupId}/messages`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (checkAuthAndRedirect(response)) return;
+        
+        const data = await response.json();
+        if (data.success) {
+          renderGroupMessages(data.messages);
+        }
+      } catch (error) {
+        console.error('Failed to load group messages:', error);
+      }
+    }
+
+    function renderGroupMessages(messages) {
+      const container = document.getElementById('chatMessages');
+      const wallet = WalletAuth.getWallet();
+      
+      if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-inbox"><div class="empty-inbox-title">No messages yet</div><div>Start the conversation!</div></div>';
+        return;
+      }
+
+      container.innerHTML = messages.map(msg => {
+        const isSent = msg.senderId === wallet.publicKey;
+        let content = '[Encrypted]';
+        
+        // Decrypt message
+        if (msg.encryptedContent && myEncryptionKeyPair) {
+          try {
+            content = decryptMessage(msg.encryptedContent, msg.senderId);
+          } catch (e) {
+            content = '[Unable to decrypt]';
+          }
+        }
+        
+        const senderName = isSent ? 'You' : (msg.senderId.substring(0, 8) + '...');
+        
+        return `
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+            ${!isSent ? `<div class="group-message-sender">${senderName}</div>` : ''}
+            <div class="message-text">${escapeHtml(content)}</div>
+            <div class="message-meta">${formatTime(msg.timestamp)}</div>
+          </div>
+        `;
+      }).join('');
+      
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendGroupMessage() {
+      if (!currentGroupId || !myEncryptionKeyPair) return;
+      
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      try {
+        // Encrypt message for each group member
+        const encryptedContentByMember = {};
+        
+        for (const memberId of currentGroupMembers) {
+          const recipientPublicKey = await deriveEncryptionPublicKey(memberId);
+          const encrypted = encryptMessage(text, recipientPublicKey);
+          encryptedContentByMember[memberId] = encrypted;
+        }
+
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ encryptedContentByMember })
+        });
+
+        if (checkAuthAndRedirect(response)) return;
+
+        const data = await response.json();
+        if (data.success) {
+          input.value = '';
+          await loadGroupMessages(currentGroupId);
+        } else {
+          alert('Failed to send message: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Send group message error:', error);
+        alert('Failed to send message');
+      }
+    }
+
+    let groupMessagePollingInterval = null;
+
+    function startGroupMessagePolling() {
+      stopGroupMessagePolling();
+      groupMessagePollingInterval = setInterval(async () => {
+        if (currentGroupId) {
+          await loadGroupMessages(currentGroupId);
+        }
+      }, POLL_INTERVAL_MS);
+    }
+
+    function stopGroupMessagePolling() {
+      if (groupMessagePollingInterval) {
+        clearInterval(groupMessagePollingInterval);
+        groupMessagePollingInterval = null;
+      }
     }
 
     async function openConversation(conversationId, recipientId) {
@@ -1648,6 +2071,11 @@
     }
 
     async function sendMessage() {
+      // Route to group message if in group chat
+      if (currentGroupId) {
+        return sendGroupMessage();
+      }
+      
       const input = document.getElementById('messageInput');
       const text = input.value.trim();
       if (!text || !currentRecipientId) return;
@@ -1716,9 +2144,11 @@
       document.getElementById('inboxView').style.display = 'block';
       currentConversationId = null;
       currentRecipientId = null;
+      currentGroupId = null;
       
       // Stop message polling, start inbox polling
       stopMessagePolling();
+      stopGroupMessagePolling();
       startInboxPolling();
       
       loadConversations();
@@ -1951,6 +2381,7 @@
       stopQrScanner();
       document.getElementById('shareModal').style.display = 'none';
       document.getElementById('addContactModal').style.display = 'none';
+      document.getElementById('createGroupModal').style.display = 'none';
     }
 
     function copyShareLink() {
