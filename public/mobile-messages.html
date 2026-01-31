@@ -3233,6 +3233,9 @@
           encryptedForSender = await encryptForRecipient(mediaEnvelope, wallet.publicKey);
         }
         
+        // Get disappearing message settings
+        const disappearSettings = getDisappearSettings();
+        
         const response = await fetch('/api/messages/send', {
           method: 'POST',
           headers: {
@@ -3244,7 +3247,11 @@
             encryptedContent: encryptedForRecipient,
             encryptedForSender: encryptedForSender,
             itemId: currentItemId || undefined,
-            conversationId: currentConversationId || undefined
+            conversationId: currentConversationId || undefined,
+            // Include media type and disappearing settings
+            mediaType: pendingMedia.type,
+            selfDestructAfter: disappearSettings.selfDestructAfter,
+            expiresAfterView: disappearSettings.expiresAfterView
           })
         });
         
