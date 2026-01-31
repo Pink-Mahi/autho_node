@@ -1084,6 +1084,165 @@
       border-radius: 4px;
       margin-left: 0.25rem;
     }
+
+    /* Read Receipts */
+    .read-receipt {
+      font-size: 0.7rem;
+      margin-left: 0.25rem;
+      color: #888;
+    }
+    .read-receipt.delivered { color: #888; }
+    .read-receipt.read { color: #4CAF50; }
+
+    /* Typing Indicator */
+    .typing-indicator {
+      padding: 0.5rem 1rem;
+      color: #888;
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+    .typing-dots {
+      display: inline-block;
+    }
+    .typing-dots span {
+      animation: typingBounce 1.4s infinite;
+      display: inline-block;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+
+    /* Message Reactions */
+    .message-reactions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+    .reaction-badge {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.15rem 0.4rem;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .reaction-badge:hover { background: rgba(255, 255, 255, 0.2); }
+    .reaction-picker {
+      position: absolute;
+      bottom: 100%;
+      right: 0;
+      background: #333;
+      border-radius: 8px;
+      padding: 0.5rem;
+      display: none;
+      gap: 0.25rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .reaction-picker.show { display: flex; }
+    .reaction-picker button {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0.25rem;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .reaction-picker button:hover { background: rgba(255,255,255,0.1); }
+
+    /* Online Status */
+    .online-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 0.25rem;
+    }
+    .online-indicator.online { background: #4CAF50; }
+    .online-indicator.offline { background: #888; }
+    .last-seen {
+      font-size: 0.7rem;
+      color: #888;
+    }
+
+    /* Mute Button */
+    .mute-btn {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.25rem;
+    }
+    .mute-btn.muted { color: #f44336; }
+
+    /* Search Bar */
+    .search-bar {
+      padding: 0.5rem 1rem;
+      background: #1a1a1a;
+    }
+    .search-bar input {
+      width: 100%;
+      padding: 0.6rem 1rem;
+      background: #333;
+      border: 1px solid #555;
+      border-radius: 20px;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+    .search-bar input::placeholder { color: #888; }
+
+    /* File Attachment */
+    .file-attachment {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      margin-top: 0.25rem;
+    }
+    .file-icon { font-size: 1.5rem; }
+    .file-info { flex: 1; }
+    .file-name { font-size: 0.85rem; color: #fff; }
+    .file-size { font-size: 0.7rem; color: #888; }
+    .file-download-btn {
+      background: #d4af37;
+      color: #000;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    /* Link Preview */
+    .link-preview {
+      background: rgba(255,255,255,0.05);
+      border-left: 3px solid #d4af37;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border-radius: 0 8px 8px 0;
+    }
+    .link-preview-title {
+      font-weight: bold;
+      font-size: 0.85rem;
+      color: #d4af37;
+    }
+    .link-preview-description {
+      font-size: 0.75rem;
+      color: #aaa;
+      margin-top: 0.25rem;
+    }
+    .link-preview-url {
+      font-size: 0.7rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
   </style>
 </head>
 <body>
@@ -1096,6 +1255,11 @@
           <span>💬</span> Messages
         </div>
         <div class="inbox-stats" id="inboxStats">Loading...</div>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="search-bar">
+        <input type="text" id="messageSearch" placeholder="🔍 Search messages..." oninput="debounceSearch(this.value)">
       </div>
 
       <div class="nav-tabs">
@@ -1194,6 +1358,7 @@
         <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷 Photo</button>
         <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥 Video</button>
         <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤 Audio</button>
+        <button class="media-btn" onclick="document.getElementById('fileInput').click()" title="Send file">📎 File</button>
       </div>
       
       <!-- Disappearing message timer selector -->
@@ -1216,7 +1381,7 @@
       <!-- Text input row -->
       <div class="chat-input-row">
         <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..." 
-               onkeypress="if(event.key==='Enter')sendMessage()">
+               onkeypress="if(event.key==='Enter')sendMessage()" oninput="sendTypingIndicator()">
       </div>
       
       <!-- Action buttons row (below input) -->
@@ -1237,6 +1402,7 @@
       <!-- Hidden file inputs -->
       <input type="file" id="photoInput" class="hidden-input" accept="image/*" capture="environment" onchange="handlePhotoSelect(event)">
       <input type="file" id="videoInput" class="hidden-input" accept="video/*" capture="environment" onchange="handleVideoSelect(event)">
+      <input type="file" id="fileInput" class="hidden-input" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar" onchange="handleFileSelect(event)">
     </div>
   </div>
 
@@ -2223,6 +2389,258 @@
         clearInterval(inboxPollingInterval);
         inboxPollingInterval = null;
       }
+    }
+
+    // ============================================================
+    // SEARCH, TYPING, REACTIONS, MUTE, ONLINE STATUS FUNCTIONS
+    // ============================================================
+
+    let searchTimeout = null;
+    let typingTimeout = null;
+    let onlineHeartbeatInterval = null;
+    const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😢'];
+
+    // Search with debounce
+    function debounceSearch(query) {
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => searchMessages(query), 300);
+    }
+
+    async function searchMessages(query) {
+      if (!query || query.length < 2) {
+        loadConversations(); // Reset to normal view
+        return;
+      }
+      try {
+        const response = await fetch(`/api/messages/search?q=${encodeURIComponent(query)}&limit=50`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+        if (data.success) {
+          displaySearchResults(data.messages);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      }
+    }
+
+    function displaySearchResults(messages) {
+      const container = document.getElementById('conversationList');
+      if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-state">No messages found</div>';
+        return;
+      }
+      container.innerHTML = messages.map(msg => `
+        <div class="conversation-item" onclick="openConversation('${msg.conversationId}', '${msg.senderId}')">
+          <div class="conversation-info">
+            <div class="conversation-name">Message from ${msg.senderId.slice(0,8)}...</div>
+            <div class="conversation-preview">${new Date(msg.timestamp).toLocaleString()}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Typing indicators
+    function sendTypingIndicator() {
+      if (!currentConversationId) return;
+      if (typingTimeout) clearTimeout(typingTimeout);
+      
+      fetch('/api/messages/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+        body: JSON.stringify({ conversationId: currentConversationId })
+      }).catch(() => {});
+      
+      typingTimeout = setTimeout(() => { typingTimeout = null; }, 3000);
+    }
+
+    async function checkTypingUsers() {
+      if (!currentConversationId) return;
+      try {
+        const response = await fetch(`/api/messages/conversation/${currentConversationId}/typing`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+        updateTypingIndicator(data.typingUsers || []);
+      } catch (error) {}
+    }
+
+    function updateTypingIndicator(users) {
+      let indicator = document.getElementById('typingIndicator');
+      if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'typingIndicator';
+        indicator.className = 'typing-indicator';
+        const container = document.getElementById('chatMessages');
+        if (container) container.parentNode.insertBefore(indicator, container.nextSibling);
+      }
+      
+      const wallet = WalletAuth.getWallet();
+      const otherUsers = users.filter(u => u !== wallet?.publicKey);
+      
+      if (otherUsers.length > 0) {
+        indicator.innerHTML = `<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span> typing`;
+        indicator.style.display = 'block';
+      } else {
+        indicator.style.display = 'none';
+      }
+    }
+
+    // Message reactions
+    async function addReaction(messageId, emoji) {
+      try {
+        await fetch(`/api/messages/${messageId}/react`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+          body: JSON.stringify({ emoji })
+        });
+        hideReactionPicker();
+        if (currentConversationId) loadMessages(currentConversationId);
+      } catch (error) {
+        console.error('Reaction error:', error);
+      }
+    }
+
+    async function removeReaction(messageId) {
+      try {
+        await fetch(`/api/messages/${messageId}/react`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        if (currentConversationId) loadMessages(currentConversationId);
+      } catch (error) {
+        console.error('Remove reaction error:', error);
+      }
+    }
+
+    function showReactionPicker(messageId, event) {
+      event.stopPropagation();
+      hideReactionPicker();
+      const picker = document.createElement('div');
+      picker.className = 'reaction-picker show';
+      picker.id = 'reactionPicker';
+      picker.innerHTML = REACTION_EMOJIS.map(e => 
+        `<button onclick="addReaction('${messageId}', '${e}')">${e}</button>`
+      ).join('');
+      event.target.closest('.message-bubble').appendChild(picker);
+    }
+
+    function hideReactionPicker() {
+      const picker = document.getElementById('reactionPicker');
+      if (picker) picker.remove();
+    }
+
+    document.addEventListener('click', hideReactionPicker);
+
+    // Mute/unmute conversations
+    async function toggleMute(conversationId, isMuted) {
+      try {
+        const endpoint = isMuted ? 'unmute' : 'mute';
+        await fetch(`/api/messages/conversation/${conversationId}/${endpoint}`, {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        loadConversations();
+      } catch (error) {
+        console.error('Mute error:', error);
+      }
+    }
+
+    // Online status heartbeat
+    function startOnlineHeartbeat() {
+      sendOnlineHeartbeat();
+      onlineHeartbeatInterval = setInterval(sendOnlineHeartbeat, 60000); // Every minute
+    }
+
+    function stopOnlineHeartbeat() {
+      if (onlineHeartbeatInterval) {
+        clearInterval(onlineHeartbeatInterval);
+        onlineHeartbeatInterval = null;
+      }
+    }
+
+    async function sendOnlineHeartbeat() {
+      try {
+        await fetch('/api/messages/online', {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+      } catch (error) {}
+    }
+
+    async function checkOnlineStatus(userId) {
+      try {
+        const response = await fetch(`/api/messages/user/${userId}/online`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        return await response.json();
+      } catch (error) {
+        return { isOnline: false, lastSeen: null };
+      }
+    }
+
+    // Mark messages as read
+    async function markMessagesAsRead(messages) {
+      const wallet = WalletAuth.getWallet();
+      for (const msg of messages) {
+        if (msg.senderId !== wallet?.publicKey) {
+          fetch(`/api/messages/${msg.messageId}/read`, {
+            method: 'POST',
+            headers: WalletAuth.getAuthHeaders()
+          }).catch(() => {});
+        }
+      }
+    }
+
+    // File attachment handling
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const ALLOWED_FILE_TYPES = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
+
+    async function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_FILE_TYPES.includes(ext)) {
+        alert(`File type not allowed. Allowed: ${ALLOWED_FILE_TYPES.join(', ')}`);
+        event.target.value = '';
+        return;
+      }
+      
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+        event.target.value = '';
+        return;
+      }
+      
+      try {
+        const data = await fileToBase64(file);
+        pendingMedia = {
+          type: 'file',
+          data: data,
+          name: file.name,
+          size: file.size,
+          extension: ext
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('File processing error:', e);
+        alert('Failed to process file');
+      }
+      event.target.value = '';
+    }
+
+    function getFileIcon(extension) {
+      const icons = {
+        pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
+        txt: '📃', csv: '📊', zip: '📦', rar: '📦'
+      };
+      return icons[extension] || '📎';
+    }
+
+    // Start heartbeat on page load
+    if (WalletAuth.getWallet()) {
+      startOnlineHeartbeat();
     }
 
     // ============================================================

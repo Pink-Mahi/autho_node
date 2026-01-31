@@ -63,10 +63,18 @@ export enum EphemeralEventType {
   MESSAGE_DELETED = 'MESSAGE_DELETED',
   MESSAGE_READ = 'MESSAGE_READ',
   MESSAGE_VIEWED = 'MESSAGE_VIEWED',  // For disappearing messages - starts the timer
+  MESSAGE_DELIVERED = 'MESSAGE_DELIVERED',  // Message reached recipient's device
+  MESSAGE_REACTION = 'MESSAGE_REACTION',    // Emoji reaction to a message
   CONTACT_ADDED = 'CONTACT_ADDED',
   CONTACT_REMOVED = 'CONTACT_REMOVED',
   CONTACT_BLOCKED = 'CONTACT_BLOCKED',
   CONVERSATION_STARTED = 'CONVERSATION_STARTED',
+  CONVERSATION_MUTED = 'CONVERSATION_MUTED',
+  CONVERSATION_UNMUTED = 'CONVERSATION_UNMUTED',
+  TYPING_STARTED = 'TYPING_STARTED',
+  TYPING_STOPPED = 'TYPING_STOPPED',
+  USER_ONLINE = 'USER_ONLINE',
+  USER_OFFLINE = 'USER_OFFLINE',
   // Group chat events
   GROUP_CREATED = 'GROUP_CREATED',
   GROUP_MESSAGE_SENT = 'GROUP_MESSAGE_SENT',
@@ -74,6 +82,8 @@ export enum EphemeralEventType {
   GROUP_MEMBER_REMOVED = 'GROUP_MEMBER_REMOVED',
   GROUP_NAME_CHANGED = 'GROUP_NAME_CHANGED',
   GROUP_LEFT = 'GROUP_LEFT',
+  GROUP_MUTED = 'GROUP_MUTED',
+  GROUP_UNMUTED = 'GROUP_UNMUTED',
 }
 
 export interface EphemeralEvent {
@@ -155,6 +165,54 @@ export interface MessageViewedPayload {
   groupId?: string;
 }
 
+// Message reaction payload
+export interface MessageReactionPayload {
+  messageId: string;
+  reactedBy: string;
+  emoji: string;          // The emoji reaction (👍❤️😂🔥👏😢)
+  conversationId?: string;
+  groupId?: string;
+  removed?: boolean;      // If true, removes the reaction
+}
+
+// Typing indicator payload (ephemeral - not persisted)
+export interface TypingPayload {
+  userId: string;
+  conversationId?: string;
+  groupId?: string;
+}
+
+// Mute conversation payload
+export interface MutePayload {
+  conversationId?: string;
+  groupId?: string;
+  mutedBy: string;
+  mutedUntil?: number;    // Timestamp when mute expires (undefined = forever)
+}
+
+// Online status payload (ephemeral - not persisted)
+export interface OnlineStatusPayload {
+  userId: string;
+  lastSeen: number;
+}
+
+// File attachment limits
+export const FILE_LIMITS = {
+  MAX_FILE_SIZE: 10 * 1024 * 1024,    // 10MB max
+  ALLOWED_TYPES: [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'text/csv',
+    'application/zip',
+    'application/x-rar-compressed',
+  ],
+  ALLOWED_EXTENSIONS: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'],
+};
+
 export interface GroupMemberPayload {
   groupId: string;
   memberId: string;           // The member being added/removed
@@ -185,6 +243,14 @@ export class EphemeralEventStore extends EventEmitter {
   private groups: Map<string, GroupPayload> = new Map();           // groupId -> group data
   private groupsByUser: Map<string, Set<string>> = new Map();      // userId -> set of groupIds
   private messagesByGroup: Map<string, Set<string>> = new Map();   // groupId -> set of eventIds
+  
+  // New feature storage
+  private messageReactions: Map<string, Map<string, string>> = new Map();  // messageId -> (userId -> emoji)
+  private mutedConversations: Map<string, Set<string>> = new Map();        // userId -> set of conversationIds
+  private mutedGroups: Map<string, Set<string>> = new Map();               // userId -> set of groupIds
+  private typingUsers: Map<string, Map<string, number>> = new Map();       // conversationId -> (userId -> timestamp)
+  private onlineUsers: Map<string, number> = new Map();                    // userId -> lastSeen timestamp
+  private messageReadStatus: Map<string, { delivered?: number; read?: number }> = new Map();  // messageId -> status
   
   private dataDir: string;
   private retentionMs: number;
@@ -1121,5 +1187,219 @@ export class EphemeralEventStore extends EventEmitter {
     } catch (error) {
       console.error('[MessageLedger] Failed to load contacts:', error);
     }
+  }
+
+  // ============================================================
+  // READ RECEIPTS & DELIVERY STATUS
+  // ============================================================
+
+  markMessageDelivered(messageId: string): void {
+    const status = this.messageReadStatus.get(messageId) || {};
+    if (!status.delivered) {
+      status.delivered = Date.now();
+      this.messageReadStatus.set(messageId, status);
+      this.emit(EphemeralEventType.MESSAGE_DELIVERED, { messageId, timestamp: status.delivered });
+    }
+  }
+
+  markMessageRead(messageId: string, readBy: string): void {
+    const status = this.messageReadStatus.get(messageId) || {};
+    if (!status.read) {
+      status.read = Date.now();
+      this.messageReadStatus.set(messageId, status);
+      this.emit(EphemeralEventType.MESSAGE_READ, { messageId, readBy, timestamp: status.read });
+    }
+  }
+
+  getMessageStatus(messageId: string): { delivered?: number; read?: number } {
+    return this.messageReadStatus.get(messageId) || {};
+  }
+
+  // ============================================================
+  // MESSAGE REACTIONS
+  // ============================================================
+
+  addReaction(messageId: string, userId: string, emoji: string): void {
+    let reactions = this.messageReactions.get(messageId);
+    if (!reactions) {
+      reactions = new Map();
+      this.messageReactions.set(messageId, reactions);
+    }
+    reactions.set(userId, emoji);
+    this.emit(EphemeralEventType.MESSAGE_REACTION, { messageId, userId, emoji, removed: false });
+  }
+
+  removeReaction(messageId: string, userId: string): void {
+    const reactions = this.messageReactions.get(messageId);
+    if (reactions) {
+      const emoji = reactions.get(userId);
+      reactions.delete(userId);
+      if (reactions.size === 0) {
+        this.messageReactions.delete(messageId);
+      }
+      this.emit(EphemeralEventType.MESSAGE_REACTION, { messageId, userId, emoji, removed: true });
+    }
+  }
+
+  getReactions(messageId: string): { userId: string; emoji: string }[] {
+    const reactions = this.messageReactions.get(messageId);
+    if (!reactions) return [];
+    return Array.from(reactions.entries()).map(([userId, emoji]) => ({ userId, emoji }));
+  }
+
+  // ============================================================
+  // MUTE CONVERSATIONS
+  // ============================================================
+
+  muteConversation(userId: string, conversationId: string): void {
+    let muted = this.mutedConversations.get(userId);
+    if (!muted) {
+      muted = new Set();
+      this.mutedConversations.set(userId, muted);
+    }
+    muted.add(conversationId);
+    this.emit(EphemeralEventType.CONVERSATION_MUTED, { userId, conversationId });
+  }
+
+  unmuteConversation(userId: string, conversationId: string): void {
+    const muted = this.mutedConversations.get(userId);
+    if (muted) {
+      muted.delete(conversationId);
+      this.emit(EphemeralEventType.CONVERSATION_UNMUTED, { userId, conversationId });
+    }
+  }
+
+  isConversationMuted(userId: string, conversationId: string): boolean {
+    return this.mutedConversations.get(userId)?.has(conversationId) || false;
+  }
+
+  muteGroup(userId: string, groupId: string): void {
+    let muted = this.mutedGroups.get(userId);
+    if (!muted) {
+      muted = new Set();
+      this.mutedGroups.set(userId, muted);
+    }
+    muted.add(groupId);
+    this.emit(EphemeralEventType.GROUP_MUTED, { userId, groupId });
+  }
+
+  unmuteGroup(userId: string, groupId: string): void {
+    const muted = this.mutedGroups.get(userId);
+    if (muted) {
+      muted.delete(groupId);
+      this.emit(EphemeralEventType.GROUP_UNMUTED, { userId, groupId });
+    }
+  }
+
+  isGroupMuted(userId: string, groupId: string): boolean {
+    return this.mutedGroups.get(userId)?.has(groupId) || false;
+  }
+
+  // ============================================================
+  // TYPING INDICATORS (ephemeral, not persisted)
+  // ============================================================
+
+  setTyping(conversationId: string, userId: string): void {
+    let typing = this.typingUsers.get(conversationId);
+    if (!typing) {
+      typing = new Map();
+      this.typingUsers.set(conversationId, typing);
+    }
+    typing.set(userId, Date.now());
+    this.emit(EphemeralEventType.TYPING_STARTED, { conversationId, userId });
+    
+    // Auto-clear after 5 seconds
+    setTimeout(() => {
+      this.clearTyping(conversationId, userId);
+    }, 5000);
+  }
+
+  clearTyping(conversationId: string, userId: string): void {
+    const typing = this.typingUsers.get(conversationId);
+    if (typing) {
+      typing.delete(userId);
+      if (typing.size === 0) {
+        this.typingUsers.delete(conversationId);
+      }
+      this.emit(EphemeralEventType.TYPING_STOPPED, { conversationId, userId });
+    }
+  }
+
+  getTypingUsers(conversationId: string): string[] {
+    const typing = this.typingUsers.get(conversationId);
+    if (!typing) return [];
+    const now = Date.now();
+    const activeTypers: string[] = [];
+    for (const [userId, timestamp] of typing.entries()) {
+      // Only show typing if within last 5 seconds
+      if (now - timestamp < 5000) {
+        activeTypers.push(userId);
+      }
+    }
+    return activeTypers;
+  }
+
+  // ============================================================
+  // ONLINE STATUS (ephemeral, not persisted)
+  // ============================================================
+
+  setUserOnline(userId: string): void {
+    this.onlineUsers.set(userId, Date.now());
+    this.emit(EphemeralEventType.USER_ONLINE, { userId, lastSeen: Date.now() });
+  }
+
+  setUserOffline(userId: string): void {
+    this.onlineUsers.set(userId, Date.now());
+    this.emit(EphemeralEventType.USER_OFFLINE, { userId, lastSeen: Date.now() });
+  }
+
+  isUserOnline(userId: string): boolean {
+    const lastSeen = this.onlineUsers.get(userId);
+    if (!lastSeen) return false;
+    // Consider online if seen within last 2 minutes
+    return Date.now() - lastSeen < 2 * 60 * 1000;
+  }
+
+  getUserLastSeen(userId: string): number | null {
+    return this.onlineUsers.get(userId) || null;
+  }
+
+  getOnlineUsers(): string[] {
+    const now = Date.now();
+    const online: string[] = [];
+    for (const [userId, lastSeen] of this.onlineUsers.entries()) {
+      if (now - lastSeen < 2 * 60 * 1000) {
+        online.push(userId);
+      }
+    }
+    return online;
+  }
+
+  // ============================================================
+  // MESSAGE SEARCH
+  // ============================================================
+
+  searchMessages(userId: string, query: string, limit: number = 50): EphemeralEvent[] {
+    const results: EphemeralEvent[] = [];
+    const queryLower = query.toLowerCase();
+    const now = Date.now();
+
+    for (const event of this.events.values()) {
+      if (event.expiresAt <= now) continue;
+      if (event.eventType !== EphemeralEventType.MESSAGE_SENT) continue;
+
+      const payload = event.payload as MessagePayload;
+      // Only search messages the user can see
+      if (payload.senderId !== userId && payload.recipientId !== userId) continue;
+
+      // Search in encrypted content is not possible without decryption
+      // But we can search metadata like messageId, itemId, etc.
+      // For now, return all messages matching the user - client will filter decrypted content
+      results.push(event);
+
+      if (results.length >= limit) break;
+    }
+
+    return results.sort((a, b) => b.timestamp - a.timestamp);
   }
 }

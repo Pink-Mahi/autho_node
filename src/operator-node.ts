@@ -4518,6 +4518,260 @@ export class OperatorNode extends EventEmitter {
     });
 
     // ============================================================
+    // READ RECEIPTS & MESSAGE STATUS
+    // ============================================================
+
+    // Mark message as read
+    this.app.post('/api/messages/:messageId/read', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { messageId } = req.params;
+        this.ephemeralStore!.markMessageRead(messageId, account.accountId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get message status (delivered/read)
+    this.app.get('/api/messages/:messageId/status', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { messageId } = req.params;
+        const status = this.ephemeralStore!.getMessageStatus(messageId);
+        res.json({ success: true, status });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // MESSAGE REACTIONS
+    // ============================================================
+
+    // Add reaction to message
+    this.app.post('/api/messages/:messageId/react', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        if (!emoji) {
+          res.status(400).json({ success: false, error: 'emoji required' });
+          return;
+        }
+        this.ephemeralStore!.addReaction(messageId, account.accountId, emoji);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Remove reaction from message
+    this.app.delete('/api/messages/:messageId/react', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { messageId } = req.params;
+        this.ephemeralStore!.removeReaction(messageId, account.accountId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get reactions for a message
+    this.app.get('/api/messages/:messageId/reactions', async (req: Request, res: Response) => {
+      try {
+        const { messageId } = req.params;
+        const reactions = this.ephemeralStore!.getReactions(messageId);
+        res.json({ success: true, reactions });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // MUTE CONVERSATIONS
+    // ============================================================
+
+    // Mute a conversation
+    this.app.post('/api/messages/conversation/:conversationId/mute', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { conversationId } = req.params;
+        this.ephemeralStore!.muteConversation(account.accountId, conversationId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Unmute a conversation
+    this.app.post('/api/messages/conversation/:conversationId/unmute', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { conversationId } = req.params;
+        this.ephemeralStore!.unmuteConversation(account.accountId, conversationId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Mute a group
+    this.app.post('/api/messages/groups/:groupId/mute', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { groupId } = req.params;
+        this.ephemeralStore!.muteGroup(account.accountId, groupId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Unmute a group
+    this.app.post('/api/messages/groups/:groupId/unmute', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { groupId } = req.params;
+        this.ephemeralStore!.unmuteGroup(account.accountId, groupId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // TYPING INDICATORS
+    // ============================================================
+
+    // Set typing status
+    this.app.post('/api/messages/typing', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const { conversationId, groupId } = req.body;
+        const targetId = conversationId || groupId;
+        if (!targetId) {
+          res.status(400).json({ success: false, error: 'conversationId or groupId required' });
+          return;
+        }
+        this.ephemeralStore!.setTyping(targetId, account.accountId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get typing users in a conversation
+    this.app.get('/api/messages/conversation/:conversationId/typing', async (req: Request, res: Response) => {
+      try {
+        const { conversationId } = req.params;
+        const typingUsers = this.ephemeralStore!.getTypingUsers(conversationId);
+        res.json({ success: true, typingUsers });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // ONLINE STATUS
+    // ============================================================
+
+    // Update user's online status (heartbeat)
+    this.app.post('/api/messages/online', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        this.ephemeralStore!.setUserOnline(account.accountId);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get user's online status
+    this.app.get('/api/messages/user/:userId/online', async (req: Request, res: Response) => {
+      try {
+        const { userId } = req.params;
+        const isOnline = this.ephemeralStore!.isUserOnline(userId);
+        const lastSeen = this.ephemeralStore!.getUserLastSeen(userId);
+        res.json({ success: true, isOnline, lastSeen });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // MESSAGE SEARCH
+    // ============================================================
+
+    // Search messages
+    this.app.get('/api/messages/search', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+        const query = req.query.q as string || '';
+        const limit = parseInt(req.query.limit as string) || 50;
+        const messages = this.ephemeralStore!.searchMessages(account.accountId, query, limit);
+        res.json({ 
+          success: true, 
+          messages: messages.map(m => ({
+            messageId: m.payload.messageId,
+            senderId: m.payload.senderId,
+            recipientId: m.payload.recipientId,
+            conversationId: m.payload.conversationId,
+            timestamp: m.timestamp,
+            expiresAt: m.expiresAt,
+          }))
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
     // END EPHEMERAL MESSAGING API
     // ============================================================
 
