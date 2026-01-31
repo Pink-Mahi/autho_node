@@ -265,9 +265,9 @@ export class EphemeralEventStore extends EventEmitter {
         // For messages, use media-aware retention
         const msgPayload = payload as MessagePayload | GroupMessagePayload;
         
-        // If expiresAfterView AND no custom timer, wait for view to start countdown
+        // If expiresAfterView AND no custom timer, use 10 day max (will be shortened on view)
         if (msgPayload.expiresAfterView && !msgPayload.selfDestructAfter) {
-          expiresAt = now + (365 * 24 * 60 * 60 * 1000); // 1 year max, will be shortened on view
+          expiresAt = now + RETENTION_MS.TEXT; // 10 days max, shortened on view
         } else {
           // Use custom selfDestructAfter timer or media-type default
           expiresAt = now + this.calculateRetention(msgPayload);
