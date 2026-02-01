@@ -164,6 +164,21 @@ class GatewayNode {
     // Peer reputation tracking
     this.peerReputation = new Map(); // peerId -> { score, successCount, failCount, lastSeen }
     
+    // Rate limit tracking per client
+    this.clientRateLimits = new Map(); // ip -> { requests: [], blocked: false, blockedUntil: null }
+    
+    // Connection events log (circular buffer)
+    this.connectionEvents = [];
+    this.maxConnectionEvents = 100;
+    
+    // Startup diagnostics
+    this.diagnostics = {
+      startupTime: null,
+      checks: {},
+      warnings: [],
+      errors: [],
+    };
+    
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -1779,6 +1794,32 @@ class GatewayNode {
       });
     });
 
+    // Connection events endpoint
+    this.app.get('/api/events', (req, res) => {
+      const limit = parseInt(req.query.limit) || 50;
+      const type = req.query.type || null;
+      res.json({
+        success: true,
+        events: this.getConnectionEvents(limit, type),
+      });
+    });
+
+    // Rate limit stats endpoint
+    this.app.get('/api/rate-limits', (req, res) => {
+      res.json({
+        success: true,
+        ...this.getRateLimitStats(),
+      });
+    });
+
+    // Diagnostics endpoint
+    this.app.get('/api/diagnostics', (req, res) => {
+      res.json({
+        success: true,
+        ...this.getDiagnosticsReport(),
+      });
+    });
+
     // Public access endpoints - for home users to make gateway publicly accessible
     this.app.get('/api/public-access/status', (req, res) => {
       res.json({
@@ -2495,6 +2536,7 @@ class GatewayNode {
       this.publicAccessUrl = `http://${externalIp}:${EFFECTIVE_HTTP_PORT}`;
       this.publicAccessMethod = 'upnp';
       
+      this.logConnectionEvent('public_access_enabled', { method: 'upnp', url: this.publicAccessUrl, externalIp });
       console.log(`✅ UPnP port forwarding successful!`);
       console.log(`   External URL: ${this.publicAccessUrl}`);
       console.log(`   WebSocket: ws://${externalIp}:${EFFECTIVE_WS_PORT}`);
@@ -2524,6 +2566,7 @@ class GatewayNode {
       this.publicAccessUrl = this.tunnelInstance.url;
       this.publicAccessMethod = 'tunnel';
       
+      this.logConnectionEvent('public_access_enabled', { method: 'tunnel', url: this.publicAccessUrl });
       console.log(`✅ Tunnel established!`);
       console.log(`   Public URL: ${this.publicAccessUrl}`);
       
@@ -2983,6 +3026,235 @@ class GatewayNode {
     return result.sort((a, b) => a.avgLatency - b.avgLatency);
   }
 
+  // ==================== CONNECTION EVENTS LOGGING ====================
+
+  /**
+   * Log a connection event
+   */
+  logConnectionEvent(type, details = {}) {
+    const event = {
+      timestamp: Date.now(),
+      type,
+      ...details,
+    };
+    
+    this.connectionEvents.push(event);
+    
+    // Keep only last N events
+    if (this.connectionEvents.length > this.maxConnectionEvents) {
+      this.connectionEvents.shift();
+    }
+    
+    // Log to console for important events
+    if (['operator_connected', 'operator_disconnected', 'public_access_enabled', 'public_access_disabled'].includes(type)) {
+      console.log(`📋 Event: ${type}`, details.url || details.method || '');
+    }
+  }
+
+  /**
+   * Get recent connection events
+   */
+  getConnectionEvents(limit = 50, type = null) {
+    let events = [...this.connectionEvents].reverse();
+    if (type) {
+      events = events.filter(e => e.type === type);
+    }
+    return events.slice(0, limit);
+  }
+
+  // ==================== RATE LIMIT TRACKING ====================
+
+  /**
+   * Track rate limit for a client IP
+   */
+  trackClientRequest(ip) {
+    const now = Date.now();
+    const windowMs = 60000; // 1 minute window
+    
+    let client = this.clientRateLimits.get(ip);
+    if (!client) {
+      client = { requests: [], blocked: false, blockedUntil: null, totalRequests: 0 };
+      this.clientRateLimits.set(ip, client);
+    }
+    
+    // Check if blocked
+    if (client.blocked && client.blockedUntil > now) {
+      return { allowed: false, remaining: 0, resetIn: client.blockedUntil - now };
+    }
+    
+    // Unblock if block expired
+    if (client.blocked && client.blockedUntil <= now) {
+      client.blocked = false;
+      client.blockedUntil = null;
+    }
+    
+    // Clean old requests
+    client.requests = client.requests.filter(t => t > now - windowMs);
+    
+    // Check limit
+    const limit = CONFIG.rateLimit || 100;
+    if (client.requests.length >= limit) {
+      client.blocked = true;
+      client.blockedUntil = now + windowMs;
+      this.logConnectionEvent('rate_limit_exceeded', { ip, requests: client.requests.length });
+      return { allowed: false, remaining: 0, resetIn: windowMs };
+    }
+    
+    // Track request
+    client.requests.push(now);
+    client.totalRequests++;
+    
+    return { 
+      allowed: true, 
+      remaining: limit - client.requests.length,
+      resetIn: windowMs - (now - client.requests[0])
+    };
+  }
+
+  /**
+   * Get rate limit stats
+   */
+  getRateLimitStats() {
+    const stats = {
+      totalClients: this.clientRateLimits.size,
+      blockedClients: 0,
+      topClients: [],
+    };
+    
+    for (const [ip, client] of this.clientRateLimits) {
+      if (client.blocked) stats.blockedClients++;
+      stats.topClients.push({
+        ip: ip.replace(/\d+$/, 'xxx'), // Anonymize last octet
+        totalRequests: client.totalRequests,
+        recentRequests: client.requests.length,
+        blocked: client.blocked,
+      });
+    }
+    
+    stats.topClients.sort((a, b) => b.totalRequests - a.totalRequests);
+    stats.topClients = stats.topClients.slice(0, 10);
+    
+    return stats;
+  }
+
+  // ==================== STARTUP DIAGNOSTICS ====================
+
+  /**
+   * Run startup diagnostics
+   */
+  async runStartupDiagnostics() {
+    console.log('🔍 Running startup diagnostics...');
+    this.diagnostics.startupTime = Date.now();
+    this.diagnostics.checks = {};
+    this.diagnostics.warnings = [];
+    this.diagnostics.errors = [];
+    
+    // Check 1: Data directory writable
+    try {
+      const testFile = path.join(CONFIG.dataDir, '.test-write');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      this.diagnostics.checks.dataDirectory = { status: 'pass', message: 'Data directory is writable' };
+    } catch (err) {
+      this.diagnostics.checks.dataDirectory = { status: 'fail', message: err.message };
+      this.diagnostics.errors.push('Data directory not writable: ' + err.message);
+    }
+    
+    // Check 2: HTTP port available
+    try {
+      const server = require('http').createServer();
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.once('listening', () => {
+          server.close();
+          resolve();
+        });
+        server.listen(EFFECTIVE_HTTP_PORT);
+      });
+      this.diagnostics.checks.httpPort = { status: 'pass', message: `Port ${EFFECTIVE_HTTP_PORT} available` };
+    } catch (err) {
+      if (err.code === 'EADDRINUSE') {
+        this.diagnostics.checks.httpPort = { status: 'warn', message: `Port ${EFFECTIVE_HTTP_PORT} may be in use` };
+        this.diagnostics.warnings.push(`HTTP port ${EFFECTIVE_HTTP_PORT} may already be in use`);
+      } else {
+        this.diagnostics.checks.httpPort = { status: 'fail', message: err.message };
+      }
+    }
+    
+    // Check 3: Internet connectivity
+    try {
+      const https = require('https');
+      await new Promise((resolve, reject) => {
+        const req = https.get('https://autho.pinkmahi.com/api/health', { timeout: 5000 }, (res) => {
+          resolve(res.statusCode);
+        });
+        req.on('error', reject);
+        req.on('timeout', () => reject(new Error('Timeout')));
+      });
+      this.diagnostics.checks.internet = { status: 'pass', message: 'Internet connectivity confirmed' };
+    } catch (err) {
+      this.diagnostics.checks.internet = { status: 'warn', message: 'Could not reach seed node' };
+      this.diagnostics.warnings.push('Internet connectivity issue: ' + err.message);
+    }
+    
+    // Check 4: Memory available
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1048576);
+    const heapTotalMB = Math.round(memUsage.heapTotal / 1048576);
+    if (heapUsedMB < heapTotalMB * 0.8) {
+      this.diagnostics.checks.memory = { status: 'pass', message: `${heapUsedMB}MB / ${heapTotalMB}MB used` };
+    } else {
+      this.diagnostics.checks.memory = { status: 'warn', message: `High memory usage: ${heapUsedMB}MB / ${heapTotalMB}MB` };
+      this.diagnostics.warnings.push('High memory usage detected');
+    }
+    
+    // Check 5: Node.js version
+    const nodeVersion = process.version;
+    const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0]);
+    if (majorVersion >= 16) {
+      this.diagnostics.checks.nodeVersion = { status: 'pass', message: `Node.js ${nodeVersion}` };
+    } else {
+      this.diagnostics.checks.nodeVersion = { status: 'warn', message: `Node.js ${nodeVersion} - recommend v16+` };
+      this.diagnostics.warnings.push('Node.js version below recommended (v16+)');
+    }
+    
+    // Summary
+    const passed = Object.values(this.diagnostics.checks).filter(c => c.status === 'pass').length;
+    const warned = Object.values(this.diagnostics.checks).filter(c => c.status === 'warn').length;
+    const failed = Object.values(this.diagnostics.checks).filter(c => c.status === 'fail').length;
+    
+    console.log(`✅ Diagnostics: ${passed} passed, ${warned} warnings, ${failed} failed`);
+    
+    if (failed > 0) {
+      console.log('❌ Critical issues found:');
+      this.diagnostics.errors.forEach(e => console.log('  - ' + e));
+    }
+    
+    if (warned > 0) {
+      console.log('⚠️ Warnings:');
+      this.diagnostics.warnings.forEach(w => console.log('  - ' + w));
+    }
+    
+    return this.diagnostics;
+  }
+
+  /**
+   * Get diagnostics report
+   */
+  getDiagnosticsReport() {
+    return {
+      ...this.diagnostics,
+      uptimeMs: this.diagnostics.startupTime ? Date.now() - this.diagnostics.startupTime : 0,
+      runtime: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        pid: process.pid,
+        memory: process.memoryUsage(),
+      },
+    };
+  }
+
   // ==================== RECONNECT WITH JITTER ====================
 
   /**
@@ -3120,6 +3392,11 @@ class GatewayNode {
     console.log(`🧭 Operator URLs: ${this.operatorUrls.join(', ')}`);
     console.log(`📁 Data Directory: ${CONFIG.dataDir}`);
     console.log(`💻 Platform: ${os.platform()}`);
+    console.log(`🆔 Gateway ID: ${this.gatewayId}`);
+    console.log('');
+
+    // Run startup diagnostics
+    await this.runStartupDiagnostics();
     console.log('');
 
     // Create data directory
