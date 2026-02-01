@@ -1619,6 +1619,24 @@ class GatewayNode {
       });
     });
 
+    // Hourly stats endpoint
+    this.app.get('/api/traffic/hourly', (req, res) => {
+      res.json({
+        success: true,
+        hourlyStats: this.getHourlyStats(),
+        totalHours: this.trafficStats.hourlyStats.length,
+      });
+    });
+
+    // Best operators endpoint
+    this.app.get('/api/operators/best', (req, res) => {
+      const count = parseInt(req.query.count) || 5;
+      res.json({
+        success: true,
+        operators: this.getBestOperators(count),
+      });
+    });
+
     // Traffic and bandwidth monitoring endpoint
     this.app.get('/api/traffic/stats', (req, res) => {
       const uptimeMs = Date.now() - this.trafficStats.startTime;
@@ -1862,6 +1880,10 @@ class GatewayNode {
 
       ws.on('message', (data) => {
         try {
+          // Track WebSocket message stats
+          this.trafficStats.wsMessages++;
+          this.trafficStats.bytesReceived += data.length || 0;
+          
           const message = JSON.parse(data.toString());
           this.handleWebSocketMessage(peerId, message);
         } catch (error) {
@@ -2685,6 +2707,149 @@ class GatewayNode {
       .map(([peerId, rep]) => ({ peerId, ...rep }));
   }
 
+  // ==================== HOURLY STATS ====================
+
+  /**
+   * Record hourly stats snapshot
+   */
+  recordHourlyStats() {
+    const now = Date.now();
+    const hourlySnapshot = {
+      timestamp: now,
+      hour: new Date(now).toISOString().slice(0, 13),
+      requests: this.trafficStats.requestsServed,
+      bytesServed: this.trafficStats.bytesServed,
+      bytesReceived: this.trafficStats.bytesReceived,
+      uniqueClients: this.trafficStats.uniqueClients.size,
+      wsMessages: this.trafficStats.wsMessages,
+      peakConcurrent: this.trafficStats.peakConcurrent,
+    };
+    
+    this.trafficStats.hourlyStats.push(hourlySnapshot);
+    
+    // Keep only last 24 hours
+    const dayAgo = now - (24 * 60 * 60 * 1000);
+    this.trafficStats.hourlyStats = this.trafficStats.hourlyStats.filter(
+      s => s.timestamp > dayAgo
+    );
+    
+    // Reset peak concurrent for next hour
+    this.trafficStats.peakConcurrent = this.trafficStats.currentConcurrent;
+  }
+
+  /**
+   * Get hourly stats for last 24 hours
+   */
+  getHourlyStats() {
+    return this.trafficStats.hourlyStats.map(s => ({
+      hour: s.hour,
+      requests: s.requests,
+      bandwidthMB: Math.round((s.bytesServed + s.bytesReceived) / 1048576 * 100) / 100,
+      uniqueClients: s.uniqueClients,
+      wsMessages: s.wsMessages,
+    }));
+  }
+
+  // ==================== CONNECTION QUALITY ====================
+
+  /**
+   * Enhanced connection quality scoring with multiple factors
+   */
+  getEnhancedConnectionQuality(operatorUrl) {
+    const health = this.seedHealth.get(operatorUrl);
+    if (!health) return 50; // Neutral score
+    
+    let score = 50;
+    
+    // Factor 1: Success rate (0-30 points)
+    const total = health.successCount + health.failCount;
+    if (total > 0) {
+      const successRate = health.successCount / total;
+      score += Math.round(successRate * 30);
+    }
+    
+    // Factor 2: Latency (0-25 points, lower is better)
+    if (health.avgLatency > 0) {
+      if (health.avgLatency < 100) score += 25;
+      else if (health.avgLatency < 300) score += 20;
+      else if (health.avgLatency < 500) score += 15;
+      else if (health.avgLatency < 1000) score += 10;
+      else score += 5;
+    }
+    
+    // Factor 3: Recency (0-20 points)
+    const lastSuccess = health.lastSuccess || 0;
+    const timeSinceSuccess = Date.now() - lastSuccess;
+    if (timeSinceSuccess < 60000) score += 20; // Less than 1 min
+    else if (timeSinceSuccess < 300000) score += 15; // Less than 5 min
+    else if (timeSinceSuccess < 900000) score += 10; // Less than 15 min
+    else if (timeSinceSuccess < 3600000) score += 5; // Less than 1 hour
+    
+    // Factor 4: Peer reputation bonus (0-15 points)
+    const rep = this.peerReputation.get(operatorUrl);
+    if (rep) {
+      score += Math.round(rep.score * 0.15);
+    }
+    
+    // Factor 5: Circuit breaker penalty (-20 points)
+    if (this.isCircuitOpen(operatorUrl)) {
+      score -= 20;
+    }
+    
+    return Math.max(0, Math.min(100, score));
+  }
+
+  /**
+   * Get best operators sorted by enhanced quality
+   */
+  getBestOperators(count = 5) {
+    const operators = this.getCandidateOperatorUrls();
+    return operators
+      .map(url => ({
+        url,
+        quality: this.getEnhancedConnectionQuality(url),
+        health: this.seedHealth.get(url) || {},
+      }))
+      .sort((a, b) => b.quality - a.quality)
+      .slice(0, count);
+  }
+
+  // ==================== RECONNECT WITH JITTER ====================
+
+  /**
+   * Calculate reconnect delay with exponential backoff and jitter
+   */
+  getReconnectDelay(attemptNumber, baseDelay = 1000, maxDelay = 60000) {
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s
+    const exponentialDelay = Math.min(maxDelay, baseDelay * Math.pow(2, attemptNumber));
+    
+    // Add random jitter (±25%) to prevent thundering herd
+    const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+    
+    return Math.round(exponentialDelay + jitter);
+  }
+
+  /**
+   * Schedule reconnect with jitter
+   */
+  scheduleReconnectWithJitter(operatorUrl, attemptNumber = 0) {
+    const delay = this.getReconnectDelay(attemptNumber);
+    console.log(`🔄 Scheduling reconnect to ${operatorUrl} in ${delay}ms (attempt ${attemptNumber + 1})`);
+    
+    setTimeout(() => {
+      this.connectToOperator(operatorUrl)
+        .catch(err => {
+          console.error(`❌ Reconnect failed for ${operatorUrl}:`, err.message);
+          // Schedule next attempt with increased backoff
+          if (attemptNumber < 10) {
+            this.scheduleReconnectWithJitter(operatorUrl, attemptNumber + 1);
+          } else {
+            console.log(`⚠️ Max reconnect attempts reached for ${operatorUrl}`);
+          }
+        });
+    }, delay);
+  }
+
   handleSeedMessage(seed, message, ws = null) {
     switch (message.type) {
       case 'sync_response':
@@ -2920,6 +3085,11 @@ class GatewayNode {
     setInterval(() => {
       this.detectNetworkPartition();
     }, 180000);
+
+    // Hourly stats recording
+    setInterval(() => {
+      this.recordHourlyStats();
+    }, 3600000); // Every hour
 
     // Periodic data save
     setInterval(() => {
