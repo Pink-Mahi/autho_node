@@ -1691,6 +1691,94 @@ class GatewayNode {
       });
     });
 
+    // Health status summary - comprehensive gateway health
+    this.app.get('/api/health/summary', (req, res) => {
+      const operators = this.getCandidateOperatorUrls();
+      const connectedOperators = Array.from(this.operatorConnections.values())
+        .filter(c => c.status === 'connected').length;
+      const healthyOperators = operators.filter(url => {
+        const h = this.seedHealth.get(url);
+        return h && h.successCount > h.failCount;
+      }).length;
+      
+      const uptimeMs = Date.now() - this.trafficStats.startTime;
+      const avgLatency = this.calculateAverageLatency();
+      
+      // Determine overall health status
+      let status = 'healthy';
+      let issues = [];
+      
+      if (connectedOperators === 0) {
+        status = 'critical';
+        issues.push('No connected operators');
+      } else if (connectedOperators < 2) {
+        status = 'degraded';
+        issues.push('Less than 2 connected operators');
+      }
+      
+      if (avgLatency > 1000) {
+        status = status === 'healthy' ? 'degraded' : status;
+        issues.push('High average latency');
+      }
+      
+      if (this.isPartitioned) {
+        status = 'critical';
+        issues.push('Network partition detected');
+      }
+      
+      res.json({
+        success: true,
+        status,
+        issues,
+        uptime: {
+          ms: uptimeMs,
+          formatted: this.formatUptime(uptimeMs),
+        },
+        operators: {
+          total: operators.length,
+          connected: connectedOperators,
+          healthy: healthyOperators,
+        },
+        traffic: {
+          totalRequests: this.trafficStats.requestsServed,
+          bytesServedMB: Math.round(this.trafficStats.bytesServed / 1048576 * 100) / 100,
+          uniqueClients: this.trafficStats.uniqueClients.size,
+        },
+        latency: {
+          average: avgLatency,
+          histogram: this.getLatencyHistogram(),
+        },
+        publicAccess: this.getPublicAccessStatus(),
+      });
+    });
+
+    // Network latency histogram endpoint
+    this.app.get('/api/network/latency', (req, res) => {
+      res.json({
+        success: true,
+        averageLatency: this.calculateAverageLatency(),
+        histogram: this.getLatencyHistogram(),
+        byOperator: this.getLatencyByOperator(),
+      });
+    });
+
+    // Operator versions endpoint
+    this.app.get('/api/operators/versions', (req, res) => {
+      const versions = [];
+      for (const [url, health] of this.seedHealth) {
+        versions.push({
+          url,
+          version: health.version || 'unknown',
+          lastSeen: health.lastSuccess || health.lastFailure,
+          quality: this.getEnhancedConnectionQuality(url),
+        });
+      }
+      res.json({
+        success: true,
+        operators: versions.sort((a, b) => b.quality - a.quality),
+      });
+    });
+
     // Public access endpoints - for home users to make gateway publicly accessible
     this.app.get('/api/public-access/status', (req, res) => {
       res.json({
@@ -2812,6 +2900,87 @@ class GatewayNode {
       }))
       .sort((a, b) => b.quality - a.quality)
       .slice(0, count);
+  }
+
+  // ==================== LATENCY & UPTIME HELPERS ====================
+
+  /**
+   * Format uptime in human readable form
+   */
+  formatUptime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+  }
+
+  /**
+   * Calculate average latency across all operators
+   */
+  calculateAverageLatency() {
+    let totalLatency = 0;
+    let count = 0;
+    
+    for (const [url, health] of this.seedHealth) {
+      if (health.avgLatency > 0) {
+        totalLatency += health.avgLatency;
+        count++;
+      }
+    }
+    
+    return count > 0 ? Math.round(totalLatency / count) : 0;
+  }
+
+  /**
+   * Get latency histogram (distribution of latencies)
+   */
+  getLatencyHistogram() {
+    const buckets = {
+      '<50ms': 0,
+      '50-100ms': 0,
+      '100-250ms': 0,
+      '250-500ms': 0,
+      '500-1000ms': 0,
+      '>1000ms': 0,
+    };
+    
+    for (const [url, health] of this.seedHealth) {
+      const latency = health.avgLatency || 0;
+      if (latency === 0) continue;
+      
+      if (latency < 50) buckets['<50ms']++;
+      else if (latency < 100) buckets['50-100ms']++;
+      else if (latency < 250) buckets['100-250ms']++;
+      else if (latency < 500) buckets['250-500ms']++;
+      else if (latency < 1000) buckets['500-1000ms']++;
+      else buckets['>1000ms']++;
+    }
+    
+    return buckets;
+  }
+
+  /**
+   * Get latency by operator
+   */
+  getLatencyByOperator() {
+    const result = [];
+    
+    for (const [url, health] of this.seedHealth) {
+      result.push({
+        url,
+        avgLatency: health.avgLatency || 0,
+        successCount: health.successCount || 0,
+        failCount: health.failCount || 0,
+        lastSuccess: health.lastSuccess || null,
+      });
+    }
+    
+    return result.sort((a, b) => a.avgLatency - b.avgLatency);
   }
 
   // ==================== RECONNECT WITH JITTER ====================
