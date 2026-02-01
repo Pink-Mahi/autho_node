@@ -146,6 +146,24 @@ class GatewayNode {
     this.tunnelInstance = null;
     this.externalIp = null;
     
+    // Traffic/bandwidth monitoring
+    this.trafficStats = {
+      startTime: Date.now(),
+      requestsServed: 0,
+      bytesServed: 0,
+      bytesReceived: 0,
+      apiRequests: 0,
+      wsMessages: 0,
+      uniqueClients: new Set(),
+      peakConcurrent: 0,
+      currentConcurrent: 0,
+      requestsByEndpoint: {},
+      hourlyStats: [], // Rolling 24-hour stats
+    };
+    
+    // Peer reputation tracking
+    this.peerReputation = new Map(); // peerId -> { score, successCount, failCount, lastSeen }
+    
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -1263,6 +1281,46 @@ class GatewayNode {
       console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${req.ip}`);
       next();
     });
+
+    // Traffic monitoring middleware
+    this.app.use((req, res, next) => {
+      this.trafficStats.requestsServed++;
+      this.trafficStats.currentConcurrent++;
+      if (this.trafficStats.currentConcurrent > this.trafficStats.peakConcurrent) {
+        this.trafficStats.peakConcurrent = this.trafficStats.currentConcurrent;
+      }
+      
+      // Track unique clients
+      const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+      this.trafficStats.uniqueClients.add(clientIp);
+      
+      // Track by endpoint
+      const endpoint = req.path.split('/').slice(0, 3).join('/') || '/';
+      this.trafficStats.requestsByEndpoint[endpoint] = (this.trafficStats.requestsByEndpoint[endpoint] || 0) + 1;
+      
+      // Track bytes received
+      if (req.headers['content-length']) {
+        this.trafficStats.bytesReceived += parseInt(req.headers['content-length'], 10) || 0;
+      }
+      
+      // Track response size
+      const originalSend = res.send.bind(res);
+      res.send = (body) => {
+        if (body) {
+          const size = Buffer.isBuffer(body) ? body.length : Buffer.byteLength(body?.toString() || '');
+          this.trafficStats.bytesServed += size;
+        }
+        this.trafficStats.currentConcurrent--;
+        return originalSend(body);
+      };
+      
+      // Track API requests
+      if (req.path.startsWith('/api/')) {
+        this.trafficStats.apiRequests++;
+      }
+      
+      next();
+    });
   }
 
   rateLimitMiddleware(req, res, next) {
@@ -1558,6 +1616,60 @@ class GatewayNode {
         passed: this.usefulWorkStats.consistencyPassed,
         failed: this.usefulWorkStats.consistencyFailed,
         results: consistencyResults,
+      });
+    });
+
+    // Traffic and bandwidth monitoring endpoint
+    this.app.get('/api/traffic/stats', (req, res) => {
+      const uptimeMs = Date.now() - this.trafficStats.startTime;
+      const uptimeHours = uptimeMs / 3600000;
+      
+      res.json({
+        success: true,
+        uptime: {
+          ms: uptimeMs,
+          hours: Math.round(uptimeHours * 100) / 100,
+          startTime: new Date(this.trafficStats.startTime).toISOString(),
+        },
+        requests: {
+          total: this.trafficStats.requestsServed,
+          perHour: Math.round(this.trafficStats.requestsServed / Math.max(1, uptimeHours)),
+          api: this.trafficStats.apiRequests,
+          ws: this.trafficStats.wsMessages,
+        },
+        bandwidth: {
+          served: this.trafficStats.bytesServed,
+          servedMB: Math.round(this.trafficStats.bytesServed / 1048576 * 100) / 100,
+          received: this.trafficStats.bytesReceived,
+          receivedMB: Math.round(this.trafficStats.bytesReceived / 1048576 * 100) / 100,
+        },
+        clients: {
+          unique: this.trafficStats.uniqueClients.size,
+          peakConcurrent: this.trafficStats.peakConcurrent,
+          currentConcurrent: this.trafficStats.currentConcurrent,
+        },
+        topEndpoints: Object.entries(this.trafficStats.requestsByEndpoint)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([endpoint, count]) => ({ endpoint, count })),
+      });
+    });
+
+    // Peer reputation endpoint
+    this.app.get('/api/peers/reputation', (req, res) => {
+      const peers = [];
+      for (const [peerId, rep] of this.peerReputation) {
+        peers.push({
+          peerId,
+          score: rep.score,
+          successCount: rep.successCount,
+          failCount: rep.failCount,
+          lastSeen: rep.lastSeen,
+        });
+      }
+      res.json({
+        success: true,
+        peers: peers.sort((a, b) => b.score - a.score),
       });
     });
 
@@ -2520,6 +2632,59 @@ class GatewayNode {
     }
   }
 
+  // ==================== PEER REPUTATION ====================
+
+  /**
+   * Update peer reputation based on interaction
+   */
+  updatePeerReputation(peerId, success, latencyMs = 0) {
+    let rep = this.peerReputation.get(peerId);
+    if (!rep) {
+      rep = {
+        score: 50, // Start neutral
+        successCount: 0,
+        failCount: 0,
+        totalLatency: 0,
+        lastSeen: Date.now(),
+      };
+    }
+
+    rep.lastSeen = Date.now();
+
+    if (success) {
+      rep.successCount++;
+      rep.totalLatency += latencyMs;
+      // Increase score (max 100)
+      rep.score = Math.min(100, rep.score + 2);
+      // Bonus for low latency
+      if (latencyMs < 100) rep.score = Math.min(100, rep.score + 1);
+    } else {
+      rep.failCount++;
+      // Decrease score (min 0)
+      rep.score = Math.max(0, rep.score - 5);
+    }
+
+    this.peerReputation.set(peerId, rep);
+    return rep;
+  }
+
+  /**
+   * Get peer score (0-100)
+   */
+  getPeerScore(peerId) {
+    const rep = this.peerReputation.get(peerId);
+    return rep ? rep.score : 50;
+  }
+
+  /**
+   * Get sorted peers by reputation
+   */
+  getSortedPeersByReputation() {
+    return Array.from(this.peerReputation.entries())
+      .sort((a, b) => b[1].score - a[1].score)
+      .map(([peerId, rep]) => ({ peerId, ...rep }));
+  }
+
   handleSeedMessage(seed, message, ws = null) {
     switch (message.type) {
       case 'sync_response':
@@ -2775,6 +2940,30 @@ class GatewayNode {
   async stop() {
     console.log('🛑 Stopping Gateway Node...');
     
+    // Disable public access and cleanup NAT/tunnel
+    if (this.publicAccessEnabled) {
+      await this.disablePublicAccess();
+      console.log('🌍 Public access disabled');
+    }
+    
+    // Close all operator connections
+    for (const [opId, conn] of this.operatorConnections) {
+      try {
+        if (conn.ws) conn.ws.close();
+      } catch (e) {}
+    }
+    this.operatorConnections.clear();
+    console.log('📡 Operator connections closed');
+    
+    // Close gateway peer connections
+    for (const [gwId, ws] of this.gatewayPeerConnections) {
+      try {
+        ws.close();
+      } catch (e) {}
+    }
+    this.gatewayPeerConnections.clear();
+    console.log('🔗 Gateway peer connections closed');
+    
     // Save data
     const dataFile = path.join(CONFIG.dataDir, 'registry.json');
     try {
@@ -2787,6 +2976,10 @@ class GatewayNode {
       console.error('❌ Failed to save registry data:', error);
     }
     
+    // Save cached seeds
+    this.saveCachedSeeds();
+    console.log('💾 Saved cached seeds');
+    
     // Save communications ledger
     this.saveEphemeralLedger();
     console.log(`💾 Saved ${this.ephemeralEvents.size} communications ledger events`);
@@ -2797,7 +2990,7 @@ class GatewayNode {
       console.log('📡 WebSocket server closed');
     }
     
-    console.log('✅ Gateway Node stopped');
+    console.log('✅ Gateway Node stopped gracefully');
   }
 
   /**
