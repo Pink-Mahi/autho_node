@@ -1818,6 +1818,60 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // DNS seed verification endpoint - checks if a domain has valid autho-peer TXT record
+    this.app.get('/api/network/dns-verify', async (req: Request, res: Response) => {
+      try {
+        const domain = String(req.query.domain || '').trim();
+        
+        if (!domain) {
+          res.status(400).json({ success: false, error: 'Domain parameter required' });
+          return;
+        }
+
+        // Use Node.js dns module to resolve TXT records
+        const dns = require('dns');
+        const { promisify } = require('util');
+        const resolveTxt = promisify(dns.resolveTxt);
+
+        try {
+          const records = await resolveTxt(domain);
+          
+          // Look for autho-peer record
+          for (const record of records) {
+            const txt = record.join('');
+            if (txt.startsWith('autho-peer=')) {
+              res.json({
+                success: true,
+                found: true,
+                domain,
+                txtRecord: txt,
+              });
+              return;
+            }
+          }
+
+          // No autho-peer record found
+          res.json({
+            success: true,
+            found: false,
+            domain,
+            error: 'No autho-peer TXT record found',
+          });
+        } catch (dnsError: any) {
+          res.json({
+            success: true,
+            found: false,
+            domain,
+            error: dnsError.code === 'ENODATA' ? 'No TXT records found' : 
+                   dnsError.code === 'ENOTFOUND' ? 'Domain not found' : 
+                   `DNS lookup failed: ${dnsError.message}`,
+          });
+        }
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Mesh network diagnostic endpoint - shows all connected nodes
     this.app.get('/api/network/mesh', async (req: Request, res: Response) => {
       try {
