@@ -2649,18 +2649,23 @@ class GatewayNode {
       return false;
     }
     
+    // Clear any stale URL before starting a new tunnel attempt
+    this.publicAccessUrl = null;
+    this.publicAccessEnabled = false;
+    this.publicAccessMethod = null;
+
     return new Promise((resolve) => {
       // Start cloudflared tunnel (no account needed for quick tunnels)
       // Use shell:false to avoid security warnings and subprocess issues
-      this.tunnelProcess = spawn(cloudflaredPath, ['tunnel', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`], { 
+      this.tunnelProcess = spawn(cloudflaredPath, ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`], { 
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       });
       
-      let urlFound = false;
+      let resolved = false;
       const urlTimeout = setTimeout(() => {
-        if (!urlFound) {
+        if (!resolved) {
           console.log('⚠️ Cloudflare Tunnel timeout');
           this.tunnelProcess?.kill();
           resolve(false);
@@ -2671,25 +2676,31 @@ class GatewayNode {
         const output = data.toString();
         // Look for the tunnel URL in output
         const urlMatch = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-        if (urlMatch && !urlFound) {
-          urlFound = true;
-          clearTimeout(urlTimeout);
-          
-          this.publicAccessEnabled = true;
-          this.publicAccessUrl = urlMatch[0];
-          this.publicAccessMethod = 'cloudflare';
-          
+        if (!urlMatch) return;
+
+        const newUrl = urlMatch[0];
+        const isNewUrl = newUrl !== this.publicAccessUrl;
+
+        this.publicAccessEnabled = true;
+        this.publicAccessUrl = newUrl;
+        this.publicAccessMethod = 'cloudflare';
+
+        if (isNewUrl) {
           this.logConnectionEvent('public_access_enabled', { method: 'cloudflare', url: this.publicAccessUrl });
           console.log(`✅ Cloudflare Tunnel established!`);
           console.log(`   Public URL: ${this.publicAccessUrl}`);
           console.log(`   (No password required - direct access)`);
-          
+
           // Open browser with the public URL
           this.openBrowserWithUrl(this.publicAccessUrl);
-          
+
           // Register this gateway URL with the seed ledger for peer discovery
           this.registerPublicGatewayToLedger();
-          
+        }
+
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(urlTimeout);
           resolve(true);
         }
       };
@@ -2701,6 +2712,8 @@ class GatewayNode {
         if (this.publicAccessEnabled && this.publicAccessMethod === 'cloudflare') {
           console.log('⚠️ Cloudflare Tunnel closed, attempting to reconnect...');
           this.publicAccessEnabled = false;
+          this.publicAccessUrl = null;
+          this.publicAccessMethod = null;
           setTimeout(() => this.tryCloudflaredTunnel(), 5000);
         }
       });
