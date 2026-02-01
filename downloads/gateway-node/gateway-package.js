@@ -2670,7 +2670,7 @@ class GatewayNode {
           this.tunnelProcess?.kill();
           resolve(false);
         }
-      }, 120000);
+      }, 240000);
       
       const waitForTunnelUrlReady = async (url) => {
         try {
@@ -2680,9 +2680,15 @@ class GatewayNode {
           const host = new URL(url).hostname;
           const startedAt = Date.now();
 
-          while (Date.now() - startedAt < 60000) {
+          while (Date.now() - startedAt < 180000) {
             try {
-              await resolver.resolve(host);
+              // Some environments may return AAAA records before A.
+              // Treat DNS as ready if either resolves.
+              try {
+                await resolver.resolve4(host);
+              } catch (e4) {
+                await resolver.resolve6(host);
+              }
               try {
                 const resp = await fetch(`${url}/health`, { method: 'GET' });
                 if (resp && resp.ok) return true;
