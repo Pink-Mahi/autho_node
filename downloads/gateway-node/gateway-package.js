@@ -19,11 +19,18 @@ const UI_CACHE_TTL_MS = (() => {
 })();
 
 // HARD-CODED CONFIGURATION - USERS CANNOT MODIFY
+// These are fallback seeds - the network will discover more dynamically
 const CONFIG = {
-  // Seed nodes - hardcoded to prevent modification
+  // Seed nodes - hardcoded as fallback (network discovers more dynamically)
   seedNodes: ['autho.pinkmahi.com:3000', 'autho.cartpathcleaning.com', 'autho2.cartpathcleaning.com'],
 
   operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'https://autho2.cartpathcleaning.com', 'http://autho.pinkmahi.com:3000'],
+  
+  // Community seeds URL (GitHub-hosted, anyone can PR new seeds)
+  communitySeedsUrl: 'https://raw.githubusercontent.com/Pink-Mahi/autho_node/main/seeds.txt',
+  
+  // DNS seeds (multiple independent domains for resilience)
+  dnsSeeds: ['seed.autho.network', 'seed.pinkmahi.com'],
   
   // Network settings
   port: 3001,
@@ -130,6 +137,128 @@ class GatewayNode {
   checkIfPublicGateway() {
     const v = String(process.env.GATEWAY_PUBLIC || process.env.AUTHO_GATEWAY_PUBLIC || '').trim().toLowerCase();
     return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+  }
+
+  /**
+   * Multi-source bootstrap discovery - tries multiple sources in order
+   * This makes the network "unkillable" - if one source fails, others work
+   */
+  async bootstrapDiscovery() {
+    console.log('🔍 Starting multi-source bootstrap discovery...');
+    const discoveredUrls = new Set(CONFIG.operatorUrls);
+
+    // Layer 1: Try community seeds from GitHub
+    try {
+      const communitySeeds = await this.fetchCommunitySeeds();
+      for (const seed of communitySeeds) {
+        discoveredUrls.add(seed);
+      }
+      console.log(`✅ Discovered ${communitySeeds.length} seeds from community list`);
+    } catch (error) {
+      console.log(`⚠️  Community seeds unavailable: ${error.message}`);
+    }
+
+    // Layer 2: Try each known operator for more peers
+    for (const operatorUrl of [...discoveredUrls]) {
+      try {
+        const moreOperators = await this.discoverFromOperator(operatorUrl);
+        for (const op of moreOperators) {
+          discoveredUrls.add(op);
+        }
+      } catch (error) {
+        // Silently continue to next source
+      }
+    }
+
+    // Layer 3: Try to discover from ledger (network topology events)
+    try {
+      const ledgerPeers = await this.discoverFromLedger();
+      for (const peer of ledgerPeers) {
+        discoveredUrls.add(peer);
+      }
+    } catch (error) {
+      // Ledger discovery failed, continue with what we have
+    }
+
+    // Update operator URLs with all discovered peers
+    this.operatorUrls = Array.from(discoveredUrls);
+    console.log(`🌐 Total discovered operators: ${this.operatorUrls.length}`);
+    
+    return this.operatorUrls;
+  }
+
+  async fetchCommunitySeeds() {
+    const seeds = [];
+    try {
+      const response = await fetch(CONFIG.communitySeedsUrl, {
+        signal: AbortSignal.timeout(10000),
+      });
+      
+      if (response.ok) {
+        const text = await response.text();
+        const lines = text.split('\n')
+          .filter(l => l.trim() && !l.startsWith('#'));
+        
+        for (const line of lines) {
+          const parts = line.split(',').map(p => p.trim());
+          if (parts[0] && parts[0].startsWith('http')) {
+            seeds.push(parts[0]);
+          }
+        }
+      }
+    } catch (error) {
+      // Community seeds fetch failed
+    }
+    return seeds;
+  }
+
+  async discoverFromOperator(operatorUrl) {
+    const discovered = [];
+    try {
+      const response = await fetch(`${operatorUrl}/api/network/operators`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && Array.isArray(data.operators)) {
+          for (const op of data.operators) {
+            if (op.operatorUrl) {
+              discovered.push(op.operatorUrl);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Discovery from this operator failed
+    }
+    return discovered;
+  }
+
+  async discoverFromLedger() {
+    const discovered = [];
+    // Try to get network topology from ledger state
+    for (const operatorUrl of this.operatorUrls.slice(0, 3)) {
+      try {
+        const response = await fetch(`${operatorUrl}/api/registry/state`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Check for network topology in state
+          if (data.networkTopology?.operators) {
+            for (const [, op] of Object.entries(data.networkTopology.operators)) {
+              if (op.httpUrl) discovered.push(op.httpUrl);
+            }
+          }
+          break; // Got data from one operator
+        }
+      } catch (error) {
+        // Continue to next operator
+      }
+    }
+    return discovered;
   }
 
   getOperatorUrls() {
@@ -1282,6 +1411,9 @@ class GatewayNode {
 
     // Setup WebSocket
     this.setupWebSocket();
+
+    // Multi-source bootstrap discovery - makes network unkillable
+    await this.bootstrapDiscovery();
 
     // Connect to operators with discovery
     await this.connectToOperators();
