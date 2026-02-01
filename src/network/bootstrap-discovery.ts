@@ -210,7 +210,7 @@ export class BootstrapDiscovery {
       });
       
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as { success?: boolean; operators?: any[] };
         if (data.success && Array.isArray(data.operators)) {
           for (const op of data.operators) {
             if (op.wsUrl || op.operatorUrl) {
@@ -233,7 +233,7 @@ export class BootstrapDiscovery {
       });
       
       if (gwResponse.ok) {
-        const gwData = await gwResponse.json();
+        const gwData = await gwResponse.json() as { success?: boolean; gateways?: any[] };
         if (gwData.success && Array.isArray(gwData.gateways)) {
           for (const gw of gwData.gateways) {
             if (gw.wsUrl || gw.httpUrl) {
