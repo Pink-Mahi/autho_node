@@ -1,0 +1,29 @@
+# Autho Network Seeds
+# Community-maintained list of network entry points
+# Format: URL,type (operator/gateway)
+# 
+# To add a seed:
+# 1. Fork this repository
+# 2. Add your seed URL to this file
+# 3. Submit a pull request
+#
+# Seeds must:
+# - Be publicly accessible
+# - Run valid Autho operator or gateway software
+# - Have reasonable uptime (>95%)
+#
+# Last updated: 2026-02-01
+
+# Primary Operators
+https://autho.pinkmahi.com,operator
+https://autho.cartpathcleaning.com,operator
+https://autho2.cartpathcleaning.com,operator
+
+# Community Operators
+# (add your operator URL here via PR)
+
+# Public Gateways
+# (add your gateway URL here via PR)
+
+# Tor Hidden Services
+# (add .onion URLs here for censorship-resistant access)

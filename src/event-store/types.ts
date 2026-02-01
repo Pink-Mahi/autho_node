@@ -107,6 +107,13 @@ export enum EventType {
   ACCOUNT_RETAILER_VERIFICATION_APPLICATION_FINALIZED = 'ACCOUNT_RETAILER_VERIFICATION_APPLICATION_FINALIZED',
   ACCOUNT_RETAILER_VERIFIED = 'ACCOUNT_RETAILER_VERIFIED',
   ACCOUNT_RETAILER_VERIFICATION_REVOKED = 'ACCOUNT_RETAILER_VERIFICATION_REVOKED',
+
+  // Network topology (decentralized discovery)
+  NETWORK_OPERATOR_ANNOUNCED = 'NETWORK_OPERATOR_ANNOUNCED',
+  NETWORK_OPERATOR_DEANNOUNCED = 'NETWORK_OPERATOR_DEANNOUNCED',
+  NETWORK_GATEWAY_ANNOUNCED = 'NETWORK_GATEWAY_ANNOUNCED',
+  NETWORK_GATEWAY_DEANNOUNCED = 'NETWORK_GATEWAY_DEANNOUNCED',
+  NETWORK_SEED_ANNOUNCED = 'NETWORK_SEED_ANNOUNCED',
 }
 
 export interface BaseEventPayload {
@@ -924,7 +931,57 @@ export type EventPayload =
   | OperatorRemovedPayload
   | ItemImageTombstoneProposedPayload
   | ItemImageTombstoneVotedPayload
-  | ItemImageTombstonedPayload;
+  | ItemImageTombstonedPayload
+  | NetworkOperatorAnnouncedPayload
+  | NetworkOperatorDeannouncedPayload
+  | NetworkGatewayAnnouncedPayload
+  | NetworkGatewayDeannouncedPayload
+  | NetworkSeedAnnouncedPayload;
+
+// Network topology payloads for decentralized discovery
+export interface NetworkOperatorAnnouncedPayload extends BaseEventPayload {
+  type: EventType.NETWORK_OPERATOR_ANNOUNCED;
+  operatorId: string;
+  httpUrl: string;
+  wsUrl: string;
+  torUrl?: string;
+  btcAddress: string;
+  publicKey: string;
+  region?: string;
+  version?: string;
+}
+
+export interface NetworkOperatorDeannouncedPayload extends BaseEventPayload {
+  type: EventType.NETWORK_OPERATOR_DEANNOUNCED;
+  operatorId: string;
+  reason?: string;
+}
+
+export interface NetworkGatewayAnnouncedPayload extends BaseEventPayload {
+  type: EventType.NETWORK_GATEWAY_ANNOUNCED;
+  gatewayId: string;
+  httpUrl: string;
+  wsUrl: string;
+  torUrl?: string;
+  isPublic: boolean;
+  operatorId?: string; // Operator vouching for this gateway
+  region?: string;
+  version?: string;
+}
+
+export interface NetworkGatewayDeannouncedPayload extends BaseEventPayload {
+  type: EventType.NETWORK_GATEWAY_DEANNOUNCED;
+  gatewayId: string;
+  reason?: string;
+}
+
+export interface NetworkSeedAnnouncedPayload extends BaseEventPayload {
+  type: EventType.NETWORK_SEED_ANNOUNCED;
+  seedId: string;
+  seedType: 'dns' | 'http' | 'ws' | 'tor' | 'ipfs';
+  seedValue: string; // domain, URL, or CID
+  operatorId: string; // Operator announcing this seed
+}
 
 export interface QuorumSignature {
   operatorId: string;
