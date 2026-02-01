@@ -32,6 +32,18 @@ const CONFIG = {
   // DNS seeds (multiple independent domains for resilience)
   dnsSeeds: ['seed.autho.network', 'seed.pinkmahi.com'],
   
+  // Tor hidden services (censorship-resistant fallback)
+  // These are .onion addresses that work even if DNS/IP is blocked
+  torSeeds: [],
+  
+  // Reconnection settings
+  reconnect: {
+    initialDelayMs: 1000,      // Start with 1 second
+    maxDelayMs: 300000,        // Max 5 minutes between attempts
+    backoffMultiplier: 1.5,    // Increase delay by 50% each failure
+    jitterPercent: 20,         // Add randomness to prevent thundering herd
+  },
+  
   // Network settings
   port: 3001,
   host: '0.0.0.0',
@@ -116,6 +128,15 @@ class GatewayNode {
     
     // Seed health tracking - prefer healthy seeds over failing ones
     this.seedHealth = new Map(); // url -> { lastSuccess, lastFailure, failCount, latencyMs }
+    
+    // Reconnection state with exponential backoff
+    this.reconnectAttempts = 0;
+    this.reconnectTimer = null;
+    this.currentReconnectDelay = CONFIG.reconnect.initialDelayMs;
+    
+    // Gossip state - share peer info with other nodes
+    this.lastGossipAt = 0;
+    this.gossipInterval = 60000; // Share peers every minute
     
     this.setupMiddleware();
     this.setupRoutes();
@@ -230,6 +251,133 @@ class GatewayNode {
       // Prefer lower latency
       return healthA.latencyMs - healthB.latencyMs;
     });
+  }
+
+  /**
+   * Calculate next reconnect delay with exponential backoff and jitter
+   */
+  getNextReconnectDelay() {
+    // Add jitter to prevent thundering herd
+    const jitterRange = this.currentReconnectDelay * (CONFIG.reconnect.jitterPercent / 100);
+    const jitter = (Math.random() * 2 - 1) * jitterRange;
+    const delay = Math.min(
+      this.currentReconnectDelay + jitter,
+      CONFIG.reconnect.maxDelayMs
+    );
+    
+    // Increase delay for next attempt
+    this.currentReconnectDelay = Math.min(
+      this.currentReconnectDelay * CONFIG.reconnect.backoffMultiplier,
+      CONFIG.reconnect.maxDelayMs
+    );
+    
+    return Math.max(delay, CONFIG.reconnect.initialDelayMs);
+  }
+
+  /**
+   * Reset reconnect state after successful connection
+   */
+  resetReconnectState() {
+    this.reconnectAttempts = 0;
+    this.currentReconnectDelay = CONFIG.reconnect.initialDelayMs;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   */
+  scheduleReconnect() {
+    if (this.reconnectTimer) return; // Already scheduled
+    
+    this.reconnectAttempts++;
+    const delay = this.getNextReconnectDelay();
+    
+    console.log(`🔄 Scheduling reconnect attempt ${this.reconnectAttempts} in ${Math.round(delay/1000)}s`);
+    
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      try {
+        await this.connectToSeed();
+      } catch (error) {
+        console.log(`❌ Reconnect attempt ${this.reconnectAttempts} failed: ${error.message}`);
+        this.scheduleReconnect();
+      }
+    }, delay);
+  }
+
+  /**
+   * Gossip protocol - share known peers with connected nodes
+   * This enables epidemic-style peer discovery
+   */
+  async gossipPeers() {
+    const now = Date.now();
+    if (now - this.lastGossipAt < this.gossipInterval) return;
+    this.lastGossipAt = now;
+    
+    // Prepare peer list to share
+    const myPeers = {
+      operators: this.operatorUrls.slice(0, 20), // Share up to 20 operators
+      gateways: this.discoveredGateways.slice(0, 20), // Share up to 20 gateways
+      timestamp: now,
+      fromGateway: this.gatewayId,
+    };
+    
+    // Share with connected seed
+    if (this.seedWs && this.seedWs.readyState === WebSocket.OPEN) {
+      try {
+        this.seedWs.send(JSON.stringify({
+          type: 'gossip_peers',
+          peers: myPeers,
+        }));
+      } catch (e) {}
+    }
+    
+    // Share with gateway peers
+    for (const [, ws] of this.gatewayPeerConnections) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'gossip_peers',
+            peers: myPeers,
+          }));
+        } catch (e) {}
+      }
+    }
+  }
+
+  /**
+   * Handle incoming gossip from peers
+   */
+  handleGossipPeers(gossipData) {
+    if (!gossipData || !gossipData.operators) return;
+    
+    let newPeersCount = 0;
+    
+    // Add new operators
+    for (const url of gossipData.operators || []) {
+      if (url && url.startsWith('http') && !this.operatorUrls.includes(url)) {
+        this.operatorUrls.push(url);
+        newPeersCount++;
+      }
+    }
+    
+    // Add new gateways
+    for (const gw of gossipData.gateways || []) {
+      const gwUrl = typeof gw === 'string' ? gw : gw?.httpUrl;
+      if (gwUrl && !this.discoveredGateways.some(g => (typeof g === 'string' ? g : g?.httpUrl) === gwUrl)) {
+        this.discoveredGateways.push(gw);
+        newPeersCount++;
+      }
+    }
+    
+    if (newPeersCount > 0) {
+      console.log(`📡 Gossip: learned ${newPeersCount} new peers from ${gossipData.fromGateway || 'unknown'}`);
+      // Save new peers to cache
+      this.saveCachedSeeds(this.operatorUrls);
+    }
   }
 
   /**
@@ -1080,6 +1228,80 @@ class GatewayNode {
       next();
     });
 
+    // Network topology visualization endpoint
+    this.app.get('/api/mesh/topology', (req, res) => {
+      // Build network graph for visualization
+      const nodes = [];
+      const edges = [];
+      
+      // Add this gateway as center node
+      nodes.push({
+        id: this.gatewayId,
+        type: 'gateway',
+        label: 'This Gateway',
+        isPublic: this.isPublicGateway,
+        isSelf: true,
+      });
+      
+      // Add connected operators
+      for (const [opId, conn] of this.operatorConnections) {
+        nodes.push({
+          id: opId,
+          type: 'operator',
+          label: opId,
+          url: conn.url,
+          connected: true,
+        });
+        edges.push({
+          from: this.gatewayId,
+          to: opId,
+          type: 'websocket',
+        });
+      }
+      
+      // Add discovered but not connected operators
+      for (const url of this.operatorUrls) {
+        const opId = `op-${url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '-')}`;
+        if (!this.operatorConnections.has(opId)) {
+          const health = this.seedHealth.get(url);
+          nodes.push({
+            id: opId,
+            type: 'operator',
+            label: url.replace(/https?:\/\//, ''),
+            url: url,
+            connected: false,
+            status: health ? (health.failCount === 0 ? 'healthy' : 'degraded') : 'unknown',
+          });
+        }
+      }
+      
+      // Add connected gateway peers
+      for (const [gwId] of this.gatewayPeerConnections) {
+        nodes.push({
+          id: gwId,
+          type: 'gateway',
+          label: gwId,
+          connected: true,
+        });
+        edges.push({
+          from: this.gatewayId,
+          to: gwId,
+          type: 'mesh',
+        });
+      }
+      
+      res.json({
+        nodes,
+        edges,
+        stats: {
+          totalOperators: this.operatorUrls.length,
+          connectedOperators: this.operatorConnections.size,
+          totalGateways: this.discoveredGateways.length,
+          connectedGateways: this.gatewayPeerConnections.size,
+        },
+      });
+    });
+
     // Mesh network health endpoint
     this.app.get('/api/mesh/health', (req, res) => {
       const seedHealthData = [];
@@ -1604,6 +1826,11 @@ class GatewayNode {
         }
         break;
       
+      // Gossip protocol - peer sharing
+      case 'gossip_peers':
+        this.handleGossipPeers(message.peers);
+        break;
+      
       default:
         console.log(`📨 Unknown message from seed ${seed}:`, message.type);
     }
@@ -1733,6 +1960,18 @@ class GatewayNode {
         console.error('❌ Operator discovery refresh failed:', error);
       }
     }, 300000);
+
+    // Start gossip protocol (share peers every minute)
+    setInterval(() => {
+      this.gossipPeers();
+    }, this.gossipInterval);
+
+    // Auto-register as public gateway if enabled
+    if (this.isPublicGateway && this.publicHttpUrl) {
+      this.registerAsPublicGateway();
+      // Re-register every 10 minutes to maintain presence
+      setInterval(() => this.registerAsPublicGateway(), 600000);
+    }
 
     // Periodic data save
     setInterval(() => {
