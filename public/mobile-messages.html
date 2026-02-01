@@ -1131,6 +1131,16 @@
       transition: background 0.2s;
     }
     .reaction-badge:hover { background: rgba(255, 255, 255, 0.2); }
+    .reaction-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 0 0.25rem;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    .reaction-btn:hover { opacity: 1; }
     .reaction-picker {
       position: absolute;
       bottom: 100%;
@@ -1255,11 +1265,6 @@
           <span>💬</span> Messages
         </div>
         <div class="inbox-stats" id="inboxStats">Loading...</div>
-      </div>
-
-      <!-- Search Bar -->
-      <div class="search-bar">
-        <input type="text" id="messageSearch" placeholder="🔍 Search messages..." oninput="debounceSearch(this.value)">
       </div>
 
       <div class="nav-tabs">
@@ -2824,7 +2829,9 @@
             <div class="message-meta">
               ${disappearIcon}${timeStr}
               <span class="message-expires">• expires ${expiresIn}</span>
+              <button class="reaction-btn" onclick="showReactionPicker('${msg.messageId}', event)" title="React">😀</button>
             </div>
+            <div class="message-reactions" id="reactions-${msg.messageId}"></div>
           </div>
         `;
       }).join('');
