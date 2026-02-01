@@ -2837,16 +2837,18 @@ class GatewayNode {
       version: '1.0.7',
     };
     
-    // Broadcast to all connected seeds/operators
-    for (const [peerId, ws] of this.seedConnections) {
-      if (ws.readyState === 1) { // WebSocket.OPEN
-        try {
-          ws.send(JSON.stringify({
-            type: 'gateway_register',
-            gatewayId: this.gatewayId,
-            data: gatewayInfo,
-          }));
-        } catch (e) {}
+    // Broadcast to all connected operators
+    if (this.operatorConnections && this.operatorConnections.size > 0) {
+      for (const [operatorId, ws] of this.operatorConnections) {
+        if (ws && ws.readyState === 1) { // WebSocket.OPEN
+          try {
+            ws.send(JSON.stringify({
+              type: 'gateway_register',
+              gatewayId: this.gatewayId,
+              data: gatewayInfo,
+            }));
+          } catch (e) {}
+        }
       }
     }
     
@@ -2866,6 +2868,9 @@ class GatewayNode {
     }
     
     // Add to local peer gateway list
+    if (!this.peerGateways) {
+      this.peerGateways = new Map();
+    }
     this.peerGateways.set(this.gatewayId, {
       ...gatewayInfo,
       isSelf: true,
