@@ -1840,6 +1840,7 @@ class GatewayNode {
         connectionInfo.connectedAt = Date.now();
         connectionInfo.lastSeen = Date.now();
         this.isConnectedToSeed = true;
+        this.recordSeedSuccess(wsUrl, 0);
 
         ws.send(JSON.stringify({
           type: 'sync_request',
@@ -1862,6 +1863,7 @@ class GatewayNode {
       ws.on('close', () => {
         console.log(`❌ Disconnected from operator: ${operatorId}`);
         this.operatorConnections.delete(operatorId);
+        this.recordSeedFailure(wsUrl);
         
         const hasActiveConnection = Array.from(this.operatorConnections.values())
           .some(conn => conn.ws && conn.ws.readyState === WebSocket.OPEN);
@@ -1870,9 +1872,15 @@ class GatewayNode {
           this.isConnectedToSeed = false;
         }
 
+        // Reconnect with exponential backoff
+        const health = this.seedHealth.get(wsUrl);
+        const failCount = health?.failCount || 1;
+        const delay = Math.min(10000 * Math.pow(1.5, failCount - 1), 300000); // Max 5 min
+        console.log(`🔄 Reconnecting to ${operatorId} in ${Math.round(delay/1000)}s...`);
+        
         setTimeout(() => {
           this.connectToOperator(operator);
-        }, 10000);
+        }, delay);
       });
 
       ws.on('error', (error) => {
