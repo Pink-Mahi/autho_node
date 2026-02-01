@@ -244,6 +244,66 @@ Should return:
 - 🏪 **Brand it** for your business/website
 - 🤝 **Support the community** - no approval needed!
 
+## 🏠 Home User Public Access (NEW!)
+
+**Want to make your home gateway publicly accessible?** Even if you're behind a router/NAT, you can now contribute to the network!
+
+### **Automatic Setup (Easiest)**
+
+Just set one environment variable:
+
+```bash
+GATEWAY_AUTO_PUBLIC=true node gateway-package.js
+```
+
+The gateway will automatically try:
+1. **Direct access** - If your IP is already public
+2. **UPnP port forwarding** - Works on most home routers
+3. **Tunnel service** - Works everywhere (localtunnel)
+
+### **Manual Enable via API**
+
+Start the gateway normally, then:
+
+```bash
+# Enable public access
+curl -X POST http://localhost:3001/api/public-access/enable
+
+# Check status
+curl http://localhost:3001/api/public-access/status
+
+# Disable when done
+curl -X POST http://localhost:3001/api/public-access/disable
+```
+
+### **Response Example**
+
+```json
+{
+  "success": true,
+  "enabled": true,
+  "url": "https://gw-abc123.loca.lt",
+  "method": "tunnel",
+  "externalIp": "203.0.113.45",
+  "httpPort": 3001,
+  "wsPort": 4001
+}
+```
+
+### **Methods Supported**
+
+| Method | How It Works | Requirements |
+|--------|--------------|--------------|
+| **Direct** | Uses your public IP directly | Already port-forwarded |
+| **UPnP** | Auto-configures router | UPnP-enabled router |
+| **Tunnel** | Uses localtunnel.me | `npm install localtunnel` |
+
+### **For Best Results**
+
+1. **Install optional dependency**: `npm install localtunnel`
+2. **Run with auto-public**: `GATEWAY_AUTO_PUBLIC=true node gateway-package.js`
+3. **Share your public URL** with the community
+
 ## 🔧 Advanced Features
 
 ### **Caching**

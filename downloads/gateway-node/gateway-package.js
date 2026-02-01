@@ -2400,6 +2400,126 @@ class GatewayNode {
     throw new Error('All operators unavailable');
   }
 
+  /**
+   * Load balancer - distributes requests across healthy operators
+   * Uses weighted round-robin based on connection quality
+   */
+  getLoadBalancedOperator() {
+    const operators = this.getSortedSeeds()
+      .filter(url => !this.isCircuitOpen(url))
+      .map(url => ({
+        url,
+        quality: this.getConnectionQuality(url),
+        weight: Math.max(1, Math.floor(this.getConnectionQuality(url) / 10)),
+      }));
+    
+    if (operators.length === 0) return null;
+    
+    // Weighted random selection
+    const totalWeight = operators.reduce((sum, op) => sum + op.weight, 0);
+    let random = Math.random() * totalWeight;
+    
+    for (const op of operators) {
+      random -= op.weight;
+      if (random <= 0) return op.url;
+    }
+    
+    return operators[0].url;
+  }
+
+  /**
+   * Retry queue for failed requests - stores and retries later
+   */
+  initRetryQueue() {
+    this.retryQueue = [];
+    this.maxRetryQueueSize = 100;
+    this.retryInterval = 30000; // 30 seconds
+    
+    setInterval(() => this.processRetryQueue(), this.retryInterval);
+  }
+
+  /**
+   * Add a failed request to retry queue
+   */
+  addToRetryQueue(request) {
+    if (this.retryQueue.length >= this.maxRetryQueueSize) {
+      // Remove oldest
+      this.retryQueue.shift();
+    }
+    
+    this.retryQueue.push({
+      ...request,
+      addedAt: Date.now(),
+      retryCount: (request.retryCount || 0) + 1,
+    });
+  }
+
+  /**
+   * Process retry queue - attempt to resend failed requests
+   */
+  async processRetryQueue() {
+    if (!this.retryQueue || this.retryQueue.length === 0) return;
+    
+    const now = Date.now();
+    const maxAge = 300000; // 5 minutes max age
+    const maxRetries = 3;
+    
+    // Filter out old requests
+    this.retryQueue = this.retryQueue.filter(req => 
+      (now - req.addedAt) < maxAge && req.retryCount <= maxRetries
+    );
+    
+    // Process remaining
+    const toProcess = [...this.retryQueue];
+    this.retryQueue = [];
+    
+    for (const request of toProcess) {
+      try {
+        await this.routeToOperator(request.path, request.options);
+        console.log(`✅ Retry successful: ${request.path}`);
+      } catch (error) {
+        // Re-add to queue if still failing
+        if (request.retryCount < maxRetries) {
+          this.addToRetryQueue(request);
+        }
+      }
+    }
+  }
+
+  /**
+   * Proxy API request with load balancing and retry
+   */
+  async proxyWithLoadBalancing(path, options = {}) {
+    const operatorUrl = this.getLoadBalancedOperator();
+    
+    if (!operatorUrl) {
+      throw new Error('No healthy operators available');
+    }
+    
+    try {
+      const startTime = Date.now();
+      const response = await fetch(`${operatorUrl}${path}`, {
+        ...options,
+        signal: AbortSignal.timeout(15000),
+      });
+      
+      const latency = Date.now() - startTime;
+      this.recordSeedSuccess(operatorUrl, latency);
+      
+      return { response, operatorUrl, latency };
+    } catch (error) {
+      this.recordSeedFailure(operatorUrl);
+      
+      // Add to retry queue if it's a write operation
+      if (options.method && ['POST', 'PUT', 'PATCH'].includes(options.method.toUpperCase())) {
+        this.addToRetryQueue({ path, options });
+      }
+      
+      // Try fallback with routeToOperator
+      return this.routeToOperator(path, options);
+    }
+  }
+
   handleSeedMessage(seed, message, ws = null) {
     switch (message.type) {
       case 'sync_response':
@@ -2578,6 +2698,9 @@ class GatewayNode {
 
     // Start useful work (network verification)
     this.startUsefulWork();
+
+    // Initialize retry queue for failed requests
+    this.initRetryQueue();
 
     // Start gateway-to-gateway mesh
     this.startGatewayMesh();
