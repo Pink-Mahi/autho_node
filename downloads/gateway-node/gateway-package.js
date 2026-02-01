@@ -110,6 +110,10 @@ class GatewayNode {
     this.gatewayPeerConnections = new Map(); // gatewayId -> WebSocket connection
     this.lastGatewayDiscovery = 0;
     
+    // UI bundle caching for public gateway mode
+    this.uiBundleVersion = null;
+    this.uiBundleSource = null;
+    
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -259,6 +263,63 @@ class GatewayNode {
       }
     }
     return discovered;
+  }
+
+  /**
+   * Download UI files from an operator for local serving (public gateway mode)
+   */
+  async downloadUiBundle() {
+    console.log('📦 Downloading UI bundle for public gateway mode...');
+    
+    for (const operatorUrl of this.getCandidateOperatorUrls()) {
+      try {
+        // Get manifest of available UI files
+        const manifestResp = await fetch(`${operatorUrl}/api/gateway/ui-manifest`, {
+          signal: AbortSignal.timeout(15000),
+        });
+        
+        if (!manifestResp.ok) continue;
+        
+        const manifest = await manifestResp.json();
+        if (!manifest.success || !Array.isArray(manifest.files)) continue;
+        
+        console.log(`📄 Found ${manifest.files.length} UI files from ${operatorUrl}`);
+        
+        // Download each file
+        let downloaded = 0;
+        for (const file of manifest.files) {
+          try {
+            const fileResp = await fetch(`${operatorUrl}${file.path}`, {
+              signal: AbortSignal.timeout(30000),
+            });
+            
+            if (!fileResp.ok) continue;
+            
+            const content = Buffer.from(await fileResp.arrayBuffer());
+            const localPath = this.getUiCacheFilePath(file.path);
+            const localDir = path.dirname(localPath);
+            
+            if (!fs.existsSync(localDir)) {
+              fs.mkdirSync(localDir, { recursive: true });
+            }
+            
+            fs.writeFileSync(localPath, content);
+            downloaded++;
+          } catch (fileError) {
+            // Continue with other files
+          }
+        }
+        
+        console.log(`✅ Downloaded ${downloaded}/${manifest.files.length} UI files`);
+        this.uiBundleVersion = manifest.version;
+        this.uiBundleSource = operatorUrl;
+        return; // Success
+      } catch (error) {
+        console.log(`⚠️ Failed to download UI from ${operatorUrl}: ${error.message}`);
+      }
+    }
+    
+    console.log('⚠️ Could not download UI bundle from any operator');
   }
 
   getOperatorUrls() {
@@ -820,14 +881,56 @@ class GatewayNode {
       res.json({
         status: 'healthy',
         timestamp: Date.now(),
-        version: '1.0.6',
+        version: '1.0.7',
         uptime: process.uptime(),
         connectedPeers: this.peers.size,
         isConnectedToSeed: this.isConnectedToSeed,
         hardcodedSeeds: CONFIG.seedNodes,
         platform: os.platform(),
-        nodeVersion: process.version
+        nodeVersion: process.version,
+        isPublicGateway: this.isPublicGateway,
+        publicHttpUrl: this.publicHttpUrl,
+        uiBundleVersion: this.uiBundleVersion,
+        uiBundleSource: this.uiBundleSource,
       });
+    });
+
+    // Serve cached UI files for public gateways (before API routes)
+    this.app.use((req, res, next) => {
+      // Skip API routes
+      if (req.path.startsWith('/api/') || req.path === '/health' || req.path === '/stats') {
+        return next();
+      }
+      
+      // Only serve UI if we're a public gateway with cached files
+      if (!this.isPublicGateway) {
+        return next();
+      }
+      
+      const cachedFile = this.getUiCacheFilePath(req.path);
+      if (fs.existsSync(cachedFile)) {
+        const ext = path.extname(cachedFile).toLowerCase();
+        const mimeTypes = {
+          '.html': 'text/html',
+          '.css': 'text/css',
+          '.js': 'application/javascript',
+          '.json': 'application/json',
+          '.png': 'image/png',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.gif': 'image/gif',
+          '.svg': 'image/svg+xml',
+          '.ico': 'image/x-icon',
+          '.woff': 'font/woff',
+          '.woff2': 'font/woff2',
+          '.ttf': 'font/ttf',
+        };
+        res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+        res.setHeader('X-Served-By', 'autho-gateway');
+        return res.sendFile(cachedFile);
+      }
+      
+      next();
     });
 
     // Statistics
@@ -1405,6 +1508,12 @@ class GatewayNode {
       console.log('');
       console.log('🎯 Connected to Autho Network');
       console.log('🔒 Seed nodes are hardcoded and cannot be modified');
+      if (this.isPublicGateway) {
+        console.log('');
+        console.log('🌍 PUBLIC GATEWAY MODE ENABLED');
+        console.log(`   Public URL: ${this.publicHttpUrl || 'Not configured'}`);
+        console.log('   This gateway serves UI files and is discoverable by others');
+      }
       console.log('');
       console.log('Press Ctrl+C to stop');
     });
@@ -1414,6 +1523,13 @@ class GatewayNode {
 
     // Multi-source bootstrap discovery - makes network unkillable
     await this.bootstrapDiscovery();
+
+    // Download UI files for public gateway mode
+    if (this.isPublicGateway) {
+      await this.downloadUiBundle();
+      // Refresh UI periodically (every hour)
+      setInterval(() => this.downloadUiBundle(), 60 * 60 * 1000);
+    }
 
     // Connect to operators with discovery
     await this.connectToOperators();

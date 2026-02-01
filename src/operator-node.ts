@@ -1872,6 +1872,49 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // UI bundle endpoint - returns list of public files for gateway caching
+    this.app.get('/api/gateway/ui-manifest', async (req: Request, res: Response) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const publicDir = path.join(__dirname, '..', 'public');
+        
+        const files: { path: string; size: number; modified: number }[] = [];
+        
+        const scanDir = (dir: string, basePath: string = '') => {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
+            
+            if (entry.isDirectory()) {
+              scanDir(fullPath, relativePath);
+            } else {
+              const stat = fs.statSync(fullPath);
+              files.push({
+                path: '/' + relativePath,
+                size: stat.size,
+                modified: stat.mtimeMs,
+              });
+            }
+          }
+        };
+        
+        if (fs.existsSync(publicDir)) {
+          scanDir(publicDir);
+        }
+        
+        res.json({
+          success: true,
+          version: Date.now(),
+          files,
+          baseUrl: `${req.protocol}://${req.get('host')}`,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Mesh network diagnostic endpoint - shows all connected nodes
     this.app.get('/api/network/mesh', async (req: Request, res: Response) => {
       try {
