@@ -84,6 +84,15 @@ export class OperatorNode extends EventEmitter {
     }
   > = new Map();
   private operatorPeerConnections: Map<string, { ws: WebSocket; operatorId: string; wsUrl: string; connectedAt: number; lastSeen: number }> = new Map();
+  // Public gateway registry - gateways can register to be discoverable by other gateways
+  private publicGatewayRegistry: Map<string, { 
+    gatewayId: string; 
+    httpUrl: string; 
+    wsUrl: string; 
+    registeredAt: number; 
+    lastHeartbeat: number;
+    version?: string;
+  }> = new Map();
   private peerDiscoveryTimer?: NodeJS.Timeout;
   private peerDiscovery?: OperatorPeerDiscovery;
   private heartbeatManager?: HeartbeatManager;
@@ -1741,6 +1750,66 @@ export class OperatorNode extends EventEmitter {
           currentSequence: (state as any).lastEventSequence,
           activeWindowMs,
           operators: operatorList,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Gateway registration endpoint - gateways register to be discoverable by other gateways
+    this.app.post('/api/network/gateways/register', (req: Request, res: Response) => {
+      try {
+        const { gatewayId, httpUrl, wsUrl, version } = req.body;
+        
+        if (!gatewayId || !httpUrl) {
+          res.status(400).json({ success: false, error: 'gatewayId and httpUrl required' });
+          return;
+        }
+
+        const now = Date.now();
+        this.publicGatewayRegistry.set(gatewayId, {
+          gatewayId,
+          httpUrl: String(httpUrl).trim(),
+          wsUrl: wsUrl ? String(wsUrl).trim() : httpUrl.replace('https://', 'wss://').replace('http://', 'ws://'),
+          registeredAt: this.publicGatewayRegistry.get(gatewayId)?.registeredAt || now,
+          lastHeartbeat: now,
+          version: version || '1.0.0',
+        });
+
+        console.log(`[Gateway] Registered public gateway: ${gatewayId} at ${httpUrl}`);
+        res.json({ success: true, gatewayId, registeredAt: now });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Gateway discovery endpoint - returns list of public gateways
+    this.app.get('/api/network/gateways', (req: Request, res: Response) => {
+      try {
+        const now = Date.now();
+        const maxAge = 10 * 60 * 1000; // 10 minutes - gateways must heartbeat to stay listed
+
+        // Clean up stale gateways
+        for (const [id, gw] of this.publicGatewayRegistry.entries()) {
+          if (now - gw.lastHeartbeat > maxAge) {
+            this.publicGatewayRegistry.delete(id);
+          }
+        }
+
+        const gateways = Array.from(this.publicGatewayRegistry.values())
+          .map(gw => ({
+            gatewayId: gw.gatewayId,
+            httpUrl: gw.httpUrl,
+            wsUrl: gw.wsUrl,
+            version: gw.version,
+            lastHeartbeat: gw.lastHeartbeat,
+            ageMs: now - gw.registeredAt,
+          }));
+
+        res.json({
+          success: true,
+          timestamp: now,
+          gateways,
         });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });

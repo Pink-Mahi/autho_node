@@ -95,8 +95,41 @@ class GatewayNode {
       lastWorkAt: 0,
     };
     
+    // Gateway-to-gateway mesh
+    this.gatewayId = this.generateGatewayId();
+    this.isPublicGateway = this.checkIfPublicGateway();
+    this.publicHttpUrl = process.env.GATEWAY_PUBLIC_URL || process.env.AUTHO_GATEWAY_PUBLIC_URL || null;
+    this.discoveredGateways = []; // List of other public gateways
+    this.gatewayPeerConnections = new Map(); // gatewayId -> WebSocket connection
+    this.lastGatewayDiscovery = 0;
+    
     this.setupMiddleware();
     this.setupRoutes();
+  }
+
+  generateGatewayId() {
+    // Generate a persistent gateway ID based on data directory
+    const idFile = path.join(CONFIG.dataDir, 'gateway-id.txt');
+    try {
+      if (fs.existsSync(idFile)) {
+        return fs.readFileSync(idFile, 'utf8').trim();
+      }
+    } catch {}
+    
+    // Generate new ID
+    const id = `gw-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 8)}`;
+    try {
+      if (!fs.existsSync(CONFIG.dataDir)) {
+        fs.mkdirSync(CONFIG.dataDir, { recursive: true });
+      }
+      fs.writeFileSync(idFile, id);
+    } catch {}
+    return id;
+  }
+
+  checkIfPublicGateway() {
+    const v = String(process.env.GATEWAY_PUBLIC || process.env.AUTHO_GATEWAY_PUBLIC || '').trim().toLowerCase();
+    return v === '1' || v === 'true' || v === 'yes' || v === 'on';
   }
 
   getOperatorUrls() {
@@ -1259,6 +1292,9 @@ class GatewayNode {
     // Start useful work (network verification)
     this.startUsefulWork();
 
+    // Start gateway-to-gateway mesh
+    this.startGatewayMesh();
+
     // Periodic operator discovery refresh (every 5 minutes)
     setInterval(async () => {
       try {
@@ -1565,6 +1601,197 @@ class GatewayNode {
     } catch (e) {
       console.error('Failed to save communications ledger:', e.message);
     }
+  }
+
+  // ==================== GATEWAY-TO-GATEWAY MESH ====================
+
+  async registerAsPublicGateway() {
+    if (!this.isPublicGateway || !this.publicHttpUrl) {
+      console.log('🔒 Gateway is private (not registering with network)');
+      return;
+    }
+
+    console.log(`📢 Registering as public gateway: ${this.gatewayId}`);
+    
+    for (const operatorUrl of this.operatorUrls) {
+      try {
+        const response = await fetch(`${operatorUrl}/api/network/gateways/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gatewayId: this.gatewayId,
+            httpUrl: this.publicHttpUrl,
+            wsUrl: this.publicHttpUrl.replace('https://', 'wss://').replace('http://', 'ws://') + `:${EFFECTIVE_WS_PORT}`,
+            version: '1.0.6',
+          }),
+        });
+        
+        if (response.ok) {
+          console.log(`✅ Registered with operator: ${operatorUrl}`);
+          return;
+        }
+      } catch (error) {
+        console.log(`⚠️  Failed to register with ${operatorUrl}: ${error.message}`);
+      }
+    }
+  }
+
+  async discoverGateways() {
+    const now = Date.now();
+    if (now - this.lastGatewayDiscovery < 300000 && this.discoveredGateways.length > 0) {
+      return this.discoveredGateways;
+    }
+
+    console.log('🔍 Discovering peer gateways...');
+    
+    for (const operatorUrl of this.operatorUrls) {
+      try {
+        const response = await fetch(`${operatorUrl}/api/network/gateways`);
+        const data = await response.json();
+
+        if (data && data.success && Array.isArray(data.gateways)) {
+          // Filter out self
+          this.discoveredGateways = data.gateways.filter(gw => gw.gatewayId !== this.gatewayId);
+          this.lastGatewayDiscovery = now;
+          console.log(`✅ Discovered ${this.discoveredGateways.length} peer gateways`);
+          return this.discoveredGateways;
+        }
+      } catch (error) {
+        console.log(`⚠️  Failed to discover gateways from ${operatorUrl}: ${error.message}`);
+      }
+    }
+
+    return [];
+  }
+
+  async connectToGatewayPeers() {
+    await this.discoverGateways();
+
+    for (const gw of this.discoveredGateways) {
+      if (!gw.wsUrl) continue;
+      if (this.gatewayPeerConnections.has(gw.gatewayId)) {
+        const existing = this.gatewayPeerConnections.get(gw.gatewayId);
+        if (existing.ws && existing.ws.readyState === WebSocket.OPEN) {
+          continue;
+        }
+      }
+
+      this.connectToGatewayPeer(gw);
+    }
+  }
+
+  connectToGatewayPeer(gateway) {
+    const { gatewayId, wsUrl } = gateway;
+    
+    try {
+      console.log(`🔗 Connecting to gateway peer: ${gatewayId}`);
+      const ws = new WebSocket(wsUrl);
+      const connectionInfo = {
+        ws,
+        gatewayId,
+        wsUrl,
+        connectedAt: null,
+        lastSeen: null,
+      };
+
+      ws.on('open', () => {
+        console.log(`✅ Connected to gateway peer: ${gatewayId}`);
+        connectionInfo.connectedAt = Date.now();
+        connectionInfo.lastSeen = Date.now();
+
+        ws.send(JSON.stringify({
+          type: 'gateway_handshake',
+          gatewayId: this.gatewayId,
+          timestamp: Date.now()
+        }));
+      });
+
+      ws.on('message', (data) => {
+        try {
+          connectionInfo.lastSeen = Date.now();
+          const message = JSON.parse(data.toString());
+          this.handleGatewayPeerMessage(gatewayId, message, ws);
+        } catch (error) {
+          console.error(`❌ Invalid message from gateway ${gatewayId}:`, error);
+        }
+      });
+
+      ws.on('close', () => {
+        console.log(`❌ Disconnected from gateway peer: ${gatewayId}`);
+        this.gatewayPeerConnections.delete(gatewayId);
+        // Reconnect after delay
+        setTimeout(() => this.connectToGatewayPeer(gateway), 30000);
+      });
+
+      ws.on('error', (error) => {
+        console.error(`❌ WebSocket error for gateway ${gatewayId}:`, error.message);
+      });
+
+      this.gatewayPeerConnections.set(gatewayId, connectionInfo);
+    } catch (error) {
+      console.error(`❌ Failed to connect to gateway ${gatewayId}:`, error.message);
+    }
+  }
+
+  handleGatewayPeerMessage(gatewayId, message, ws) {
+    switch (message.type) {
+      case 'gateway_handshake':
+        console.log(`🤝 Gateway handshake from: ${message.gatewayId}`);
+        ws.send(JSON.stringify({
+          type: 'gateway_handshake_ack',
+          gatewayId: this.gatewayId,
+          timestamp: Date.now()
+        }));
+        break;
+
+      case 'gateway_handshake_ack':
+        console.log(`✓ Gateway handshake acknowledged by: ${message.gatewayId}`);
+        break;
+
+      case 'registry_update':
+        // Relay registry updates from gateway peers
+        if (message.data && message.data.sequenceNumber > (this.registryData.sequenceNumber || 0)) {
+          console.log(`📥 Registry update from gateway ${gatewayId}`);
+          this.registryData = message.data;
+          this.broadcastToPeers(message);
+        }
+        break;
+
+      case 'ephemeral_event':
+        // Relay ephemeral events from gateway peers
+        if (this.storeEphemeralEvent(message.event)) {
+          this.broadcastToPeers(message);
+          this.broadcastToGatewayPeers(message, gatewayId); // Forward to other gateways except sender
+        }
+        break;
+
+      default:
+        console.log(`📨 Unknown message from gateway ${gatewayId}:`, message.type);
+    }
+  }
+
+  broadcastToGatewayPeers(message, excludeGatewayId = null) {
+    for (const [gatewayId, conn] of this.gatewayPeerConnections) {
+      if (gatewayId === excludeGatewayId) continue;
+      if (conn.ws && conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(JSON.stringify(message));
+      }
+    }
+  }
+
+  startGatewayMesh() {
+    // Register as public gateway if configured
+    if (this.isPublicGateway) {
+      this.registerAsPublicGateway();
+      // Re-register every 5 minutes to maintain presence
+      setInterval(() => this.registerAsPublicGateway(), 5 * 60 * 1000);
+    }
+
+    // Discover and connect to gateway peers every 5 minutes
+    setInterval(() => this.connectToGatewayPeers(), 5 * 60 * 1000);
+
+    // Initial connection after 10 seconds
+    setTimeout(() => this.connectToGatewayPeers(), 10000);
   }
 }
 
