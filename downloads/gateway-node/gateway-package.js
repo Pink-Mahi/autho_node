@@ -2605,6 +2605,21 @@ class GatewayNode {
   async tryCloudflaredTunnel() {
     const { spawn, execSync } = require('child_process');
     
+    // Kill any existing cloudflared process to avoid conflicts
+    if (this.tunnelProcess) {
+      try {
+        this.tunnelProcess.kill();
+      } catch (e) {}
+      this.tunnelProcess = null;
+    }
+    
+    // Also try to kill any orphan cloudflared processes on Windows
+    if (process.platform === 'win32') {
+      try {
+        execSync('taskkill /f /im cloudflared.exe 2>nul', { stdio: 'ignore', timeout: 5000 });
+      } catch (e) {}
+    }
+    
     console.log('🔧 Starting Cloudflare Tunnel...');
     
     // Find cloudflared executable
