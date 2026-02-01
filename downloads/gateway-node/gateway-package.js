@@ -2670,8 +2670,34 @@ class GatewayNode {
           this.tunnelProcess?.kill();
           resolve(false);
         }
-      }, 30000);
+      }, 120000);
       
+      const waitForTunnelUrlReady = async (url) => {
+        try {
+          const dnsMod = require('dns');
+          const resolver = new dnsMod.Resolver();
+          resolver.setServers(['1.1.1.1', '1.0.0.1']);
+          const host = new URL(url).hostname;
+          const startedAt = Date.now();
+
+          while (Date.now() - startedAt < 60000) {
+            try {
+              await resolver.resolve(host);
+              try {
+                const resp = await fetch(`${url}/health`, { method: 'GET' });
+                if (resp && resp.ok) return true;
+              } catch (e) {}
+              return true;
+            } catch (e) {}
+
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        } catch (e) {}
+
+        return false;
+      };
+
+      let verifying = false;
       const handleOutput = (data) => {
         const output = data.toString();
         // Look for the tunnel URL in output
@@ -2679,13 +2705,21 @@ class GatewayNode {
         if (!urlMatch) return;
 
         const newUrl = urlMatch[0];
-        const isNewUrl = newUrl !== this.publicAccessUrl;
+        if (verifying) return;
+        if (newUrl === this.publicAccessUrl) return;
 
-        this.publicAccessEnabled = true;
-        this.publicAccessUrl = newUrl;
-        this.publicAccessMethod = 'cloudflare';
+        verifying = true;
+        Promise.resolve().then(async () => {
+          const ready = await waitForTunnelUrlReady(newUrl);
+          if (!ready) {
+            console.log(`⚠️ Tunnel URL not reachable yet, waiting for another... (${newUrl})`);
+            return;
+          }
 
-        if (isNewUrl) {
+          this.publicAccessEnabled = true;
+          this.publicAccessUrl = newUrl;
+          this.publicAccessMethod = 'cloudflare';
+
           this.logConnectionEvent('public_access_enabled', { method: 'cloudflare', url: this.publicAccessUrl });
           console.log(`✅ Cloudflare Tunnel established!`);
           console.log(`   Public URL: ${this.publicAccessUrl}`);
@@ -2696,13 +2730,15 @@ class GatewayNode {
 
           // Register this gateway URL with the seed ledger for peer discovery
           this.registerPublicGatewayToLedger();
-        }
 
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(urlTimeout);
-          resolve(true);
-        }
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(urlTimeout);
+            resolve(true);
+          }
+        }).finally(() => {
+          verifying = false;
+        });
       };
       
       this.tunnelProcess.stdout.on('data', handleOutput);
