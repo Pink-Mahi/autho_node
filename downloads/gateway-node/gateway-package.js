@@ -2635,9 +2635,11 @@ class GatewayNode {
     
     return new Promise((resolve) => {
       // Start cloudflared tunnel (no account needed for quick tunnels)
+      // Use shell:false to avoid security warnings and subprocess issues
       this.tunnelProcess = spawn(cloudflaredPath, ['tunnel', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`], { 
-        shell: true,
-        stdio: ['ignore', 'pipe', 'pipe']
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
       });
       
       let urlFound = false;
