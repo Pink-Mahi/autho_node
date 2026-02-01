@@ -62,7 +62,52 @@ try {
 
 Pop-Location
 
-# Create start script
+# Install cloudflared for public access (optional but recommended)
+Write-Host "🌐 Checking for Cloudflare Tunnel (cloudflared)..." -ForegroundColor Cyan
+
+$cloudflaredInstalled = $false
+$cloudflaredPaths = @(
+    "cloudflared",
+    "C:\Program Files (x86)\cloudflared\cloudflared.exe",
+    "C:\Program Files\cloudflared\cloudflared.exe"
+)
+
+foreach ($cfPath in $cloudflaredPaths) {
+    try {
+        & $cfPath --version 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $cloudflaredInstalled = $true
+            Write-Host "✅ cloudflared already installed" -ForegroundColor Green
+            break
+        }
+    } catch {}
+}
+
+if (-not $cloudflaredInstalled) {
+    Write-Host "📥 Installing cloudflared for public gateway access..." -ForegroundColor Cyan
+    try {
+        # Try winget first
+        $wingetAvailable = Get-Command winget -ErrorAction SilentlyContinue
+        if ($wingetAvailable) {
+            winget install cloudflare.cloudflared --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            Write-Host "✅ cloudflared installed via winget" -ForegroundColor Green
+        } else {
+            # Download directly
+            $cfUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi"
+            $cfMsi = "$env:TEMP\cloudflared.msi"
+            Invoke-WebRequest -Uri $cfUrl -OutFile $cfMsi -UseBasicParsing
+            Start-Process msiexec.exe -ArgumentList "/i `"$cfMsi`" /quiet /norestart" -Wait
+            Remove-Item $cfMsi -Force -ErrorAction SilentlyContinue
+            Write-Host "✅ cloudflared installed" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "⚠️  Could not install cloudflared automatically" -ForegroundColor Yellow
+        Write-Host "   For public gateway access, install manually:" -ForegroundColor Yellow
+        Write-Host "   winget install cloudflare.cloudflared" -ForegroundColor White
+    }
+}
+
+# Create start script (private mode - local only)
 $startScript = @"
 @echo off
 cd /d "%~dp0"
@@ -72,9 +117,9 @@ pause
 "@
 
 Set-Content -Path "$installDir\start.bat" -Value $startScript
-Write-Host "✅ Created start script" -ForegroundColor Green
+Write-Host "✅ Created start script (private mode)" -ForegroundColor Green
 
-# Create PowerShell start script
+# Create PowerShell start script (private mode)
 $psStartScript = @"
 Set-Location `$PSScriptRoot
 `$env:AUTHO_OPERATOR_URLS = 'http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com'
@@ -82,18 +127,67 @@ node gateway-package.js
 "@
 
 Set-Content -Path "$installDir\start.ps1" -Value $psStartScript
-Write-Host "✅ Created PowerShell start script" -ForegroundColor Green
+
+# Create PUBLIC start script (with Cloudflare Tunnel)
+$publicStartScript = @"
+@echo off
+cd /d "%~dp0"
+set AUTHO_OPERATOR_URLS=http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com
+set GATEWAY_AUTO_PUBLIC=true
+node gateway-package.js
+pause
+"@
+
+Set-Content -Path "$installDir\start-public.bat" -Value $publicStartScript
+Write-Host "✅ Created public start script" -ForegroundColor Green
+
+# Create PowerShell PUBLIC start script
+$psPublicStartScript = @"
+Set-Location `$PSScriptRoot
+`$env:AUTHO_OPERATOR_URLS = 'http://autho.pinkmahi.com:3000,https://autho.pinkmahi.com,https://autho.cartpathcleaning.com'
+`$env:GATEWAY_AUTO_PUBLIC = 'true'
+node gateway-package.js
+"@
+
+Set-Content -Path "$installDir\start-public.ps1" -Value $psPublicStartScript
+
+# Create Desktop Shortcuts
+Write-Host "🖥️  Creating desktop shortcuts..." -ForegroundColor Cyan
+
+$desktopPath = [Environment]::GetFolderPath('Desktop')
+$WshShell = New-Object -ComObject WScript.Shell
+
+# Private Gateway shortcut
+$privateShortcut = $WshShell.CreateShortcut("$desktopPath\Autho Gateway.lnk")
+$privateShortcut.TargetPath = "powershell.exe"
+$privateShortcut.Arguments = "-ExecutionPolicy Bypass -File `"$installDir\start.ps1`""
+$privateShortcut.WorkingDirectory = $installDir
+$privateShortcut.Description = "Start Autho Gateway (Private Mode)"
+$privateShortcut.Save()
+
+# Public Gateway shortcut
+$publicShortcut = $WshShell.CreateShortcut("$desktopPath\Autho Gateway (Public).lnk")
+$publicShortcut.TargetPath = "powershell.exe"
+$publicShortcut.Arguments = "-ExecutionPolicy Bypass -File `"$installDir\start-public.ps1`""
+$publicShortcut.WorkingDirectory = $installDir
+$publicShortcut.Description = "Start Autho Gateway (Public Mode with Cloudflare Tunnel)"
+$publicShortcut.Save()
+
+Write-Host "✅ Desktop shortcuts created" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "✅ Installation complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "🚀 To start the gateway node:" -ForegroundColor Cyan
+Write-Host "�️  Desktop shortcuts created:" -ForegroundColor Cyan
+Write-Host "   • Autho Gateway - Private mode (local only)" -ForegroundColor White
+Write-Host "   • Autho Gateway (Public) - Public mode with Cloudflare Tunnel" -ForegroundColor White
+Write-Host ""
+Write-Host "🚀 Or run from command line:" -ForegroundColor Cyan
 Write-Host "   cd $installDir" -ForegroundColor White
-Write-Host "   .\start.ps1" -ForegroundColor White
+Write-Host "   .\start.ps1          (private)" -ForegroundColor White
+Write-Host "   .\start-public.ps1   (public)" -ForegroundColor White
 Write-Host ""
-Write-Host "   Or double-click: start.bat" -ForegroundColor White
-Write-Host ""
-Write-Host "🌐 Gateway will run on: http://localhost:3001" -ForegroundColor Cyan
+Write-Host "🌐 Local Gateway: http://localhost:3001" -ForegroundColor Cyan
 Write-Host "📊 Health check: http://localhost:3001/health" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "🎉 Welcome to the Autho network!" -ForegroundColor Green

@@ -5,489 +5,137 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Install Autho Gateway Node</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
             color: #f5f5f5;
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             padding: 40px 20px;
         }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
+        .container { max-width: 600px; text-align: center; }
         h1 {
             font-size: 2.5em;
             color: #d4af37;
-            margin-bottom: 20px;
-            text-align: center;
+            margin-bottom: 15px;
             text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
         }
-
-        .subtitle {
-            text-align: center;
-            font-size: 1.2em;
-            color: #cccccc;
-            margin-bottom: 40px;
-        }
-
-        .install-section {
-            background: rgba(0, 0, 0, 0.5);
+        .subtitle { font-size: 1.2em; color: #aaa; margin-bottom: 40px; }
+        .main-card {
+            background: rgba(0, 0, 0, 0.6);
             border: 2px solid #d4af37;
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.3);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 15px 50px rgba(212, 175, 55, 0.4);
         }
-
-        .platform-tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-
-        .tab {
-            flex: 1;
-            min-width: 150px;
-            padding: 15px 20px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 2px solid rgba(212, 175, 55, 0.3);
-            border-radius: 10px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.3s ease;
-            font-size: 1.1em;
-        }
-
-        .tab:hover {
-            background: rgba(212, 175, 55, 0.1);
-            border-color: #d4af37;
-        }
-
-        .tab.active {
-            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-            color: #1a1a1a;
-            border-color: #d4af37;
-            font-weight: bold;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        .command-box {
-            background: #1a1a1a;
-            border: 1px solid #d4af37;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-            position: relative;
-        }
-
-        .command {
-            font-family: 'Courier New', monospace;
-            font-size: 1em;
-            color: #4af626;
-            word-break: break-all;
-            line-height: 1.6;
-        }
-
-        .copy-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 8px 15px;
-            background: #d4af37;
-            color: #1a1a1a;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-
-        .copy-btn:hover {
-            background: #f4d03f;
-            transform: translateY(-2px);
-        }
-
-        .copy-btn.copied {
-            background: #4af626;
-        }
-
-        .download-row {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 12px;
-        }
-
         .download-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 12px 18px;
-            border-radius: 10px;
-            border: 2px solid rgba(212, 175, 55, 0.35);
-            background: rgba(212, 175, 55, 0.10);
-            color: #d4af37;
-            text-decoration: none;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .download-btn:hover {
-            background: rgba(212, 175, 55, 0.18);
-            border-color: #d4af37;
-            transform: translateY(-1px);
-        }
-
-        .step {
-            margin: 20px 0;
-            padding-left: 40px;
-            position: relative;
-        }
-
-        .step-number {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 30px;
-            height: 30px;
-            background: #d4af37;
-            color: #1a1a1a;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: inline-block;
+            padding: 20px 50px;
+            font-size: 1.4em;
             font-weight: bold;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.5);
         }
-
-        .step h3 {
-            color: #d4af37;
-            margin-bottom: 10px;
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.7);
         }
-
-        .info-box {
+        .instructions {
+            margin-top: 30px;
+            padding: 20px;
             background: rgba(212, 175, 55, 0.1);
-            border-left: 4px solid #d4af37;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 5px;
+            border-radius: 10px;
+            text-align: left;
         }
-
+        .instructions h3 { color: #d4af37; margin-bottom: 15px; }
+        .instructions ol { padding-left: 20px; line-height: 2; }
+        .requirements {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            font-size: 0.9em;
+            color: #888;
+        }
+        .requirements a { color: #d4af37; }
+        .alt-downloads {
+            margin-top: 20px;
+            font-size: 0.85em;
+            color: #666;
+        }
+        .alt-downloads a { color: #888; margin: 0 8px; }
+        .alt-downloads a:hover { color: #d4af37; }
         .features {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 30px 0;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 30px;
+            text-align: center;
         }
-
-        .feature {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid rgba(212, 175, 55, 0.3);
-        }
-
-        .feature-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-
-        .feature h4 {
-            color: #d4af37;
-            margin-bottom: 10px;
-        }
-
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 1.8em;
-            }
-
-            .platform-tabs {
-                flex-direction: column;
-            }
-
-            .tab {
-                min-width: 100%;
-            }
+        .feature { padding: 15px; background: rgba(255,255,255,0.03); border-radius: 10px; }
+        .feature-icon { font-size: 1.8em; margin-bottom: 5px; }
+        .feature-text { font-size: 0.85em; color: #aaa; }
+        @media (max-width: 500px) {
+            .features { grid-template-columns: 1fr; }
+            .download-btn { padding: 15px 30px; font-size: 1.1em; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🌐 Install Autho Gateway Node</h1>
-        <p class="subtitle">One command to join the decentralized network</p>
+        <h1>🌐 Autho Gateway</h1>
+        <p class="subtitle">Join the decentralized network in one click</p>
 
-        <div class="install-section">
-            <div class="platform-tabs">
-                <div class="tab active" onclick="showTab('linux')">
-                    🐧 Linux
-                </div>
-                <div class="tab" onclick="showTab('macos')">
-                    🍎 macOS
-                </div>
-                <div class="tab" onclick="showTab('windows')">
-                    🪟 Windows
-                </div>
+        <div class="main-card">
+            <a class="download-btn" href="/downloads/gateway-node/Install-Autho-Gateway.bat" download>
+                ⬇️ Download for Windows
+            </a>
+
+            <div class="instructions">
+                <h3>How to Install:</h3>
+                <ol>
+                    <li>Click the download button above</li>
+                    <li>Open the downloaded file</li>
+                    <li>Click "Run" if Windows asks</li>
+                    <li>That's it! Desktop shortcuts will be created</li>
+                </ol>
             </div>
 
-            <!-- Linux/macOS Tab -->
-            <div id="linux-content" class="tab-content active">
-                <div class="step">
-                    <div class="step-number">0</div>
-                    <h3>Prefer a download?</h3>
-                    <div class="download-row">
-                        <a class="download-btn" href="/downloads/gateway-node/quick-install.sh">⬇️ Download Installer (quick-install.sh)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/gateway-package.js">gateway-package.js</a>
-                        <a class="download-btn" href="/downloads/gateway-node/package.json">package.json</a>
-                        <a class="download-btn" href="/downloads/gateway-node/README.md">📄 README</a>
-                    </div>
-                    <div class="info-box" style="margin-top: 12px;">
-                        <strong>Note:</strong> The one-file gateway package is downloaded as <code>gateway-package.js</code> + <code>package.json</code>. Run <code>npm install</code> once, then <code>node gateway-package.js</code>.
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <h3>Copy and paste this command:</h3>
-                    <div class="command-box">
-                        <button class="copy-btn" onclick="copyCommand('linux-cmd')">Copy</button>
-                        <div class="command" id="linux-cmd">curl -fsSL __AUTHO_ORIGIN__/downloads/gateway-node/quick-install.sh | bash</div>
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <h3>Start the gateway:</h3>
-                    <div class="command-box">
-                        <button class="copy-btn" onclick="copyCommand('linux-start')">Copy</button>
-                        <div class="command" id="linux-start">cd ~/autho-gateway-node && ./start.sh</div>
-                    </div>
-                </div>
-
-                <div class="info-box">
-                    <strong>✅ That's it!</strong> Your gateway node will be running on <code>http://localhost:3001</code>
-                </div>
+            <div class="requirements">
+                <strong>Requires:</strong> 
+                <a href="https://nodejs.org/" target="_blank">Node.js 18+</a> 
+                (free, takes 2 minutes to install)
             </div>
 
-            <!-- macOS Tab -->
-            <div id="macos-content" class="tab-content">
-                <div class="step">
-                    <div class="step-number">0</div>
-                    <h3>Prefer a download?</h3>
-                    <div class="download-row">
-                        <a class="download-btn" href="/downloads/gateway-node/quick-install.sh">⬇️ Download Installer (quick-install.sh)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/gateway-package.js">gateway-package.js</a>
-                        <a class="download-btn" href="/downloads/gateway-node/package.json">package.json</a>
-                        <a class="download-btn" href="/downloads/gateway-node/README.md">📄 README</a>
-                    </div>
-                    <div class="info-box" style="margin-top: 12px;">
-                        <strong>Note:</strong> Run <code>npm install</code> once, then <code>node gateway-package.js</code>.
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <h3>Copy and paste this command:</h3>
-                    <div class="command-box">
-                        <button class="copy-btn" onclick="copyCommand('macos-cmd')">Copy</button>
-                        <div class="command" id="macos-cmd">curl -fsSL __AUTHO_ORIGIN__/downloads/gateway-node/quick-install.sh | bash</div>
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <h3>Start the gateway:</h3>
-                    <div class="command-box">
-                        <button class="copy-btn" onclick="copyCommand('macos-start')">Copy</button>
-                        <div class="command" id="macos-start">cd ~/autho-gateway-node && ./start.sh</div>
-                    </div>
-                </div>
-
-                <div class="info-box">
-                    <strong>✅ That's it!</strong> Your gateway node will be running on <code>http://localhost:3001</code>
-                </div>
-            </div>
-
-            <!-- Windows Tab -->
-            <div id="windows-content" class="tab-content">
-                <div class="step">
-                    <div class="step-number">0</div>
-                    <h3>Prefer a download?</h3>
-                    <div class="download-row">
-                        <a class="download-btn" href="/downloads/gateway-node/Autho-Gateway-OneClick-Windows.bat">⬇️ Download & Run (One-Click .bat)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/quick-install.bat">⬇️ Download Installer (quick-install.bat)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/quick-install.ps1">⬇️ Download Installer (quick-install.ps1)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/Start-Autho-Gateway-Node.bat">🖱️ One-Click Start (.bat)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/Start-Autho-Gateway-Node-Background.bat">🖱️ Background Start (.bat)</a>
-                        <a class="download-btn" href="/downloads/gateway-node/gateway-package.js">gateway-package.js</a>
-                        <a class="download-btn" href="/downloads/gateway-node/package.json">package.json</a>
-                        <a class="download-btn" href="/downloads/gateway-node/README.md">📄 README</a>
-                    </div>
-                    <div class="info-box" style="margin-top: 12px;">
-                        <strong>Tip:</strong> The ZIP package link was removed because it was producing an invalid archive. Use <code>quick-install.bat</code> (easiest) or download <code>gateway-package.js</code> + <code>package.json</code>, run <code>npm install</code>, then double-click <code>Start-Autho-Gateway-Node.bat</code>.
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <h3>Open PowerShell as Administrator</h3>
-                    <p>Right-click Start menu → Windows PowerShell (Admin)</p>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <h3>Copy and paste this command:</h3>
-                    <div class="command-box">
-                        <button class="copy-btn" onclick="copyCommand('windows-cmd')">Copy</button>
-                        <div class="command" id="windows-cmd">irm __AUTHO_ORIGIN__/downloads/gateway-node/quick-install.ps1 | iex</div>
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <h3>Start the gateway:</h3>
-                    <div class="command-box">
-                        <button class="copy-btn" onclick="copyCommand('windows-start')">Copy</button>
-                        <div class="command" id="windows-start">cd $env:USERPROFILE\autho-gateway-node; .\start.ps1</div>
-                    </div>
-                </div>
-
-                <div class="info-box">
-                    <strong>✅ That's it!</strong> Your gateway node will be running on <code>http://localhost:3001</code>
-                </div>
-            </div>
-        </div>
-
-        <div class="install-section">
-            <h2 style="color: #d4af37; margin-bottom: 20px;">What You Get</h2>
             <div class="features">
                 <div class="feature">
                     <div class="feature-icon">🔄</div>
-                    <h4>Auto-Sync</h4>
-                    <p>Automatically syncs with the Autho network</p>
+                    <div class="feature-text">Auto-Sync</div>
                 </div>
                 <div class="feature">
-                    <div class="feature-icon">🔒</div>
-                    <h4>Hardcoded Seeds</h4>
-                    <p>Pre-configured to connect to this operator and discover others</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">📊</div>
-                    <h4>Full Registry</h4>
-                    <p>Complete copy of the item registry</p>
+                    <div class="feature-icon">🌍</div>
+                    <div class="feature-text">Go Public</div>
                 </div>
                 <div class="feature">
                     <div class="feature-icon">⚡</div>
-                    <h4>Fast Queries</h4>
-                    <p>Local caching for instant responses</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">🌐</div>
-                    <h4>HTTP API</h4>
-                    <p>RESTful API on port 3001</p>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">🔌</div>
-                    <h4>WebSocket</h4>
-                    <p>Real-time updates on port 4001</p>
+                    <div class="feature-text">Fast</div>
                 </div>
             </div>
-        </div>
 
-        <div class="install-section">
-            <h2 style="color: #d4af37; margin-bottom: 20px;">Requirements</h2>
-            <ul style="line-height: 2;">
-                <li>✅ Node.js 18 or higher (<a href="https://nodejs.org/" style="color: #d4af37;">Download here</a>)</li>
-                <li>✅ Internet connection</li>
-                <li>✅ 500MB free disk space</li>
-                <li>✅ Port 3001 available</li>
-            </ul>
-        </div>
-
-        <div class="install-section">
-            <h2 style="color: #d4af37; margin-bottom: 20px;">Need Help?</h2>
-            <p>If you encounter any issues:</p>
-            <ul style="line-height: 2; margin-top: 15px;">
-                <li>📖 Check the <a href="/downloads/gateway-node/README.md" style="color: #d4af37;">README</a></li>
-                <li>🏠 Return to <a href="/" style="color: #d4af37;">home page</a></li>
-            </ul>
+            <div class="alt-downloads">
+                Other platforms: 
+                <a href="/downloads/gateway-node/quick-install.sh">Linux/macOS</a>
+            </div>
         </div>
     </div>
-
-    <script>
-        function showTab(platform) {
-            // Hide all tabs
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-
-            // Show selected tab
-            document.querySelector(`#${platform}-content`).classList.add('active');
-            event.target.classList.add('active');
-        }
-
-        function copyCommand(elementId) {
-            const element = document.getElementById(elementId);
-            const text = element.textContent;
-            
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = event.target;
-                const originalText = btn.textContent;
-                btn.textContent = '✓ Copied!';
-                btn.classList.add('copied');
-                
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove('copied');
-                }, 2000);
-            });
-        }
-
-        // Auto-detect platform and show appropriate tab
-        window.addEventListener('DOMContentLoaded', () => {
-            const origin = window.location.origin;
-            ['linux-cmd', 'macos-cmd', 'windows-cmd'].forEach((id) => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.textContent = String(el.textContent || '').replace(/__AUTHO_ORIGIN__/g, origin);
-            });
-
-            const platform = navigator.platform.toLowerCase();
-            let detectedPlatform = 'linux';
-            
-            if (platform.includes('win')) {
-                detectedPlatform = 'windows';
-            } else if (platform.includes('mac')) {
-                detectedPlatform = 'macos';
-            }
-            
-            // Auto-select detected platform
-            const tabs = document.querySelectorAll('.tab');
-            tabs.forEach((tab, index) => {
-                if ((detectedPlatform === 'windows' && index === 2) ||
-                    (detectedPlatform === 'macos' && index === 1) ||
-                    (detectedPlatform === 'linux' && index === 0)) {
-                    tab.click();
-                }
-            });
-        });
-    </script>
 </body>
 </html>

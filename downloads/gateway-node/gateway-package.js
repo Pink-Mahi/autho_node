@@ -1413,7 +1413,7 @@ class GatewayNode {
         };
         res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
         res.setHeader('X-Served-By', 'autho-gateway');
-        return res.sendFile(cachedFile);
+        return res.sendFile(path.resolve(cachedFile));
       }
       
       next();
@@ -2431,6 +2431,12 @@ class GatewayNode {
   async enablePublicAccess() {
     console.log('🌍 Attempting to enable public access...');
     
+    // Get public IP first for logging/reference
+    this.externalIp = await this.getPublicIp();
+    if (this.externalIp) {
+      console.log(`🌐 Your public IP: ${this.externalIp}`);
+    }
+    
     // Method 1: Check if already publicly accessible (manual port forward or direct IP)
     if (await this.checkDirectPublicAccess()) {
       return true;
@@ -2497,6 +2503,30 @@ class GatewayNode {
   }
 
   /**
+   * Get public IP using external service (more reliable than UPnP)
+   */
+  async getPublicIp() {
+    const services = [
+      'https://api.ipify.org?format=text',
+      'https://icanhazip.com',
+      'https://ifconfig.me/ip',
+    ];
+    
+    for (const url of services) {
+      try {
+        const resp = await fetch(url, { timeout: 5000 });
+        if (resp.ok) {
+          const ip = (await resp.text()).trim();
+          if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+            return ip;
+          }
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  /**
    * Try UPnP port forwarding (automatic NAT traversal)
    */
   async tryUpnpPortForward() {
@@ -2526,10 +2556,8 @@ class GatewayNode {
         }, (err) => err ? reject(err) : resolve());
       });
       
-      // Get external IP
-      const externalIp = await new Promise((resolve, reject) => {
-        this.upnpClient.externalIp((err, ip) => err ? reject(err) : resolve(ip));
-      });
+      // Get external IP using reliable external service
+      const externalIp = await this.getPublicIp();
       
       this.externalIp = externalIp;
       this.publicAccessEnabled = true;
@@ -2550,43 +2578,176 @@ class GatewayNode {
 
   /**
    * Try tunnel service for public access (works everywhere)
+   * Uses Cloudflare Tunnel (cloudflared) - free, no password, reliable
    */
   async tryTunnelService() {
-    try {
-      const localtunnel = require('localtunnel');
-      
-      console.log('🔧 Starting tunnel service...');
-      
-      this.tunnelInstance = await localtunnel({
-        port: EFFECTIVE_HTTP_PORT,
-        subdomain: this.gatewayId.replace(/[^a-z0-9]/g, ''),
-      });
-      
-      this.publicAccessEnabled = true;
-      this.publicAccessUrl = this.tunnelInstance.url;
-      this.publicAccessMethod = 'tunnel';
-      
-      this.logConnectionEvent('public_access_enabled', { method: 'tunnel', url: this.publicAccessUrl });
-      console.log(`✅ Tunnel established!`);
-      console.log(`   Public URL: ${this.publicAccessUrl}`);
-      
-      // Handle tunnel close
-      this.tunnelInstance.on('close', () => {
-        console.log('⚠️ Tunnel closed, attempting to reconnect...');
-        this.publicAccessEnabled = false;
-        setTimeout(() => this.tryTunnelService(), 5000);
-      });
-      
-      this.tunnelInstance.on('error', (err) => {
-        console.error('Tunnel error:', err.message);
-      });
-      
+    // Try Cloudflare Tunnel first (best option - no password, reliable)
+    if (await this.tryCloudflaredTunnel()) {
       return true;
-    } catch (error) {
-      console.log(`⚠️ Tunnel service not available: ${error.message}`);
-      console.log('   Install with: npm install localtunnel');
+    }
+    
+    // Fallback to ngrok if available
+    if (await this.tryNgrokTunnel()) {
+      return true;
+    }
+    
+    console.log('⚠️ No tunnel service available.');
+    console.log('   For seamless public access, install cloudflared:');
+    console.log('   Windows: winget install cloudflare.cloudflared');
+    console.log('   Or download from: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/');
+    return false;
+  }
+
+  /**
+   * Try Cloudflare Tunnel (cloudflared) - FREE, no password, no account required
+   */
+  async tryCloudflaredTunnel() {
+    const { spawn, execSync } = require('child_process');
+    
+    console.log('🔧 Starting Cloudflare Tunnel...');
+    
+    // Find cloudflared executable
+    let cloudflaredPath = 'cloudflared';
+    const possiblePaths = [
+      'cloudflared',
+      'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe',
+      'C:\\Program Files\\cloudflared\\cloudflared.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'cloudflared', 'cloudflared.exe'),
+    ];
+    
+    for (const p of possiblePaths) {
+      try {
+        execSync(`"${p}" --version`, { stdio: 'ignore', timeout: 3000 });
+        cloudflaredPath = p;
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    try {
+      // Verify cloudflared is accessible
+      execSync(`"${cloudflaredPath}" --version`, { stdio: 'ignore', timeout: 3000 });
+    } catch (e) {
+      console.log('⚠️ cloudflared not installed');
       return false;
     }
+    
+    return new Promise((resolve) => {
+      // Start cloudflared tunnel (no account needed for quick tunnels)
+      this.tunnelProcess = spawn(cloudflaredPath, ['tunnel', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`], { 
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      let urlFound = false;
+      const urlTimeout = setTimeout(() => {
+        if (!urlFound) {
+          console.log('⚠️ Cloudflare Tunnel timeout');
+          this.tunnelProcess?.kill();
+          resolve(false);
+        }
+      }, 30000);
+      
+      const handleOutput = (data) => {
+        const output = data.toString();
+        // Look for the tunnel URL in output
+        const urlMatch = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+        if (urlMatch && !urlFound) {
+          urlFound = true;
+          clearTimeout(urlTimeout);
+          
+          this.publicAccessEnabled = true;
+          this.publicAccessUrl = urlMatch[0];
+          this.publicAccessMethod = 'cloudflare';
+          
+          this.logConnectionEvent('public_access_enabled', { method: 'cloudflare', url: this.publicAccessUrl });
+          console.log(`✅ Cloudflare Tunnel established!`);
+          console.log(`   Public URL: ${this.publicAccessUrl}`);
+          console.log(`   (No password required - direct access)`);
+          
+          // Open browser with the public URL
+          this.openBrowserWithUrl(this.publicAccessUrl);
+          
+          // Register this gateway URL with the seed ledger for peer discovery
+          this.registerPublicGatewayToLedger();
+          
+          resolve(true);
+        }
+      };
+      
+      this.tunnelProcess.stdout.on('data', handleOutput);
+      this.tunnelProcess.stderr.on('data', handleOutput);
+      
+      this.tunnelProcess.on('close', (code) => {
+        if (this.publicAccessEnabled && this.publicAccessMethod === 'cloudflare') {
+          console.log('⚠️ Cloudflare Tunnel closed, attempting to reconnect...');
+          this.publicAccessEnabled = false;
+          setTimeout(() => this.tryCloudflaredTunnel(), 5000);
+        }
+      });
+      
+      this.tunnelProcess.on('error', (err) => {
+        console.error('Tunnel process error:', err.message);
+        clearTimeout(urlTimeout);
+        resolve(false);
+      });
+    });
+  }
+
+  /**
+   * Try ngrok as fallback tunnel
+   */
+  async tryNgrokTunnel() {
+    const { spawn } = require('child_process');
+    
+    console.log('🔧 Trying ngrok tunnel...');
+    
+    try {
+      // Check if ngrok is installed
+      const checkProcess = spawn('ngrok', ['--version'], { shell: true });
+      await new Promise((resolve, reject) => {
+        checkProcess.on('close', code => code === 0 ? resolve() : reject(new Error('not installed')));
+        checkProcess.on('error', reject);
+        setTimeout(() => reject(new Error('timeout')), 3000);
+      });
+    } catch (e) {
+      console.log('⚠️ ngrok not installed');
+      return false;
+    }
+    
+    return new Promise((resolve) => {
+      this.tunnelProcess = spawn('ngrok', ['http', EFFECTIVE_HTTP_PORT.toString()], { 
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      // ngrok outputs URL via API, need to fetch it
+      setTimeout(async () => {
+        try {
+          const resp = await fetch('http://localhost:4040/api/tunnels');
+          const data = await resp.json();
+          if (data.tunnels && data.tunnels.length > 0) {
+            const tunnel = data.tunnels.find(t => t.proto === 'https') || data.tunnels[0];
+            this.publicAccessEnabled = true;
+            this.publicAccessUrl = tunnel.public_url;
+            this.publicAccessMethod = 'ngrok';
+            
+            this.logConnectionEvent('public_access_enabled', { method: 'ngrok', url: this.publicAccessUrl });
+            console.log(`✅ ngrok Tunnel established!`);
+            console.log(`   Public URL: ${this.publicAccessUrl}`);
+            
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        } catch (e) {
+          resolve(false);
+        }
+      }, 3000);
+      
+      this.tunnelProcess.on('error', () => resolve(false));
+    });
   }
 
   /**
@@ -2607,13 +2768,13 @@ class GatewayNode {
       this.upnpClient = null;
     }
     
-    // Close tunnel
-    if (this.tunnelInstance) {
+    // Close tunnel process
+    if (this.tunnelProcess) {
       try {
-        this.tunnelInstance.close();
-        console.log('🔧 Tunnel closed');
+        this.tunnelProcess.kill();
+        console.log('🔧 Tunnel process stopped');
       } catch (e) {}
-      this.tunnelInstance = null;
+      this.tunnelProcess = null;
     }
     
     this.publicAccessEnabled = false;
@@ -2633,6 +2794,84 @@ class GatewayNode {
       httpPort: EFFECTIVE_HTTP_PORT,
       wsPort: EFFECTIVE_WS_PORT,
     };
+  }
+
+  /**
+   * Open browser with the public gateway URL
+   */
+  openBrowserWithUrl(url) {
+    const { exec } = require('child_process');
+    const platform = process.platform;
+    
+    console.log(`🌐 Opening browser: ${url}`);
+    
+    try {
+      if (platform === 'win32') {
+        exec(`start "" "${url}"`);
+      } else if (platform === 'darwin') {
+        exec(`open "${url}"`);
+      } else {
+        exec(`xdg-open "${url}"`);
+      }
+    } catch (e) {
+      console.log(`   (Could not auto-open browser - visit manually)`);
+    }
+  }
+
+  /**
+   * Register this public gateway to the seed ledger for peer discovery
+   */
+  async registerPublicGatewayToLedger() {
+    if (!this.publicAccessUrl) return;
+    
+    console.log(`📢 Registering gateway to seed ledger...`);
+    
+    // Create gateway registration event
+    const gatewayInfo = {
+      gatewayId: this.gatewayId,
+      publicUrl: this.publicAccessUrl,
+      wsUrl: this.publicAccessUrl.replace('https://', 'wss://').replace('http://', 'ws://'),
+      method: this.publicAccessMethod,
+      externalIp: this.externalIp,
+      registeredAt: Date.now(),
+      version: '1.0.7',
+    };
+    
+    // Broadcast to all connected seeds/operators
+    for (const [peerId, ws] of this.seedConnections) {
+      if (ws.readyState === 1) { // WebSocket.OPEN
+        try {
+          ws.send(JSON.stringify({
+            type: 'gateway_register',
+            gatewayId: this.gatewayId,
+            data: gatewayInfo,
+          }));
+        } catch (e) {}
+      }
+    }
+    
+    // Also register via HTTP API to operators
+    for (const operatorUrl of this.operatorUrls) {
+      try {
+        await fetch(`${operatorUrl}/api/network/gateways/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(gatewayInfo),
+          signal: AbortSignal.timeout(5000),
+        });
+        console.log(`✅ Registered with: ${operatorUrl}`);
+      } catch (e) {
+        // Silent fail - operator may not support this endpoint yet
+      }
+    }
+    
+    // Add to local peer gateway list
+    this.peerGateways.set(this.gatewayId, {
+      ...gatewayInfo,
+      isSelf: true,
+    });
+    
+    console.log(`✅ Gateway registered for peer discovery`);
   }
 
   /**
