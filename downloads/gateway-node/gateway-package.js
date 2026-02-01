@@ -138,6 +138,14 @@ class GatewayNode {
     this.lastGossipAt = 0;
     this.gossipInterval = 60000; // Share peers every minute
     
+    // Public access state (for home users behind NAT)
+    this.publicAccessEnabled = false;
+    this.publicAccessUrl = null;
+    this.publicAccessMethod = null; // 'upnp', 'tunnel', 'manual'
+    this.upnpClient = null;
+    this.tunnelInstance = null;
+    this.externalIp = null;
+    
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -1553,6 +1561,51 @@ class GatewayNode {
       });
     });
 
+    // Public access endpoints - for home users to make gateway publicly accessible
+    this.app.get('/api/public-access/status', (req, res) => {
+      res.json({
+        success: true,
+        ...this.getPublicAccessStatus(),
+      });
+    });
+
+    this.app.post('/api/public-access/enable', async (req, res) => {
+      try {
+        const success = await this.enablePublicAccess();
+        if (success) {
+          // Auto-register as public gateway
+          this.isPublicGateway = true;
+          this.publicHttpUrl = this.publicAccessUrl;
+          await this.registerAsPublicGateway();
+        }
+        res.json({
+          success,
+          ...this.getPublicAccessStatus(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+        });
+      }
+    });
+
+    this.app.post('/api/public-access/disable', async (req, res) => {
+      try {
+        await this.disablePublicAccess();
+        this.isPublicGateway = false;
+        res.json({
+          success: true,
+          ...this.getPublicAccessStatus(),
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error.message,
+        });
+      }
+    });
+
     // Registry endpoints
     this.app.get('/api/registry/state', (req, res) => {
       const cacheKey = 'registry_state';
@@ -2106,6 +2159,217 @@ class GatewayNode {
     return activeOperators.length > 0 ? activeOperators[0] : null;
   }
 
+  // ==================== PUBLIC ACCESS FOR HOME USERS ====================
+
+  /**
+   * Enable public access - tries multiple methods automatically
+   * This allows home users behind NAT to make their gateway publicly accessible
+   */
+  async enablePublicAccess() {
+    console.log('🌍 Attempting to enable public access...');
+    
+    // Method 1: Check if already publicly accessible (manual port forward or direct IP)
+    if (await this.checkDirectPublicAccess()) {
+      return true;
+    }
+    
+    // Method 2: Try UPnP port forwarding (works on most home routers)
+    if (await this.tryUpnpPortForward()) {
+      return true;
+    }
+    
+    // Method 3: Try tunnel service (localtunnel, works everywhere)
+    if (await this.tryTunnelService()) {
+      return true;
+    }
+    
+    console.log('⚠️ Could not enable public access automatically.');
+    console.log('   Options:');
+    console.log('   1. Manually forward ports 3001 and 4001 on your router');
+    console.log('   2. Use a reverse proxy like Cloudflare Tunnel or ngrok');
+    console.log('   3. Set GATEWAY_PUBLIC_URL manually if you have a domain');
+    
+    return false;
+  }
+
+  /**
+   * Check if gateway is already publicly accessible
+   */
+  async checkDirectPublicAccess() {
+    try {
+      // Get external IP
+      let publicIp;
+      try {
+        const { publicIpv4 } = await import('public-ip');
+        publicIp = await publicIpv4({ timeout: 5000 });
+      } catch (e) {
+        // Fallback: try API
+        const response = await fetch('https://api.ipify.org?format=json', {
+          signal: AbortSignal.timeout(5000),
+        });
+        const data = await response.json();
+        publicIp = data.ip;
+      }
+      
+      this.externalIp = publicIp;
+      console.log(`🌐 External IP: ${publicIp}`);
+      
+      // Try to reach ourselves from outside
+      const testUrl = `http://${publicIp}:${EFFECTIVE_HTTP_PORT}/health`;
+      const response = await fetch(testUrl, {
+        signal: AbortSignal.timeout(5000),
+      });
+      
+      if (response.ok) {
+        this.publicAccessEnabled = true;
+        this.publicAccessUrl = `http://${publicIp}:${EFFECTIVE_HTTP_PORT}`;
+        this.publicAccessMethod = 'direct';
+        console.log(`✅ Gateway is directly accessible at: ${this.publicAccessUrl}`);
+        return true;
+      }
+    } catch (error) {
+      // Not directly accessible
+    }
+    return false;
+  }
+
+  /**
+   * Try UPnP port forwarding (automatic NAT traversal)
+   */
+  async tryUpnpPortForward() {
+    try {
+      const natUpnp = require('nat-upnp');
+      this.upnpClient = natUpnp.createClient();
+      
+      console.log('🔧 Attempting UPnP port forwarding...');
+      
+      // Forward HTTP port
+      await new Promise((resolve, reject) => {
+        this.upnpClient.portMapping({
+          public: EFFECTIVE_HTTP_PORT,
+          private: EFFECTIVE_HTTP_PORT,
+          ttl: 0, // Permanent until removed
+          description: 'Autho Gateway HTTP',
+        }, (err) => err ? reject(err) : resolve());
+      });
+      
+      // Forward WebSocket port
+      await new Promise((resolve, reject) => {
+        this.upnpClient.portMapping({
+          public: EFFECTIVE_WS_PORT,
+          private: EFFECTIVE_WS_PORT,
+          ttl: 0,
+          description: 'Autho Gateway WebSocket',
+        }, (err) => err ? reject(err) : resolve());
+      });
+      
+      // Get external IP
+      const externalIp = await new Promise((resolve, reject) => {
+        this.upnpClient.externalIp((err, ip) => err ? reject(err) : resolve(ip));
+      });
+      
+      this.externalIp = externalIp;
+      this.publicAccessEnabled = true;
+      this.publicAccessUrl = `http://${externalIp}:${EFFECTIVE_HTTP_PORT}`;
+      this.publicAccessMethod = 'upnp';
+      
+      console.log(`✅ UPnP port forwarding successful!`);
+      console.log(`   External URL: ${this.publicAccessUrl}`);
+      console.log(`   WebSocket: ws://${externalIp}:${EFFECTIVE_WS_PORT}`);
+      
+      return true;
+    } catch (error) {
+      console.log(`⚠️ UPnP not available: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Try tunnel service for public access (works everywhere)
+   */
+  async tryTunnelService() {
+    try {
+      const localtunnel = require('localtunnel');
+      
+      console.log('🔧 Starting tunnel service...');
+      
+      this.tunnelInstance = await localtunnel({
+        port: EFFECTIVE_HTTP_PORT,
+        subdomain: this.gatewayId.replace(/[^a-z0-9]/g, ''),
+      });
+      
+      this.publicAccessEnabled = true;
+      this.publicAccessUrl = this.tunnelInstance.url;
+      this.publicAccessMethod = 'tunnel';
+      
+      console.log(`✅ Tunnel established!`);
+      console.log(`   Public URL: ${this.publicAccessUrl}`);
+      
+      // Handle tunnel close
+      this.tunnelInstance.on('close', () => {
+        console.log('⚠️ Tunnel closed, attempting to reconnect...');
+        this.publicAccessEnabled = false;
+        setTimeout(() => this.tryTunnelService(), 5000);
+      });
+      
+      this.tunnelInstance.on('error', (err) => {
+        console.error('Tunnel error:', err.message);
+      });
+      
+      return true;
+    } catch (error) {
+      console.log(`⚠️ Tunnel service not available: ${error.message}`);
+      console.log('   Install with: npm install localtunnel');
+      return false;
+    }
+  }
+
+  /**
+   * Disable public access and cleanup
+   */
+  async disablePublicAccess() {
+    // Remove UPnP mappings
+    if (this.upnpClient) {
+      try {
+        await new Promise((resolve) => {
+          this.upnpClient.portUnmapping({ public: EFFECTIVE_HTTP_PORT }, resolve);
+        });
+        await new Promise((resolve) => {
+          this.upnpClient.portUnmapping({ public: EFFECTIVE_WS_PORT }, resolve);
+        });
+        console.log('🔧 UPnP port mappings removed');
+      } catch (e) {}
+      this.upnpClient = null;
+    }
+    
+    // Close tunnel
+    if (this.tunnelInstance) {
+      try {
+        this.tunnelInstance.close();
+        console.log('🔧 Tunnel closed');
+      } catch (e) {}
+      this.tunnelInstance = null;
+    }
+    
+    this.publicAccessEnabled = false;
+    this.publicAccessUrl = null;
+    this.publicAccessMethod = null;
+  }
+
+  /**
+   * Get public access status
+   */
+  getPublicAccessStatus() {
+    return {
+      enabled: this.publicAccessEnabled,
+      url: this.publicAccessUrl,
+      method: this.publicAccessMethod,
+      externalIp: this.externalIp,
+      httpPort: EFFECTIVE_HTTP_PORT,
+      wsPort: EFFECTIVE_WS_PORT,
+    };
+  }
+
   /**
    * Route API request to best available operator
    */
@@ -2283,6 +2547,11 @@ class GatewayNode {
         console.log('🌍 PUBLIC GATEWAY MODE ENABLED');
         console.log(`   Public URL: ${this.publicHttpUrl || 'Not configured'}`);
         console.log('   This gateway serves UI files and is discoverable by others');
+      } else {
+        console.log('');
+        console.log('💡 To make this gateway PUBLIC and help the network:');
+        console.log(`   POST http://localhost:${EFFECTIVE_HTTP_PORT}/api/public-access/enable`);
+        console.log('   Or set GATEWAY_PUBLIC=true before starting');
       }
       console.log('');
       console.log('Press Ctrl+C to stop');
@@ -2332,6 +2601,19 @@ class GatewayNode {
       this.registerAsPublicGateway();
       // Re-register every 10 minutes to maintain presence
       setInterval(() => this.registerAsPublicGateway(), 600000);
+    }
+
+    // Auto-enable public access if GATEWAY_AUTO_PUBLIC=true (for home users)
+    if (process.env.GATEWAY_AUTO_PUBLIC === 'true' || process.env.AUTHO_AUTO_PUBLIC === 'true') {
+      console.log('🌍 Auto-enabling public access...');
+      this.enablePublicAccess().then(success => {
+        if (success) {
+          this.isPublicGateway = true;
+          this.publicHttpUrl = this.publicAccessUrl;
+          this.registerAsPublicGateway();
+          this.downloadUiBundle();
+        }
+      });
     }
 
     // Adaptive ledger seed refresh (adjusts based on network health)
