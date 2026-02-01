@@ -1412,6 +1412,62 @@ class GatewayNode {
       });
     });
 
+    // Network dashboard statistics endpoint
+    this.app.get('/api/mesh/dashboard', (req, res) => {
+      // Calculate network-wide statistics
+      const healthyOperators = Array.from(this.seedHealth.values())
+        .filter(h => h.failCount === 0).length;
+      const degradedOperators = Array.from(this.seedHealth.values())
+        .filter(h => h.failCount > 0 && h.failCount < 5).length;
+      const offlineOperators = Array.from(this.seedHealth.values())
+        .filter(h => h.failCount >= 5).length;
+      
+      // Average latency of healthy operators
+      const latencies = Array.from(this.seedHealth.values())
+        .filter(h => h.avgLatencyMs && h.avgLatencyMs < 999999)
+        .map(h => h.avgLatencyMs);
+      const avgLatency = latencies.length > 0 
+        ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+        : 0;
+      
+      // Connection history for last hour (simplified)
+      const uptime = process.uptime();
+      const connectionUptime = this.isConnectedToSeed ? uptime : 0;
+      
+      res.json({
+        gatewayId: this.gatewayId,
+        uptime: Math.round(uptime),
+        networkStatus: this.isConnectedToSeed ? 'connected' : 'disconnected',
+        operators: {
+          total: this.operatorUrls.length,
+          healthy: healthyOperators,
+          degraded: degradedOperators,
+          offline: offlineOperators,
+          connected: this.operatorConnections.size,
+        },
+        gateways: {
+          total: this.discoveredGateways.length,
+          connected: this.gatewayPeerConnections.size,
+        },
+        performance: {
+          avgLatencyMs: avgLatency,
+          connectionUptime: Math.round(connectionUptime),
+        },
+        discovery: {
+          cachedSeeds: this.loadCachedSeeds().length,
+          dnsSeeds: CONFIG.dnsSeeds.length,
+          lastGossipAt: this.lastGossipAt,
+          lastGatewayDiscovery: this.lastGatewayDiscovery,
+        },
+        circuitBreakers: {
+          open: Array.from(this.seedHealth.entries())
+            .filter(([url]) => this.isCircuitOpen(url))
+            .map(([url, h]) => ({ url, failCount: h.failCount })),
+        },
+        usefulWork: this.usefulWorkStats,
+      });
+    });
+
     // Mesh network health endpoint
     this.app.get('/api/mesh/health', (req, res) => {
       const seedHealthData = [];
@@ -1946,6 +2002,140 @@ class GatewayNode {
     return { pruned, reconnecting, activeConnections };
   }
 
+  /**
+   * Detect network partition - checks if we're isolated from the network
+   * Returns partition status and triggers healing if needed
+   */
+  async detectNetworkPartition() {
+    const activeConnections = Array.from(this.operatorConnections.values())
+      .filter(conn => conn.ws && conn.ws.readyState === WebSocket.OPEN).length;
+    
+    const totalKnownOperators = this.operatorUrls.length;
+    const connectionRatio = totalKnownOperators > 0 ? activeConnections / totalKnownOperators : 0;
+    
+    // Partition indicators
+    const isPartitioned = activeConnections === 0 && totalKnownOperators > 0;
+    const isPartiallyPartitioned = connectionRatio < 0.3 && totalKnownOperators > 3;
+    
+    if (isPartitioned) {
+      console.log('🔴 NETWORK PARTITION DETECTED - No active connections');
+      await this.healNetworkPartition();
+    } else if (isPartiallyPartitioned) {
+      console.log(`🟡 Partial partition - only ${Math.round(connectionRatio * 100)}% connected`);
+      // Try to connect to more operators
+      await this.connectToOperators();
+    }
+    
+    return {
+      isPartitioned,
+      isPartiallyPartitioned,
+      activeConnections,
+      totalKnownOperators,
+      connectionRatio,
+    };
+  }
+
+  /**
+   * Heal network partition by aggressively trying all discovery methods
+   */
+  async healNetworkPartition() {
+    console.log('🔧 Attempting to heal network partition...');
+    
+    // Step 1: Force refresh from all discovery sources
+    await this.bootstrapDiscovery();
+    
+    // Step 2: Try connecting to all known operators
+    await this.connectToOperators();
+    
+    // Step 3: If still no connections, try DNS seeds directly
+    if (this.operatorConnections.size === 0) {
+      console.log('🔧 Trying DNS seeds for recovery...');
+      for (const dnsSeed of CONFIG.dnsSeeds) {
+        try {
+          const urls = await this.discoverFromDnsSeed(dnsSeed);
+          for (const url of urls) {
+            if (!this.operatorUrls.includes(url)) {
+              this.operatorUrls.push(url);
+            }
+          }
+        } catch (e) {}
+      }
+      await this.connectToOperators();
+    }
+    
+    const recovered = this.operatorConnections.size > 0;
+    console.log(recovered ? '✅ Network partition healed' : '❌ Partition healing failed - will retry');
+    
+    return recovered;
+  }
+
+  /**
+   * Circuit breaker for operators - prevents repeated calls to failing operators
+   */
+  isCircuitOpen(url) {
+    const health = this.seedHealth.get(url);
+    if (!health) return false;
+    
+    // Circuit opens after 5 consecutive failures
+    if (health.failCount >= 5) {
+      const timeSinceLastFailure = Date.now() - (health.lastFailure || 0);
+      const cooldownMs = Math.min(60000 * health.failCount, 600000); // Max 10 min cooldown
+      
+      if (timeSinceLastFailure < cooldownMs) {
+        return true; // Circuit is open, don't try this operator
+      }
+      // Cooldown expired, allow one test request (half-open state)
+    }
+    return false;
+  }
+
+  /**
+   * Get the best operator for a request based on quality score
+   */
+  getBestOperatorForRequest() {
+    const activeOperators = Array.from(this.operatorConnections.entries())
+      .filter(([, conn]) => conn.ws && conn.ws.readyState === WebSocket.OPEN)
+      .map(([id, conn]) => ({
+        operatorId: id,
+        wsUrl: conn.wsUrl,
+        quality: this.getConnectionQuality(conn.wsUrl),
+        lastSeen: conn.lastSeen || 0,
+      }))
+      .sort((a, b) => b.quality - a.quality);
+    
+    return activeOperators.length > 0 ? activeOperators[0] : null;
+  }
+
+  /**
+   * Route API request to best available operator
+   */
+  async routeToOperator(path, options = {}) {
+    const sortedOperators = this.getSortedSeeds();
+    
+    for (const operatorUrl of sortedOperators) {
+      // Skip if circuit is open
+      if (this.isCircuitOpen(operatorUrl)) continue;
+      
+      try {
+        const startTime = Date.now();
+        const response = await fetch(`${operatorUrl}${path}`, {
+          ...options,
+          signal: AbortSignal.timeout(10000),
+        });
+        
+        const latency = Date.now() - startTime;
+        this.recordSeedSuccess(operatorUrl, latency);
+        
+        return { response, operatorUrl, latency };
+      } catch (error) {
+        this.recordSeedFailure(operatorUrl);
+        // Try next operator
+      }
+    }
+    
+    throw new Error('All operators unavailable');
+  }
+
   handleSeedMessage(seed, message, ws = null) {
     switch (message.type) {
       case 'sync_response':
@@ -2155,6 +2345,11 @@ class GatewayNode {
     setInterval(() => {
       this.pruneStaleConnections();
     }, 120000);
+
+    // Network partition detection - check every 3 minutes
+    setInterval(() => {
+      this.detectNetworkPartition();
+    }, 180000);
 
     // Periodic data save
     setInterval(() => {
