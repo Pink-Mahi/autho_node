@@ -3750,7 +3750,8 @@ class GatewayNode {
     }
 
     // Auto-enable public access if GATEWAY_AUTO_PUBLIC=true (for home users)
-    if (process.env.GATEWAY_AUTO_PUBLIC === 'true' || process.env.AUTHO_AUTO_PUBLIC === 'true') {
+    const autoPublic = String(process.env.GATEWAY_AUTO_PUBLIC || process.env.AUTHO_AUTO_PUBLIC || '').trim().toLowerCase();
+    if (autoPublic === 'true') {
       console.log('🌍 Auto-enabling public access...');
       this.enablePublicAccess().then(success => {
         if (success) {
