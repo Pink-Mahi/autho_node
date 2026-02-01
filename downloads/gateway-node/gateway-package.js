@@ -210,10 +210,19 @@ class GatewayNode {
    * Record a successful connection to a seed
    */
   recordSeedSuccess(url, latencyMs = 0) {
-    const health = this.seedHealth.get(url) || { lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999 };
+    const health = this.seedHealth.get(url) || { 
+      lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999,
+      successCount: 0, totalRequests: 0, avgLatencyMs: 0, lastBytes: 0,
+    };
     health.lastSuccess = Date.now();
     health.failCount = 0;
     health.latencyMs = latencyMs;
+    health.successCount = (health.successCount || 0) + 1;
+    health.totalRequests = (health.totalRequests || 0) + 1;
+    // Rolling average latency
+    health.avgLatencyMs = health.avgLatencyMs 
+      ? (health.avgLatencyMs * 0.8 + latencyMs * 0.2) 
+      : latencyMs;
     this.seedHealth.set(url, health);
   }
 
@@ -221,10 +230,54 @@ class GatewayNode {
    * Record a failed connection to a seed
    */
   recordSeedFailure(url) {
-    const health = this.seedHealth.get(url) || { lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999 };
+    const health = this.seedHealth.get(url) || { 
+      lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999,
+      successCount: 0, totalRequests: 0, avgLatencyMs: 0, lastBytes: 0,
+    };
     health.lastFailure = Date.now();
     health.failCount++;
+    health.totalRequests = (health.totalRequests || 0) + 1;
     this.seedHealth.set(url, health);
+  }
+
+  /**
+   * Get the best available seed based on connection quality
+   */
+  getBestSeed() {
+    const sorted = this.getSortedSeeds();
+    return sorted.length > 0 ? sorted[0] : null;
+  }
+
+  /**
+   * Calculate connection quality score (0-100)
+   */
+  getConnectionQuality(url) {
+    const health = this.seedHealth.get(url);
+    if (!health) return 50; // Unknown = neutral
+    
+    let score = 50;
+    
+    // Success rate bonus (up to +30)
+    if (health.totalRequests > 0) {
+      const successRate = (health.successCount || 0) / health.totalRequests;
+      score += successRate * 30;
+    }
+    
+    // Latency bonus (up to +20 for <100ms)
+    if (health.avgLatencyMs && health.avgLatencyMs > 0) {
+      const latencyScore = Math.max(0, 20 - (health.avgLatencyMs / 50));
+      score += latencyScore;
+    }
+    
+    // Recent success bonus (+10 if successful in last 5 min)
+    if (health.lastSuccess && (Date.now() - health.lastSuccess) < 300000) {
+      score += 10;
+    }
+    
+    // Failure penalty (-10 per recent failure)
+    score -= (health.failCount || 0) * 10;
+    
+    return Math.max(0, Math.min(100, score));
   }
 
   /**
@@ -536,6 +589,8 @@ class GatewayNode {
 
   async discoverFromLedger() {
     const discovered = [];
+    const startTime = Date.now();
+    
     // Try to get network topology from ledger state
     for (const operatorUrl of this.operatorUrls.slice(0, 3)) {
       try {
@@ -544,20 +599,75 @@ class GatewayNode {
         });
         
         if (response.ok) {
+          const latency = Date.now() - startTime;
+          this.recordSeedSuccess(operatorUrl, latency);
+          
           const data = await response.json();
-          // Check for network topology in state
+          
+          // Check for network topology in state (operators)
           if (data.networkTopology?.operators) {
             for (const [, op] of Object.entries(data.networkTopology.operators)) {
               if (op.httpUrl) discovered.push(op.httpUrl);
             }
           }
+          
+          // Also check for announced gateways
+          if (data.networkTopology?.gateways) {
+            for (const [, gw] of Object.entries(data.networkTopology.gateways)) {
+              if (gw.httpUrl && !this.discoveredGateways.some(g => g.httpUrl === gw.httpUrl)) {
+                this.discoveredGateways.push(gw);
+              }
+            }
+          }
+          
+          // Check for announced seeds
+          if (data.networkTopology?.seeds) {
+            for (const [, seed] of Object.entries(data.networkTopology.seeds)) {
+              if (seed.httpUrl) discovered.push(seed.httpUrl);
+            }
+          }
+          
+          if (discovered.length > 0) {
+            console.log(`📖 Ledger topology: ${discovered.length} operators, ${this.discoveredGateways.length} gateways`);
+          }
           break; // Got data from one operator
         }
       } catch (error) {
+        this.recordSeedFailure(operatorUrl);
         // Continue to next operator
       }
     }
     return discovered;
+  }
+
+  /**
+   * Periodically refresh seed list from ledger (adaptive based on network health)
+   */
+  async refreshSeedsFromLedger() {
+    const healthySeeds = Array.from(this.seedHealth.values()).filter(h => h.failCount === 0).length;
+    const totalSeeds = this.operatorUrls.length;
+    
+    // Refresh more frequently if network health is poor
+    const refreshIntervalMs = healthySeeds < totalSeeds * 0.5 ? 60000 : 300000;
+    
+    try {
+      const newPeers = await this.discoverFromLedger();
+      let addedCount = 0;
+      for (const peer of newPeers) {
+        if (!this.operatorUrls.includes(peer)) {
+          this.operatorUrls.push(peer);
+          addedCount++;
+        }
+      }
+      if (addedCount > 0) {
+        console.log(`🔄 Added ${addedCount} new seeds from ledger`);
+        this.saveCachedSeeds(this.operatorUrls);
+      }
+    } catch (error) {
+      // Ledger refresh failed, will retry later
+    }
+    
+    return refreshIntervalMs;
   }
 
   /**
@@ -1972,6 +2082,13 @@ class GatewayNode {
       // Re-register every 10 minutes to maintain presence
       setInterval(() => this.registerAsPublicGateway(), 600000);
     }
+
+    // Adaptive ledger seed refresh (adjusts based on network health)
+    const startAdaptiveRefresh = async () => {
+      const nextInterval = await this.refreshSeedsFromLedger();
+      setTimeout(startAdaptiveRefresh, nextInterval);
+    };
+    setTimeout(startAdaptiveRefresh, 60000); // First refresh after 1 minute
 
     // Periodic data save
     setInterval(() => {
