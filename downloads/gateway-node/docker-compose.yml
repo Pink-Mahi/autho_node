@@ -1,0 +1,38 @@
+# Autho Gateway Node - Docker Compose
+# Run with: docker-compose up -d
+# View logs: docker-compose logs -f
+
+version: '3.8'
+
+services:
+  autho-gateway:
+    build: .
+    container_name: autho-gateway
+    restart: unless-stopped
+    ports:
+      - "3001:3001"  # HTTP API
+      - "4001:4001"  # WebSocket
+    volumes:
+      - gateway-data:/app/gateway-data
+    environment:
+      - GATEWAY_PORT=3001
+      - GATEWAY_WS_PORT=4001
+      - NODE_ENV=production
+      # Uncomment for public gateway mode:
+      # - GATEWAY_PUBLIC=true
+      # - GATEWAY_PUBLIC_URL=https://your-domain.com
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gateway-data:
+    driver: local

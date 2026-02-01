@@ -114,6 +114,9 @@ class GatewayNode {
     this.uiBundleVersion = null;
     this.uiBundleSource = null;
     
+    // Seed health tracking - prefer healthy seeds over failing ones
+    this.seedHealth = new Map(); // url -> { lastSuccess, lastFailure, failCount, latencyMs }
+    
     this.setupMiddleware();
     this.setupRoutes();
   }
@@ -183,6 +186,53 @@ class GatewayNode {
   }
 
   /**
+   * Record a successful connection to a seed
+   */
+  recordSeedSuccess(url, latencyMs = 0) {
+    const health = this.seedHealth.get(url) || { lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999 };
+    health.lastSuccess = Date.now();
+    health.failCount = 0;
+    health.latencyMs = latencyMs;
+    this.seedHealth.set(url, health);
+  }
+
+  /**
+   * Record a failed connection to a seed
+   */
+  recordSeedFailure(url) {
+    const health = this.seedHealth.get(url) || { lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999 };
+    health.lastFailure = Date.now();
+    health.failCount++;
+    this.seedHealth.set(url, health);
+  }
+
+  /**
+   * Get seeds sorted by health (best first)
+   */
+  getSortedSeeds() {
+    const now = Date.now();
+    const cooldownMs = 60000; // 1 minute cooldown after failure
+    
+    return this.operatorUrls.slice().sort((a, b) => {
+      const healthA = this.seedHealth.get(a) || { lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999 };
+      const healthB = this.seedHealth.get(b) || { lastSuccess: 0, lastFailure: 0, failCount: 0, latencyMs: 999999 };
+      
+      // Seeds in cooldown go to end
+      const aCooldown = healthA.lastFailure && (now - healthA.lastFailure) < cooldownMs * healthA.failCount;
+      const bCooldown = healthB.lastFailure && (now - healthB.lastFailure) < cooldownMs * healthB.failCount;
+      if (aCooldown && !bCooldown) return 1;
+      if (!aCooldown && bCooldown) return -1;
+      
+      // Prefer recently successful seeds
+      if (healthA.lastSuccess > healthB.lastSuccess) return -1;
+      if (healthB.lastSuccess > healthA.lastSuccess) return 1;
+      
+      // Prefer lower latency
+      return healthA.latencyMs - healthB.latencyMs;
+    });
+  }
+
+  /**
    * Multi-source bootstrap discovery - tries multiple sources in order
    * This makes the network "unkillable" - if one source fails, others work
    */
@@ -216,7 +266,22 @@ class GatewayNode {
       }
     }
 
-    // Layer 3: Try to discover from ledger (network topology events)
+    // Layer 3: Try DNS seeds (decentralized, censorship-resistant)
+    for (const dnsSeed of CONFIG.dnsSeeds) {
+      try {
+        const dnsUrls = await this.discoverFromDnsSeed(dnsSeed);
+        for (const url of dnsUrls) {
+          discoveredUrls.add(url);
+        }
+        if (dnsUrls.length > 0) {
+          console.log(`✅ Discovered ${dnsUrls.length} seeds from DNS: ${dnsSeed}`);
+        }
+      } catch (error) {
+        // DNS seed failed, continue
+      }
+    }
+
+    // Layer 4: Try to discover from ledger (network topology events)
     try {
       const ledgerPeers = await this.discoverFromLedger();
       for (const peer of ledgerPeers) {
@@ -261,6 +326,41 @@ class GatewayNode {
       // Community seeds fetch failed
     }
     return seeds;
+  }
+
+  /**
+   * Discover seeds from DNS TXT records (censorship-resistant)
+   * DNS seeds contain TXT records like: autho-peer=https://operator.example.com
+   */
+  async discoverFromDnsSeed(dnsSeed) {
+    const discovered = [];
+    try {
+      const dns = require('dns');
+      const { promisify } = require('util');
+      const resolveTxt = promisify(dns.resolveTxt);
+      
+      const records = await resolveTxt(dnsSeed);
+      for (const record of records) {
+        const txt = record.join('');
+        // Parse autho-peer=URL format
+        if (txt.startsWith('autho-peer=')) {
+          const url = txt.substring('autho-peer='.length).trim();
+          if (url.startsWith('http')) {
+            discovered.push(url);
+          }
+        }
+        // Also support autho-seed=URL format
+        if (txt.startsWith('autho-seed=')) {
+          const url = txt.substring('autho-seed='.length).trim();
+          if (url.startsWith('http')) {
+            discovered.push(url);
+          }
+        }
+      }
+    } catch (error) {
+      // DNS lookup failed - this is normal if domain doesn't have TXT records
+    }
+    return discovered;
   }
 
   async discoverFromOperator(operatorUrl) {
@@ -978,6 +1078,41 @@ class GatewayNode {
       }
       
       next();
+    });
+
+    // Mesh network health endpoint
+    this.app.get('/api/mesh/health', (req, res) => {
+      const seedHealthData = [];
+      for (const [url, health] of this.seedHealth) {
+        seedHealthData.push({
+          url,
+          lastSuccess: health.lastSuccess,
+          lastFailure: health.lastFailure,
+          failCount: health.failCount,
+          latencyMs: health.latencyMs,
+          status: health.failCount === 0 ? 'healthy' : health.failCount < 3 ? 'degraded' : 'unhealthy',
+        });
+      }
+      
+      res.json({
+        gatewayId: this.gatewayId,
+        isPublicGateway: this.isPublicGateway,
+        discoveryLayers: {
+          cachedSeeds: this.loadCachedSeeds().length,
+          hardcodedSeeds: CONFIG.operatorUrls.length,
+          dnsSeeds: CONFIG.dnsSeeds.length,
+          discoveredOperators: this.operatorUrls.length,
+          discoveredGateways: this.discoveredGateways.length,
+        },
+        connections: {
+          connectedToSeed: this.isConnectedToSeed,
+          connectedSeed: this.connectedSeed,
+          operatorConnections: this.operatorConnections.size,
+          gatewayPeerConnections: this.gatewayPeerConnections.size,
+        },
+        seedHealth: seedHealthData.sort((a, b) => b.lastSuccess - a.lastSuccess),
+        usefulWork: this.usefulWorkStats,
+      });
     });
 
     // Statistics
