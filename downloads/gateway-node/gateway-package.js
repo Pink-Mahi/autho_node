@@ -863,7 +863,8 @@ class GatewayNode {
 
     const hasExtension = path.posix.basename(normalized).includes('.') || path.win32.basename(normalized).includes('.');
     const needsIndex = normalized.endsWith('/') || normalized === '';
-    const logical = needsIndex ? `${safe}index.html` : safe;
+    // Serve landing.html as the default page (gold/black Autho branding)
+    const logical = needsIndex ? `${safe}landing.html` : safe;
     const withHtml = (!needsIndex && !hasExtension) ? `${logical}.html` : logical;
 
     return path.join(this.uiCacheDir, withHtml);
