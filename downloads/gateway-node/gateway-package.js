@@ -144,12 +144,54 @@ class GatewayNode {
   }
 
   /**
+   * Load cached seeds from local storage - survives restarts
+   */
+  loadCachedSeeds() {
+    const seedFile = path.join(CONFIG.dataDir, 'cached-seeds.json');
+    try {
+      if (fs.existsSync(seedFile)) {
+        const data = JSON.parse(fs.readFileSync(seedFile, 'utf8'));
+        if (Array.isArray(data.seeds) && data.seeds.length > 0) {
+          console.log(`📂 Loaded ${data.seeds.length} cached seeds from previous session`);
+          return data.seeds;
+        }
+      }
+    } catch (error) {
+      console.log(`⚠️ Could not load cached seeds: ${error.message}`);
+    }
+    return [];
+  }
+
+  /**
+   * Save discovered seeds to local storage for next restart
+   */
+  saveCachedSeeds(seeds) {
+    const seedFile = path.join(CONFIG.dataDir, 'cached-seeds.json');
+    try {
+      if (!fs.existsSync(CONFIG.dataDir)) {
+        fs.mkdirSync(CONFIG.dataDir, { recursive: true });
+      }
+      fs.writeFileSync(seedFile, JSON.stringify({
+        seeds: seeds,
+        savedAt: Date.now(),
+        version: '1.0.7',
+      }, null, 2));
+      console.log(`💾 Saved ${seeds.length} seeds to local cache`);
+    } catch (error) {
+      console.log(`⚠️ Could not save cached seeds: ${error.message}`);
+    }
+  }
+
+  /**
    * Multi-source bootstrap discovery - tries multiple sources in order
    * This makes the network "unkillable" - if one source fails, others work
    */
   async bootstrapDiscovery() {
     console.log('🔍 Starting multi-source bootstrap discovery...');
-    const discoveredUrls = new Set(CONFIG.operatorUrls);
+    
+    // Layer 0: Load cached seeds from previous sessions (highest priority)
+    const cachedSeeds = this.loadCachedSeeds();
+    const discoveredUrls = new Set([...cachedSeeds, ...CONFIG.operatorUrls]);
 
     // Layer 1: Try community seeds from GitHub
     try {
@@ -187,6 +229,11 @@ class GatewayNode {
     // Update operator URLs with all discovered peers
     this.operatorUrls = Array.from(discoveredUrls);
     console.log(`🌐 Total discovered operators: ${this.operatorUrls.length}`);
+    
+    // Save discovered seeds for next restart
+    if (this.operatorUrls.length > 0) {
+      this.saveCachedSeeds(this.operatorUrls);
+    }
     
     return this.operatorUrls;
   }

@@ -1840,11 +1840,34 @@ export class OperatorNode extends EventEmitter {
           for (const record of records) {
             const txt = record.join('');
             if (txt.startsWith('autho-peer=')) {
+              // Announce this DNS seed to the ledger so all nodes learn about it
+              let announced = false;
+              try {
+                if (this.consensusNode) {
+                  const crypto = require('crypto');
+                  const signature = crypto.createHash('sha256')
+                    .update(`${this.config.privateKey}:${EventType.NETWORK_SEED_ANNOUNCED}:${Date.now()}`)
+                    .digest('hex');
+                  await this.consensusNode.submitEvent(EventType.NETWORK_SEED_ANNOUNCED, {
+                    seedDomain: domain,
+                    seedType: 'dns',
+                    txtRecord: txt,
+                    verifiedAt: Date.now(),
+                    verifiedBy: this.config.operatorId,
+                  }, signature);
+                  announced = true;
+                  console.log(`📡 Announced DNS seed to ledger: ${domain}`);
+                }
+              } catch (announceError: any) {
+                console.error(`Failed to announce DNS seed: ${announceError.message}`);
+              }
+              
               res.json({
                 success: true,
                 found: true,
                 domain,
                 txtRecord: txt,
+                announced,
               });
               return;
             }

@@ -156,6 +156,94 @@ Once running, your gateway node provides these HTTP endpoints:
 }
 ```
 
+## 🌍 Public Gateway Mode
+
+Want to contribute to the Autho network by running a **publicly accessible gateway**? Public gateways serve the full UI and help distribute traffic away from operators.
+
+### **Enable Public Gateway Mode**
+
+```bash
+# Set environment variables
+GATEWAY_PUBLIC=true
+GATEWAY_PUBLIC_URL=https://your-gateway-domain.com
+
+# Run the gateway
+node gateway-package.js
+```
+
+### **What Public Gateways Do**
+
+| Feature | Private Gateway | Public Gateway |
+|---------|-----------------|----------------|
+| Proxy API requests | ✅ | ✅ |
+| Serve UI (HTML/CSS/JS) | ❌ | ✅ |
+| Discoverable by network | ❌ | ✅ |
+| Full user experience | ❌ | ✅ |
+
+### **Setup Steps**
+
+1. **Get a domain** - Point it to your server (e.g., `gateway.yoursite.com`)
+
+2. **Install the gateway**:
+   ```bash
+   mkdir autho-gateway && cd autho-gateway
+   curl -O https://autho.pinkmahi.com/api/gateway/download
+   npm install
+   ```
+
+3. **Configure environment**:
+   ```bash
+   # .env file
+   GATEWAY_PUBLIC=true
+   GATEWAY_PUBLIC_URL=https://gateway.yoursite.com
+   GATEWAY_PORT=3001
+   ```
+
+4. **Set up reverse proxy** (nginx example):
+   ```nginx
+   server {
+       listen 443 ssl;
+       server_name gateway.yoursite.com;
+       
+       location / {
+           proxy_pass http://localhost:3001;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+       }
+   }
+   ```
+
+5. **Start the gateway**:
+   ```bash
+   node gateway-package.js
+   ```
+
+### **Verify It's Working**
+
+```bash
+curl https://gateway.yoursite.com/health
+```
+
+Should return:
+```json
+{
+  "status": "healthy",
+  "isPublicGateway": true,
+  "publicHttpUrl": "https://gateway.yoursite.com",
+  "uiBundleVersion": 1738412000000
+}
+```
+
+### **Benefits of Running a Public Gateway**
+
+- 🌐 **Help decentralize** the network
+- 🚀 **Reduce load** on operator nodes  
+- 🔒 **Provide censorship resistance** - more access points
+- 🏪 **Brand it** for your business/website
+- 🤝 **Support the community** - no approval needed!
+
 ## 🔧 Advanced Features
 
 ### **Caching**
