@@ -1893,6 +1893,59 @@ class GatewayNode {
     }
   }
 
+  /**
+   * Prune stale connections - removes connections that haven't been seen recently
+   * and reconnects to maintain mesh health
+   */
+  pruneStaleConnections() {
+    const now = Date.now();
+    const staleThresholdMs = 300000; // 5 minutes without activity = stale
+    let pruned = 0;
+    let reconnecting = 0;
+
+    // Check operator connections
+    for (const [operatorId, conn] of this.operatorConnections) {
+      const lastActivity = conn.lastSeen || conn.connectedAt || 0;
+      const isStale = (now - lastActivity) > staleThresholdMs;
+      const isClosed = !conn.ws || conn.ws.readyState !== WebSocket.OPEN;
+
+      if (isStale || isClosed) {
+        // Close stale connection
+        if (conn.ws) {
+          try { conn.ws.close(); } catch (e) {}
+        }
+        this.operatorConnections.delete(operatorId);
+        pruned++;
+
+        // Find operator info and schedule reconnect
+        const operator = this.discoveredOperators.find(op => op.operatorId === operatorId);
+        if (operator) {
+          setTimeout(() => this.connectToOperator(operator), 5000);
+          reconnecting++;
+        }
+      }
+    }
+
+    // Check gateway peer connections
+    for (const [gatewayId, ws] of this.gatewayPeerConnections) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        this.gatewayPeerConnections.delete(gatewayId);
+        pruned++;
+      }
+    }
+
+    if (pruned > 0) {
+      console.log(`🧹 Pruned ${pruned} stale connections, reconnecting to ${reconnecting}`);
+    }
+
+    // Update connection status
+    const activeConnections = Array.from(this.operatorConnections.values())
+      .filter(conn => conn.ws && conn.ws.readyState === WebSocket.OPEN).length;
+    this.isConnectedToSeed = activeConnections > 0;
+
+    return { pruned, reconnecting, activeConnections };
+  }
+
   handleSeedMessage(seed, message, ws = null) {
     switch (message.type) {
       case 'sync_response':
@@ -2097,6 +2150,11 @@ class GatewayNode {
       setTimeout(startAdaptiveRefresh, nextInterval);
     };
     setTimeout(startAdaptiveRefresh, 60000); // First refresh after 1 minute
+
+    // Connection pool management - prune stale connections every 2 minutes
+    setInterval(() => {
+      this.pruneStaleConnections();
+    }, 120000);
 
     // Periodic data save
     setInterval(() => {
