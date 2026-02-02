@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Search Items - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .header-content {
+      flex: 1;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+    }
+
+    .header p {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .search-box {
+      background: rgba(212, 175, 55, 0.1);
+      border: 2px solid #d4af37;
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .search-input-group {
+      position: relative;
+      margin-bottom: 15px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 10px;
+      padding: 15px 50px 15px 15px;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: #d4af37;
+    }
+
+    .search-input::placeholder {
+      color: #666;
+    }
+
+    .search-btn {
+      position: absolute;
+      right: 5px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      border: none;
+      border-radius: 8px;
+      padding: 10px 15px;
+      color: #1a1a1a;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .filter-btn {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 20px;
+      padding: 8px 15px;
+      color: #999;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .filter-btn.active {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
+      color: #d4af37;
+    }
+
+    .advanced-filters {
+      display: none;
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .advanced-filters.show {
+      display: block;
+    }
+
+    .filter-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .filter-select {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      padding: 10px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .filter-select option {
+      background: #1a1a1a;
+    }
+
+    .toggle-advanced {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .results-count {
+      font-size: 14px;
+      color: #999;
+    }
+
+    .sort-select {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: #fff;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .results-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .result-card {
+      background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 15px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .result-card:active {
+      transform: scale(0.98);
+      border-color: #d4af37;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .result-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 3px;
+    }
+
+    .result-manufacturer {
+      font-size: 12px;
+      color: #d4af37;
+    }
+
+    .result-badges {
+      display: flex;
+      gap: 5px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge.verified {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4caf50;
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+
+    .badge.official {
+      background: rgba(33, 150, 243, 0.2);
+      color: #2196f3;
+      border: 1px solid rgba(33, 150, 243, 0.3);
+    }
+
+    .badge.risk-low {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4caf50;
+    }
+
+    .badge.risk-medium {
+      background: rgba(255, 193, 7, 0.2);
+      color: #ffc107;
+    }
+
+    .badge.risk-high {
+      background: rgba(244, 67, 54, 0.2);
+      color: #f44336;
+    }
+
+    .result-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .detail-item {
+      font-size: 12px;
+    }
+
+    .detail-label {
+      color: #666;
+      margin-bottom: 2px;
+    }
+
+    .detail-value {
+      color: #fff;
+    }
+
+    .result-price {
+      text-align: right;
+    }
+
+    .price-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #d4af37;
+    }
+
+    .price-label {
+      font-size: 10px;
+      color: #666;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+    }
+
+    .empty-state-icon {
+      font-size: 60px;
+      margin-bottom: 15px;
+    }
+
+    .empty-state-title {
+      font-size: 18px;
+      color: #999;
+      margin-bottom: 10px;
+    }
+
+    .empty-state-desc {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .quick-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .quick-action {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 10px;
+      padding: 15px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .quick-action:active {
+      background: rgba(212, 175, 55, 0.1);
+      border-color: #d4af37;
+    }
+
+    .quick-action-icon {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .quick-action-label {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .duplicate-warning {
+      background: rgba(244, 67, 54, 0.1);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .duplicate-warning.show {
+      display: block;
+    }
+
+    .duplicate-warning-title {
+      color: #f44336;
+      font-weight: 600;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .duplicate-warning-desc {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .market-stats {
+      background: rgba(212, 175, 55, 0.1);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .market-stats.show {
+      display: block;
+    }
+
+    .market-stats-title {
+      font-size: 14px;
+      color: #d4af37;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    .market-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #666;
+    }
+
+    .result-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(212, 175, 55, 0.1);
+    }
+
+    .action-btn {
+      background: none;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      color: #d4af37;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
+    }
+
+    .message-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="history.back()">←</button>
+    <div class="header-content">
+      <h1>🔎 Search Ledger</h1>
+      <p>Find items on the blockchain</p>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="search-box">
+      <div class="search-input-group">
+        <input type="text" id="searchQuery" class="search-input" placeholder="Search by name, brand, serial number...">
+        <button class="search-btn" onclick="performSearch()">Search</button>
+      </div>
+
+      <div class="filters">
+        <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
+        <button class="filter-btn" data-filter="verified" onclick="setFilter('verified', this)">✓ Verified</button>
+        <button class="filter-btn" data-filter="official" onclick="setFilter('official', this)">🏭 Official</button>
+        <button class="toggle-advanced" onclick="toggleAdvanced()">
+          <span id="advancedIcon">▼</span> Advanced
+        </button>
+      </div>
+
+      <div id="advancedFilters" class="advanced-filters">
+        <div class="filter-row">
+          <select id="categoryFilter" class="filter-select">
+            <option value="">All Categories</option>
+            <option value="watch">Watches</option>
+            <option value="jewelry">Jewelry</option>
+            <option value="handbag">Handbags</option>
+            <option value="art">Art</option>
+            <option value="collectible">Collectibles</option>
+            <option value="electronics">Electronics</option>
+            <option value="vehicle">Vehicles</option>
+            <option value="other">Other</option>
+          </select>
+          <select id="conditionFilter" class="filter-select">
+            <option value="">Any Condition</option>
+            <option value="new">New</option>
+            <option value="like_new">Like New</option>
+            <option value="excellent">Excellent</option>
+            <option value="good">Good</option>
+            <option value="fair">Fair</option>
+          </select>
+        </div>
+        <div class="filter-row">
+          <input type="text" id="manufacturerFilter" class="filter-select" placeholder="Manufacturer/Brand">
+          <input type="text" id="serialFilter" class="filter-select" placeholder="Serial Number">
+        </div>
+      </div>
+    </div>
+
+    <div class="quick-actions">
+      <div class="quick-action" onclick="checkDuplicates()">
+        <div class="quick-action-icon">🔍</div>
+        <div class="quick-action-label">Check Duplicates</div>
+      </div>
+      <div class="quick-action" onclick="showMarketStats()">
+        <div class="quick-action-icon">📊</div>
+        <div class="quick-action-label">Market Stats</div>
+      </div>
+    </div>
+
+    <div id="duplicateWarning" class="duplicate-warning">
+      <div class="duplicate-warning-title">⚠️ Potential Duplicates Found</div>
+      <div class="duplicate-warning-desc" id="duplicateDesc"></div>
+    </div>
+
+    <div id="marketStats" class="market-stats">
+      <div class="market-stats-title">📊 Market Statistics</div>
+      <div class="market-stats-grid" id="marketStatsGrid"></div>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <div>Searching the ledger...</div>
+    </div>
+
+    <div id="resultsContainer">
+      <div id="resultsHeader" class="results-header" style="display: none;">
+        <span class="results-count" id="resultsCount">0 items found</span>
+        <select class="sort-select" id="sortSelect" onchange="sortResults()">
+          <option value="relevance">Most Relevant</option>
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="price_high">Price: High to Low</option>
+          <option value="price_low">Price: Low to High</option>
+        </select>
+      </div>
+
+      <div id="resultsList" class="results-list"></div>
+
+      <div id="emptyState" class="empty-state">
+        <div class="empty-state-icon">🔎</div>
+        <div class="empty-state-title">Search the Ledger</div>
+        <div class="empty-state-desc">
+          Enter a search term to find items registered on the blockchain.<br>
+          Search by name, brand, model, or serial number.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let currentFilter = 'all';
+    let searchResults = [];
+
+    // Load all items on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      performSearch(); // Load all items initially
+    });
+
+    // Perform search (empty query = browse all)
+    async function performSearch() {
+      const query = document.getElementById('searchQuery').value.trim();
+      // Allow empty search to browse all items
+
+      showLoading(true);
+      hideEmptyState();
+      document.getElementById('resultsHeader').style.display = 'none';
+      document.getElementById('resultsList').innerHTML = '';
+
+      try {
+        const params = new URLSearchParams();
+        if (query) params.append('q', query);
+        
+        const manufacturer = document.getElementById('manufacturerFilter').value.trim();
+        if (manufacturer) params.append('manufacturer', manufacturer);
+        
+        const serial = document.getElementById('serialFilter').value.trim();
+        if (serial) params.append('serialNumber', serial);
+        
+        const category = document.getElementById('categoryFilter').value;
+        if (category) params.append('category', category);
+        
+        if (currentFilter === 'verified') params.append('verifiedOnly', 'true');
+        if (currentFilter === 'official') params.append('officialOnly', 'true');
+
+        const response = await fetch(`/api/search/items?${params.toString()}`);
+        const data = await response.json();
+
+        if (data.success && data.results) {
+          // Extract items from search results (API returns { item: {...}, score, ... })
+          searchResults = data.results.map(r => {
+            const item = r.item || r;
+            // Flatten metadata into item for easier access
+            return {
+              ...item,
+              name: item.metadata?.name || item.name,
+              category: item.metadata?.category || item.category,
+              brand: item.metadata?.brand || item.brand,
+              model: item.metadata?.model || item.model,
+              isDuplicate: r.isDuplicate,
+              duplicateOf: r.duplicateOf,
+            };
+          });
+          displayResults(searchResults);
+        } else {
+          showEmptyState('No items on ledger yet', 'Items will appear here once manufacturers register them.');
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        showEmptyState('Search failed', 'Please try again later.');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Display search results
+    function displayResults(results) {
+      const container = document.getElementById('resultsList');
+      const header = document.getElementById('resultsHeader');
+      const countEl = document.getElementById('resultsCount');
+
+      if (results.length === 0) {
+        showEmptyState('No results found', 'Try adjusting your search terms or filters.');
+        header.style.display = 'none';
+        return;
+      }
+
+      header.style.display = 'flex';
+      countEl.textContent = `${results.length} item${results.length !== 1 ? 's' : ''} found`;
+
+      container.innerHTML = results.map(item => `
+        <div class="result-card" onclick="viewItem('${item.itemId}')">
+          <div class="result-header">
+            <div>
+              <div class="result-name">${escapeHtml(item.name || 'Unnamed Item')}</div>
+              <div class="result-manufacturer">${escapeHtml(item.manufacturerName || item.manufacturerId || 'Unknown')}</div>
+            </div>
+            <div class="result-badges">
+              ${item.manufacturerVerified ? '<span class="badge verified">Verified</span>' : ''}
+              ${item.mintedByOfficialManufacturer ? '<span class="badge official">Official</span>' : ''}
+            </div>
+          </div>
+          <div class="result-details">
+            <div class="detail-item">
+              <div class="detail-label">Category</div>
+              <div class="detail-value">${escapeHtml(item.category || 'N/A')}</div>
+            </div>
+            <div class="detail-item">
+              <div class="detail-label">Serial</div>
+              <div class="detail-value">${escapeHtml(item.serialNumberDisplay || 'N/A')}</div>
+            </div>
+            <div class="detail-item">
+              <div class="detail-label">Owners</div>
+              <div class="detail-value">${item.transferCount ? item.transferCount + 1 : 1}</div>
+            </div>
+            <div class="detail-item result-price">
+              ${item.lastSalePrice ? `
+                <div class="price-value">${formatSats(item.lastSalePrice)}</div>
+                <div class="price-label">Last Sale</div>
+              ` : `
+                <div class="detail-label">No sales yet</div>
+              `}
+            </div>
+          </div>
+          <div class="result-actions">
+            <button class="action-btn message-btn" onclick="event.stopPropagation(); messageOwner('${item.itemId}', '${item.currentOwner || ''}')">
+              💬 Message Owner
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // View item details
+    function viewItem(itemId) {
+      window.location.href = `/m/verify?itemId=${itemId}`;
+    }
+
+    // Check for duplicates
+    async function checkDuplicates() {
+      const manufacturer = document.getElementById('manufacturerFilter').value.trim() || 
+                          document.getElementById('searchQuery').value.trim();
+      const serial = document.getElementById('serialFilter').value.trim();
+
+      if (!manufacturer && !serial) {
+        alert('Please enter a manufacturer/brand or serial number to check for duplicates.');
+        return;
+      }
+
+      showLoading(true);
+
+      try {
+        const params = new URLSearchParams();
+        if (manufacturer) params.append('manufacturer', manufacturer);
+        if (serial) params.append('serialNumber', serial);
+
+        const response = await fetch(`/api/search/duplicates?${params.toString()}`);
+        const data = await response.json();
+
+        const warningEl = document.getElementById('duplicateWarning');
+        const descEl = document.getElementById('duplicateDesc');
+
+        if (data.success && data.duplicates && data.duplicates.length > 0) {
+          warningEl.classList.add('show');
+          descEl.textContent = `Found ${data.duplicates.length} potential duplicate(s) with similar manufacturer/serial combination. Review carefully before purchasing.`;
+          
+          // Also show the duplicates in results
+          searchResults = data.duplicates;
+          displayResults(searchResults);
+        } else {
+          warningEl.classList.remove('show');
+          alert('✅ No duplicates found! This item appears to be unique on the ledger.');
+        }
+      } catch (error) {
+        console.error('Duplicate check error:', error);
+        alert('Failed to check for duplicates. Please try again.');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Show market stats
+    async function showMarketStats() {
+      const manufacturer = document.getElementById('manufacturerFilter').value.trim() || 
+                          document.getElementById('searchQuery').value.trim();
+
+      if (!manufacturer) {
+        alert('Please enter a manufacturer/brand name to see market statistics.');
+        return;
+      }
+
+      showLoading(true);
+
+      try {
+        const category = document.getElementById('categoryFilter').value;
+        const params = new URLSearchParams({ manufacturer });
+        if (category) params.append('category', category);
+
+        const response = await fetch(`/api/market/stats?${params.toString()}`);
+        const data = await response.json();
+
+        const statsEl = document.getElementById('marketStats');
+        const gridEl = document.getElementById('marketStatsGrid');
+
+        if (data.success && data.stats) {
+          const stats = data.stats;
+          statsEl.classList.add('show');
+          gridEl.innerHTML = `
+            <div class="stat-item">
+              <div class="stat-value">${stats.totalItems}</div>
+              <div class="stat-label">Total Items</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${stats.totalSales}</div>
+              <div class="stat-label">Total Sales</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${formatSats(stats.averagePrice)}</div>
+              <div class="stat-label">Avg Price</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${formatSats(stats.highestPrice)}</div>
+              <div class="stat-label">Highest</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${formatSats(stats.lowestPrice)}</div>
+              <div class="stat-label">Lowest</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${formatSats(stats.volumeLast30Days)}</div>
+              <div class="stat-label">30d Volume</div>
+            </div>
+          `;
+        } else {
+          statsEl.classList.remove('show');
+          alert('No market data available for this manufacturer.');
+        }
+      } catch (error) {
+        console.error('Market stats error:', error);
+        alert('Failed to load market statistics. Please try again.');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Set filter
+    function setFilter(filter, btn) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      if (document.getElementById('searchQuery').value.trim()) {
+        performSearch();
+      }
+    }
+
+    // Toggle advanced filters
+    function toggleAdvanced() {
+      const el = document.getElementById('advancedFilters');
+      const icon = document.getElementById('advancedIcon');
+      el.classList.toggle('show');
+      icon.textContent = el.classList.contains('show') ? '▲' : '▼';
+    }
+
+    // Sort results
+    function sortResults() {
+      const sortBy = document.getElementById('sortSelect').value;
+      
+      switch (sortBy) {
+        case 'newest':
+          searchResults.sort((a, b) => (b.registeredAt || 0) - (a.registeredAt || 0));
+          break;
+        case 'oldest':
+          searchResults.sort((a, b) => (a.registeredAt || 0) - (b.registeredAt || 0));
+          break;
+        case 'price_high':
+          searchResults.sort((a, b) => (b.lastSalePrice || 0) - (a.lastSalePrice || 0));
+          break;
+        case 'price_low':
+          searchResults.sort((a, b) => (a.lastSalePrice || 0) - (b.lastSalePrice || 0));
+          break;
+        default:
+          // relevance - keep original order
+          break;
+      }
+      
+      displayResults(searchResults);
+    }
+
+    // Utility functions
+    function showLoading(show) {
+      document.getElementById('loading').classList.toggle('active', show);
+    }
+
+    function showEmptyState(title, desc) {
+      const el = document.getElementById('emptyState');
+      el.querySelector('.empty-state-title').textContent = title;
+      el.querySelector('.empty-state-desc').textContent = desc;
+      el.style.display = 'block';
+    }
+
+    function hideEmptyState() {
+      document.getElementById('emptyState').style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatSats(sats) {
+      if (!sats || sats === 0) return '0 sats';
+      if (sats >= 100000000) {
+        return (sats / 100000000).toFixed(2) + ' BTC';
+      }
+      return sats.toLocaleString() + ' sats';
+    }
+
+    // Message item owner
+    function messageOwner(itemId, ownerId) {
+      // Check if user is logged in
+      if (typeof WalletAuth !== 'undefined' && WalletAuth.getWallet()) {
+        const wallet = WalletAuth.getWallet();
+        if (ownerId === wallet.publicKey) {
+          alert('This is your item!');
+          return;
+        }
+        window.location.href = `/mobile-messages.html?itemId=${itemId}&to=${ownerId}`;
+      } else {
+        // Redirect to login first
+        window.location.href = `/m/login?return=${encodeURIComponent('/mobile-messages.html?itemId=' + itemId + '&to=' + ownerId)}`;
+      }
+    }
+
+    // Handle enter key in search
+    document.getElementById('searchQuery').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+
+    // Check for URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryParam = urlParams.get('q');
+    if (queryParam) {
+      document.getElementById('searchQuery').value = queryParam;
+      performSearch();
+    }
+  </script>
+</body>
+</html>

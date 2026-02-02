@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Install Autho Gateway Node</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        .container { max-width: 600px; text-align: center; }
+        h1 {
+            font-size: 2.5em;
+            color: #d4af37;
+            margin-bottom: 15px;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+        }
+        .subtitle { font-size: 1.2em; color: #aaa; margin-bottom: 40px; }
+        .main-card {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 15px 50px rgba(212, 175, 55, 0.4);
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 20px 50px;
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.5);
+        }
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.7);
+        }
+        .instructions {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(212, 175, 55, 0.1);
+            border-radius: 10px;
+            text-align: left;
+        }
+        .instructions h3 { color: #d4af37; margin-bottom: 15px; }
+        .instructions ol { padding-left: 20px; line-height: 2; }
+        .requirements {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            font-size: 0.9em;
+            color: #888;
+        }
+        .requirements a { color: #d4af37; }
+        .alt-downloads {
+            margin-top: 20px;
+            font-size: 0.85em;
+            color: #666;
+        }
+        .alt-downloads a { color: #888; margin: 0 8px; }
+        .alt-downloads a:hover { color: #d4af37; }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .feature { padding: 15px; background: rgba(255,255,255,0.03); border-radius: 10px; }
+        .feature-icon { font-size: 1.8em; margin-bottom: 5px; }
+        .feature-text { font-size: 0.85em; color: #aaa; }
+        @media (max-width: 500px) {
+            .features { grid-template-columns: 1fr; }
+            .download-btn { padding: 15px 30px; font-size: 1.1em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 Autho Gateway</h1>
+        <p class="subtitle">Join the decentralized network in one click</p>
+
+        <div class="main-card">
+            <a class="download-btn" href="/downloads/gateway-node/Install-Autho-Gateway.bat" download>
+                ⬇️ Download for Windows
+            </a>
+
+            <div class="instructions">
+                <h3>How to Install:</h3>
+                <ol>
+                    <li>Click the download button above</li>
+                    <li>Open the downloaded file</li>
+                    <li>Click "Run" if Windows asks</li>
+                    <li>That's it! Desktop shortcuts will be created</li>
+                </ol>
+            </div>
+
+            <div class="requirements">
+                <strong>Requires:</strong> 
+                <a href="https://nodejs.org/" target="_blank">Node.js 18+</a> 
+                (free, takes 2 minutes to install)
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">🔄</div>
+                    <div class="feature-text">Auto-Sync</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🌍</div>
+                    <div class="feature-text">Go Public</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">⚡</div>
+                    <div class="feature-text">Fast</div>
+                </div>
+            </div>
+
+            <div class="alt-downloads">
+                Other platforms: 
+                <a href="/downloads/gateway-node/quick-install.sh">Linux/macOS</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,3943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages - Autho</title>
+  <link rel="stylesheet" href="/css/mobile-common.css">
+  <style>
+    .messages-container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .back-to-dashboard {
+      color: #d4af37;
+      text-decoration: none;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      border-radius: 6px;
+      background: rgba(212, 175, 55, 0.1);
+      transition: all 0.2s;
+    }
+
+    .back-to-dashboard:hover {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
+    }
+
+    .page-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #d4af37;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .inbox-stats {
+      font-size: 0.875rem;
+      color: #888;
+    }
+
+    .conversation-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .conversation-card {
+      background: rgba(30, 30, 30, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      border-radius: 12px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .conversation-card:hover {
+      border-color: #d4af37;
+      transform: translateY(-2px);
+    }
+
+    .conversation-card.unread {
+      border-left: 3px solid #d4af37;
+    }
+
+    .conversation-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.5rem;
+    }
+
+    .conversation-participant {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .conversation-time {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .conversation-preview {
+      font-size: 0.875rem;
+      color: #aaa;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .conversation-item-badge {
+      display: inline-block;
+      background: rgba(212, 175, 55, 0.2);
+      color: #d4af37;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+    }
+
+    .unread-badge {
+      background: #d4af37;
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 10px;
+      min-width: 1.2rem;
+      text-align: center;
+    }
+
+    .empty-inbox {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #888;
+    }
+
+    .empty-inbox-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-inbox-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #aaa;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Chat View */
+    .chat-view {
+      display: none;
+      flex-direction: column;
+      height: calc(100vh - 120px);
+    }
+
+    .chat-view.active {
+      display: flex;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: rgba(30, 30, 30, 0.9);
+      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .chat-back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0.25rem;
+    }
+
+    .chat-participant-name {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .chat-item-context {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .message-bubble {
+      max-width: 80%;
+      padding: 0.75rem 1rem;
+      border-radius: 16px;
+      position: relative;
+    }
+
+    .message-bubble.sent {
+      align-self: flex-end;
+      background: #d4af37;
+      color: #000;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message-bubble.received {
+      align-self: flex-start;
+      background: rgba(60, 60, 60, 0.9);
+      color: #fff;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message-text {
+      word-wrap: break-word;
+    }
+
+    .message-meta {
+      font-size: 0.65rem;
+      opacity: 0.7;
+      margin-top: 0.25rem;
+      text-align: right;
+    }
+
+    .message-expires {
+      font-size: 0.6rem;
+      color: #888;
+    }
+
+    .media-buttons-row {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(30, 30, 30, 0.95);
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .media-buttons-row .media-btn {
+      flex: 1;
+      max-width: 100px;
+      padding: 0.4rem 0.6rem;
+      background: rgba(50, 50, 50, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      color: #d4af37;
+      font-size: 0.75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+
+    .media-buttons-row .media-btn:active {
+      background: rgba(212, 175, 55, 0.2);
+    }
+
+    .chat-input-row {
+      display: flex;
+      padding: 0.5rem 0.75rem;
+      background: rgba(30, 30, 30, 0.9);
+    }
+
+    .chat-actions-row {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem 0.75rem;
+      background: rgba(30, 30, 30, 0.9);
+      justify-content: center;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: rgba(50, 50, 50, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 20px;
+      padding: 0.75rem 1rem;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    .chat-input:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+
+    .chat-send-btn {
+      background: #d4af37;
+      border: none;
+      border-radius: 12px;
+      flex: 1;
+      height: 44px;
+      color: #000;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .chat-send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Push-to-Talk Button */
+    .ptt-btn {
+      background: linear-gradient(145deg, #2a5d2a, #1a3d1a);
+      border: 2px solid #4CAF50;
+      border-radius: 12px;
+      flex: 1;
+      height: 44px;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .ptt-btn:active, .ptt-btn.recording {
+      background: linear-gradient(145deg, #4CAF50, #2E7D32);
+      transform: scale(1.1);
+      box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+    }
+
+    .ptt-icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .ptt-text {
+      font-size: 0.5rem;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+
+    .ptt-recording {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      border: 2px solid #4CAF50;
+      border-radius: 20px;
+      padding: 2rem 3rem;
+      z-index: 1000;
+      text-align: center;
+    }
+
+    .ptt-recording.active {
+      display: block;
+    }
+
+    .ptt-pulse {
+      width: 60px;
+      height: 60px;
+      background: #4CAF50;
+      border-radius: 50%;
+      margin: 0 auto 1rem;
+      animation: ptt-pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes ptt-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.7; }
+    }
+
+    .ptt-status {
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 500;
+    }
+
+    /* Auto-play indicator for voice messages */
+    .voice-message {
+      background: rgba(76, 175, 80, 0.2);
+      border: 1px solid rgba(76, 175, 80, 0.4);
+      border-radius: 12px;
+      padding: 0.5rem;
+    }
+
+    .voice-message.new {
+      animation: voice-new 0.5s ease-out;
+    }
+
+    @keyframes voice-new {
+      0% { transform: scale(0.9); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .encryption-notice {
+      text-align: center;
+      font-size: 0.7rem;
+      color: #666;
+      padding: 0.5rem;
+    }
+
+    .encryption-notice span {
+      color: #4CAF50;
+    }
+
+    .loading-spinner {
+      display: flex;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top-color: #d4af37;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .nav-tab {
+      flex: 1;
+      padding: 0.75rem;
+      background: rgba(80, 80, 80, 0.6);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      color: #ccc;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+
+    .nav-tab.active {
+      background: rgba(212, 175, 55, 0.2);
+      border-color: #d4af37;
+      color: #d4af37;
+    }
+
+    .contacts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .contact-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(30, 30, 30, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+    }
+
+    .contact-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .contact-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(212, 175, 55, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #d4af37;
+      font-weight: 600;
+    }
+
+    .contact-name {
+      font-weight: 500;
+      color: #fff;
+    }
+
+    .contact-role {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .contact-actions button {
+      background: none;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      color: #d4af37;
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .share-btn {
+      background: rgba(212, 175, 55, 0.2);
+      border: 1px solid #d4af37;
+      color: #d4af37;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .add-contact-btn {
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .contact-buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 1rem;
+    }
+
+    .modal-content {
+      background: #1a1a1a;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 16px;
+      padding: 1.5rem;
+      max-width: 400px;
+      width: 100%;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #d4af37;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    .qr-container {
+      background: #fff;
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+
+    .qr-container canvas, .qr-container img {
+      max-width: 200px;
+    }
+
+    .share-link-container {
+      background: rgba(50, 50, 50, 0.5);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      border-radius: 8px;
+      padding: 0.75rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .share-link-input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .copy-btn {
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .modal-input {
+      width: 100%;
+      background: rgba(50, 50, 50, 0.8);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem;
+      color: #fff;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-input:focus {
+      outline: none;
+      border-color: #d4af37;
+    }
+
+    .modal-btn {
+      width: 100%;
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .modal-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .share-instructions {
+      text-align: center;
+      color: #888;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .add-contact-chat-btn {
+      background: rgba(212, 175, 55, 0.2);
+      border: 1px solid #d4af37;
+      color: #d4af37;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .add-contact-chat-btn.added {
+      background: rgba(76, 175, 80, 0.2);
+      border-color: #4CAF50;
+      color: #4CAF50;
+    }
+
+    /* Media Messaging Styles */
+    .media-buttons {
+      display: flex;
+      gap: 0.25rem;
+      padding-right: 0.5rem;
+    }
+
+    .media-btn {
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 1.25rem;
+      padding: 0.5rem;
+      cursor: pointer;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .media-btn:hover {
+      color: #d4af37;
+      background: rgba(212, 175, 55, 0.1);
+    }
+
+    .media-btn.recording {
+      color: #ff4444;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .media-preview {
+      background: rgba(30, 30, 30, 0.95);
+      padding: 0.75rem;
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+      display: none;
+    }
+
+    .media-preview.active {
+      display: block;
+    }
+
+    .media-preview-content {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .media-preview img,
+    .media-preview video {
+      max-width: 120px;
+      max-height: 80px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    .media-preview-info {
+      flex: 1;
+      color: #888;
+      font-size: 0.75rem;
+    }
+
+    .media-preview-name {
+      color: #fff;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .media-preview-remove {
+      background: rgba(255, 68, 68, 0.2);
+      border: none;
+      color: #ff4444;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .audio-recorder {
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(30, 30, 30, 0.95);
+      border-top: 1px solid rgba(212, 175, 55, 0.2);
+    }
+
+    .audio-recorder.active {
+      display: flex;
+    }
+
+    .audio-timer {
+      color: #ff4444;
+      font-family: monospace;
+      font-size: 1rem;
+      min-width: 50px;
+    }
+
+    .audio-waveform {
+      flex: 1;
+      height: 30px;
+      background: rgba(255, 68, 68, 0.1);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+
+    .audio-bar {
+      width: 3px;
+      background: #ff4444;
+      border-radius: 2px;
+      animation: audioWave 0.5s ease-in-out infinite;
+    }
+
+    @keyframes audioWave {
+      0%, 100% { height: 5px; }
+      50% { height: 20px; }
+    }
+
+    .audio-cancel-btn {
+      background: rgba(255, 68, 68, 0.2);
+      border: none;
+      color: #ff4444;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .audio-send-btn {
+      background: #d4af37;
+      border: none;
+      color: #000;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .message-media {
+      margin-top: 0.5rem;
+      max-width: 250px;
+    }
+
+    .message-media img {
+      width: 100%;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .message-media video {
+      width: 100%;
+      border-radius: 8px;
+    }
+
+    .message-media audio {
+      width: 100%;
+      height: 36px;
+    }
+
+    .media-fullscreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .media-fullscreen.active {
+      display: flex;
+    }
+
+    .media-fullscreen img,
+    .media-fullscreen video {
+      max-width: 95%;
+      max-height: 95%;
+      object-fit: contain;
+    }
+
+    .media-fullscreen-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: #fff;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+
+    .hidden-input {
+      display: none;
+    }
+
+    /* Group Chat Styles */
+    .group-card {
+      background: rgba(30, 30, 30, 0.8);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      border-radius: 12px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .group-card:hover {
+      border-color: #4CAF50;
+      transform: translateY(-2px);
+    }
+
+    .group-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(76, 175, 80, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #4CAF50;
+      font-size: 1.2rem;
+      margin-right: 0.75rem;
+    }
+
+    .group-name {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .group-members-count {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .create-group-btn {
+      background: rgba(76, 175, 80, 0.2);
+      border: 1px solid #4CAF50;
+      color: #4CAF50;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .member-select-list {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 1rem;
+    }
+
+    .member-select-item {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .member-select-item:hover {
+      background: rgba(212, 175, 55, 0.1);
+    }
+
+    .member-select-item.selected {
+      background: rgba(76, 175, 80, 0.2);
+    }
+
+    .member-checkbox {
+      width: 20px;
+      height: 20px;
+      margin-right: 0.75rem;
+      accent-color: #4CAF50;
+    }
+
+    .group-header-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .group-message-sender {
+      font-size: 0.7rem;
+      color: #4CAF50;
+      margin-bottom: 0.25rem;
+    }
+
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 1rem 0;
+      color: #666;
+      font-size: 0.8rem;
+    }
+
+    .section-divider::before,
+    .section-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(212, 175, 55, 0.2);
+    }
+
+    /* Disappearing Messages Styles */
+    .timer-selector {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(30, 30, 30, 0.9);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+    }
+
+    .timer-selector select {
+      background: #333;
+      border: 1px solid #555;
+      color: #fff;
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .timer-label {
+      color: #888;
+      font-size: 0.8rem;
+    }
+
+    .message-expiry {
+      font-size: 0.65rem;
+      color: #ff9800;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+
+    .message-expiry.urgent {
+      color: #f44336;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .message-delete-btn {
+      position: absolute;
+      top: 0.25rem;
+      right: 0.25rem;
+      background: rgba(244, 67, 54, 0.8);
+      border: none;
+      color: white;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .message-bubble:hover .message-delete-btn {
+      opacity: 1;
+    }
+
+    .message-bubble {
+      position: relative;
+    }
+
+    .disappearing-indicator {
+      display: inline-block;
+      margin-left: 0.25rem;
+      color: #ff9800;
+    }
+
+    .media-type-badge {
+      font-size: 0.65rem;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      margin-left: 0.25rem;
+    }
+
+    /* Read Receipts */
+    .read-receipt {
+      font-size: 0.7rem;
+      margin-left: 0.25rem;
+      color: #888;
+    }
+    .read-receipt.delivered { color: #888; }
+    .read-receipt.read { color: #4CAF50; }
+
+    /* Typing Indicator */
+    .typing-indicator {
+      padding: 0.5rem 1rem;
+      color: #888;
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+    .typing-dots {
+      display: inline-block;
+    }
+    .typing-dots span {
+      animation: typingBounce 1.4s infinite;
+      display: inline-block;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+
+    /* Message Reactions */
+    .message-reactions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+    .reaction-badge {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.15rem 0.4rem;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .reaction-badge:hover { background: rgba(255, 255, 255, 0.2); }
+    .reaction-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 0 0.25rem;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    .reaction-btn:hover { opacity: 1; }
+    .reaction-picker {
+      position: absolute;
+      bottom: 100%;
+      right: 0;
+      background: #333;
+      border-radius: 8px;
+      padding: 0.5rem;
+      display: none;
+      gap: 0.25rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .reaction-picker.show { display: flex; }
+    .reaction-picker button {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 0.25rem;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .reaction-picker button:hover { background: rgba(255,255,255,0.1); }
+
+    /* Online Status */
+    .online-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 0.25rem;
+    }
+    .online-indicator.online { background: #4CAF50; }
+    .online-indicator.offline { background: #888; }
+    .last-seen {
+      font-size: 0.7rem;
+      color: #888;
+    }
+
+    /* Mute Button */
+    .mute-btn {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.25rem;
+    }
+    .mute-btn.muted { color: #f44336; }
+
+    /* Search Bar */
+    .search-bar {
+      padding: 0.5rem 1rem;
+      background: #1a1a1a;
+    }
+    .search-bar input {
+      width: 100%;
+      padding: 0.6rem 1rem;
+      background: #333;
+      border: 1px solid #555;
+      border-radius: 20px;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+    .search-bar input::placeholder { color: #888; }
+
+    /* File Attachment */
+    .file-attachment {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      margin-top: 0.25rem;
+    }
+    .file-icon { font-size: 1.5rem; }
+    .file-info { flex: 1; }
+    .file-name { font-size: 0.85rem; color: #fff; }
+    .file-size { font-size: 0.7rem; color: #888; }
+    .file-download-btn {
+      background: #d4af37;
+      color: #000;
+      border: none;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    /* Link Preview */
+    .link-preview {
+      background: rgba(255,255,255,0.05);
+      border-left: 3px solid #d4af37;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border-radius: 0 8px 8px 0;
+    }
+    .link-preview-title {
+      font-weight: bold;
+      font-size: 0.85rem;
+      color: #d4af37;
+    }
+    .link-preview-description {
+      font-size: 0.75rem;
+      color: #aaa;
+      margin-top: 0.25rem;
+    }
+    .link-preview-url {
+      font-size: 0.7rem;
+      color: #888;
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="messages-container">
+    <!-- Inbox View -->
+    <div id="inboxView">
+      <div class="page-header">
+        <a href="/m/wallet" class="back-to-dashboard">← Dashboard</a>
+        <div class="page-title">
+          <span>💬</span> Messages
+        </div>
+        <div class="inbox-stats" id="inboxStats">Loading...</div>
+      </div>
+
+      <div class="nav-tabs">
+        <div class="nav-tab active" data-tab="conversations" onclick="switchTab('conversations')">
+          Chats
+        </div>
+        <div class="nav-tab" data-tab="groups" onclick="switchTab('groups')">
+          Groups
+        </div>
+        <div class="nav-tab" data-tab="contacts" onclick="switchTab('contacts')">
+          Contacts
+        </div>
+      </div>
+
+      <div id="conversationsTab">
+        <div id="conversationList" class="conversation-list">
+          <div class="loading-spinner">
+            <div class="spinner"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="groupsTab" style="display: none;">
+        <div class="contact-buttons" style="margin-bottom: 1rem;">
+          <button class="create-group-btn" onclick="showCreateGroupModal()">
+            <span>👥</span> Create Group
+          </button>
+        </div>
+        <div id="groupsList" class="conversation-list"></div>
+      </div>
+
+      <div id="contactsTab" style="display: none;">
+        <div class="contact-buttons">
+          <button class="share-btn" onclick="showShareModal()">
+            <span>📤</span> Share My Contact
+          </button>
+          <button class="add-contact-btn" onclick="showAddContactModal()">
+            <span>➕</span> Add Contact
+          </button>
+        </div>
+        <div id="contactsList" class="contacts-list"></div>
+      </div>
+
+      <div class="encryption-notice">
+        <span>🔒</span> End-to-end encrypted • Messages auto-delete after 10 days
+      </div>
+    </div>
+
+    <!-- Chat View -->
+    <div id="chatView" class="chat-view">
+      <div class="chat-header">
+        <button class="chat-back-btn" onclick="showInbox()">←</button>
+        <div style="flex:1">
+          <div class="chat-participant-name" id="chatParticipantName">Loading...</div>
+          <div class="chat-item-context" id="chatItemContext"></div>
+        </div>
+        <button class="add-contact-chat-btn" id="addContactChatBtn" onclick="addCurrentRecipientToContacts()">
+          ➕ Add
+        </button>
+      </div>
+
+      <div class="chat-messages" id="chatMessages"></div>
+
+      <div class="encryption-notice">
+        <span>🔒</span> End-to-end encrypted
+      </div>
+
+      <!-- Media Preview -->
+      <div class="media-preview" id="mediaPreview">
+        <div class="media-preview-content">
+          <div id="mediaPreviewThumb"></div>
+          <div class="media-preview-info">
+            <div class="media-preview-name" id="mediaPreviewName">Photo</div>
+            <div id="mediaPreviewSize">0 KB</div>
+          </div>
+          <button class="media-preview-remove" onclick="clearMediaPreview()">×</button>
+        </div>
+      </div>
+
+      <!-- Audio Recorder -->
+      <div class="audio-recorder" id="audioRecorder">
+        <div class="audio-timer" id="audioTimer">0:00</div>
+        <div class="audio-waveform">
+          <div class="audio-bar" style="animation-delay: 0s"></div>
+          <div class="audio-bar" style="animation-delay: 0.1s"></div>
+          <div class="audio-bar" style="animation-delay: 0.2s"></div>
+          <div class="audio-bar" style="animation-delay: 0.3s"></div>
+          <div class="audio-bar" style="animation-delay: 0.4s"></div>
+        </div>
+        <button class="audio-cancel-btn" onclick="cancelAudioRecording()">Cancel</button>
+        <button class="audio-send-btn" onclick="sendAudioRecording()">Send</button>
+      </div>
+
+      <!-- Media buttons row (above input) -->
+      <div class="media-buttons-row">
+        <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷 Photo</button>
+        <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥 Video</button>
+        <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤 Audio</button>
+        <button class="media-btn" onclick="document.getElementById('fileInput').click()" title="Send file">📎 File</button>
+      </div>
+      
+      <!-- Disappearing message timer selector -->
+      <div class="timer-selector" id="timerSelector">
+        <span class="timer-label">⏱️ Auto-delete:</span>
+        <select id="disappearTimer" onchange="updateDisappearTimer()">
+          <option value="0">Default (by media type)</option>
+          <option value="30000">30 seconds</option>
+          <option value="300000">5 minutes</option>
+          <option value="3600000">1 hour</option>
+          <option value="86400000">24 hours</option>
+          <option value="259200000">3 days</option>
+          <option value="864000000">10 days</option>
+        </select>
+        <label style="display: flex; align-items: center; gap: 0.25rem; color: #888; font-size: 0.75rem;">
+          <input type="checkbox" id="expiresAfterView"> After view
+        </label>
+      </div>
+      
+      <!-- Text input row -->
+      <div class="chat-input-row">
+        <input type="text" class="chat-input" id="messageInput" placeholder="Type a message..." 
+               onkeypress="if(event.key==='Enter')sendMessage()" oninput="sendTypingIndicator()">
+      </div>
+      
+      <!-- Action buttons row (below input) -->
+      <div class="chat-actions-row">
+        <button class="ptt-btn" id="pttBtn" title="Hold to talk">
+          <span class="ptt-icon">🎙️</span>
+          <span class="ptt-text">Hold to Talk</span>
+        </button>
+        <button class="chat-send-btn" onclick="sendMessage()" id="sendBtn">➤ Send</button>
+      </div>
+      
+      <!-- Push-to-Talk Recording Indicator -->
+      <div class="ptt-recording" id="pttRecording">
+        <div class="ptt-pulse"></div>
+        <div class="ptt-status">🎙️ Recording... Release to send</div>
+      </div>
+
+      <!-- Hidden file inputs -->
+      <input type="file" id="photoInput" class="hidden-input" accept="image/*" capture="environment" onchange="handlePhotoSelect(event)">
+      <input type="file" id="videoInput" class="hidden-input" accept="video/*" capture="environment" onchange="handleVideoSelect(event)">
+      <input type="file" id="fileInput" class="hidden-input" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.rar" onchange="handleFileSelect(event)">
+    </div>
+  </div>
+
+  <!-- Fullscreen Media Viewer -->
+  <div class="media-fullscreen" id="mediaFullscreen" onclick="closeFullscreen()">
+    <button class="media-fullscreen-close">×</button>
+    <div id="fullscreenContent"></div>
+  </div>
+
+  <!-- Share Contact Modal -->
+  <div id="shareModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">📤 Share My Contact</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <div class="share-instructions">
+        Others can scan this QR code or use the link to message you
+      </div>
+      <div class="qr-container" id="qrContainer"></div>
+      <div class="share-link-container">
+        <input type="text" class="share-link-input" id="shareLink" readonly>
+        <button class="copy-btn" onclick="copyShareLink()">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div id="createGroupModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">👥 Create Group</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <input type="text" class="modal-input" id="groupNameInput" placeholder="Group name...">
+      <div class="share-instructions">Select members from your contacts:</div>
+      <div class="member-select-list" id="memberSelectList"></div>
+      <button class="modal-btn" onclick="createGroup()">Create Group</button>
+    </div>
+  </div>
+
+  <!-- Manage Group Modal -->
+  <div id="manageGroupModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ Group Settings</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <div id="manageGroupName" style="font-weight: 600; margin-bottom: 1rem; color: #fff;"></div>
+      <div class="share-instructions">Current members:</div>
+      <div class="member-select-list" id="currentMembersList"></div>
+      <div class="section-divider">Add members</div>
+      <div class="member-select-list" id="addMembersList"></div>
+      <button class="modal-btn" style="background: #ff4444; margin-top: 1rem;" onclick="leaveCurrentGroup()">🚪 Leave Group</button>
+    </div>
+  </div>
+
+  <!-- Add Contact Modal -->
+  <div id="addContactModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeModals()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">➕ Add Contact</div>
+        <button class="modal-close" onclick="closeModals()">×</button>
+      </div>
+      <div class="share-instructions">
+        Scan a contact QR code or paste their link/ID
+      </div>
+      <div id="qrScannerContainer" style="display: none; margin-bottom: 15px;">
+        <video id="qrScannerVideo" style="width: 100%; max-height: 250px; border-radius: 12px; background: #000;"></video>
+        <div id="qrScannerStatus" style="text-align: center; color: #999; font-size: 13px; margin-top: 8px;">Point camera at QR code...</div>
+      </div>
+      <button class="modal-btn" id="scanQrBtn" onclick="toggleQrScanner()" style="margin-bottom: 15px; background: #333;">
+        📷 Scan QR Code
+      </button>
+      <input type="text" class="modal-input" id="addContactInput" placeholder="Or paste link / account ID...">
+      <button class="modal-btn" onclick="addContactFromInput()">Add & Start Chat</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let currentConversationId = null;
+    let currentRecipientId = null;
+    let currentRecipientPublicKey = null;
+    let currentItemId = null;
+    let myPrivateKey = null;
+    let myEncryptionKeyPair = null; // Derived X25519 keypair for E2E encryption
+    let conversations = [];
+    let messagePollingInterval = null;
+    let inboxPollingInterval = null;
+    const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
+
+    // Helper: Check response for auth errors and redirect to login
+    function checkAuthAndRedirect(response) {
+      if (response.status === 401 || response.status === 403) {
+        WalletAuth.clearWallet();
+        alert('Session expired. Please log in again.');
+        window.location.href = '/m/login?redirect=/m/messages';
+        return true;
+      }
+      return false;
+    }
+
+    // ============================================================
+    // E2E ENCRYPTION (Signal-grade: Curve25519 + XSalsa20-Poly1305)
+    // ============================================================
+
+    // Convert hex string to Uint8Array
+    function hexToBytes(hex) {
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return bytes;
+    }
+
+    // Convert Uint8Array to hex string
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Derive X25519 keypair from wallet private key using SHA-256
+    async function deriveEncryptionKeyPair(privateKeyHex) {
+      // Hash the private key to get 32 bytes for X25519 seed
+      const privateKeyBytes = hexToBytes(privateKeyHex);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', privateKeyBytes);
+      const seed = new Uint8Array(hashBuffer);
+      
+      // Generate X25519 keypair from seed
+      const keyPair = nacl.box.keyPair.fromSecretKey(seed);
+      return keyPair;
+    }
+
+    // Derive public encryption key from account's public key (for recipient)
+    async function deriveEncryptionPublicKey(publicKeyHex) {
+      // Hash the public key to get consistent derivation
+      const publicKeyBytes = hexToBytes(publicKeyHex);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', publicKeyBytes);
+      const seed = new Uint8Array(hashBuffer);
+      
+      // Generate keypair from seed and return only public key
+      const keyPair = nacl.box.keyPair.fromSecretKey(seed);
+      return keyPair.publicKey;
+    }
+
+    // Encrypt message for recipient (and self)
+    async function encryptForRecipient(plaintext, recipientPublicKeyHex) {
+      if (!myEncryptionKeyPair) {
+        throw new Error('Encryption keys not initialized');
+      }
+      
+      // Get recipient's encryption public key
+      const recipientEncPubKey = await deriveEncryptionPublicKey(recipientPublicKeyHex);
+      
+      // Generate random nonce (24 bytes for XSalsa20)
+      const nonce = nacl.randomBytes(24);
+      
+      // Encrypt using NaCl box (Curve25519 + XSalsa20-Poly1305)
+      const messageBytes = nacl.util.decodeUTF8(plaintext);
+      const encrypted = nacl.box(messageBytes, nonce, recipientEncPubKey, myEncryptionKeyPair.secretKey);
+      
+      // Return as base64 encoded JSON
+      return JSON.stringify({
+        v: 1, // Version for future compatibility
+        n: nacl.util.encodeBase64(nonce),
+        c: nacl.util.encodeBase64(encrypted),
+        s: bytesToHex(myEncryptionKeyPair.publicKey) // Sender's encryption public key
+      });
+    }
+
+    // Decrypt message from sender
+    async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
+      if (!myEncryptionKeyPair) {
+        throw new Error('Encryption keys not initialized');
+      }
+      
+      try {
+        const envelope = JSON.parse(encryptedJson);
+        
+        // Check if this is actually encrypted (v1 format)
+        if (envelope.v !== 1 || !envelope.n || !envelope.c) {
+          // Not encrypted, return as-is (legacy message)
+          return null;
+        }
+        
+        const nonce = nacl.util.decodeBase64(envelope.n);
+        const ciphertext = nacl.util.decodeBase64(envelope.c);
+        const senderEncPubKey = hexToBytes(envelope.s);
+        
+        // Decrypt using NaCl box.open
+        const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
+        
+        if (!decrypted) {
+          return null; // Decryption failed
+        }
+        
+        return nacl.util.encodeUTF8(decrypted);
+      } catch (e) {
+        console.error('Decryption error:', e);
+        return null;
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet) {
+        window.location.href = '/m/login?redirect=/m/messages';
+        return;
+      }
+      
+      myPrivateKey = wallet.privateKey;
+      
+      // Derive encryption keypair for E2E encryption
+      if (myPrivateKey) {
+        try {
+          myEncryptionKeyPair = await deriveEncryptionKeyPair(myPrivateKey);
+          console.log('E2E encryption initialized');
+        } catch (e) {
+          console.error('Failed to initialize encryption:', e);
+        }
+      }
+      
+      await loadConversations();
+      await loadContacts();
+      
+      // Start inbox polling for new conversations
+      startInboxPolling();
+
+      // Check for URL parameters
+      const params = new URLSearchParams(window.location.search);
+      const itemId = params.get('itemId');
+      const recipientId = params.get('to');
+      const contactId = params.get('contact');
+      
+      if (contactId) {
+        // Coming from a shared contact link - add and start chat
+        await addContactAndStartChat(contactId);
+      } else if (itemId && recipientId) {
+        openConversationWithItem(recipientId, itemId);
+      }
+    });
+
+    function switchTab(tab) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+      
+      document.getElementById('conversationsTab').style.display = tab === 'conversations' ? 'block' : 'none';
+      document.getElementById('groupsTab').style.display = tab === 'groups' ? 'block' : 'none';
+      document.getElementById('contactsTab').style.display = tab === 'contacts' ? 'block' : 'none';
+      
+      if (tab === 'groups') {
+        loadGroups();
+      }
+    }
+
+    async function loadConversations() {
+      try {
+        const response = await fetch('/api/messages/conversations', {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (checkAuthAndRedirect(response)) return;
+        
+        if (!response.ok) {
+          throw new Error('Failed to load conversations');
+        }
+        
+        const data = await response.json();
+
+        if (data.success) {
+          conversations = data.conversations;
+          renderConversations();
+          document.getElementById('inboxStats').textContent = 
+            `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`;
+        } else if (data.error && data.error.includes('auth')) {
+          WalletAuth.clearWallet();
+          window.location.href = '/m/login?redirect=/m/messages';
+        }
+      } catch (error) {
+        console.error('Failed to load conversations:', error);
+        document.getElementById('conversationList').innerHTML = 
+          '<div class="empty-inbox"><div class="empty-inbox-title">Failed to load</div></div>';
+      }
+    }
+
+    function renderConversations() {
+      const container = document.getElementById('conversationList');
+      
+      if (conversations.length === 0) {
+        container.innerHTML = `
+          <div class="empty-inbox">
+            <div class="empty-inbox-icon">💬</div>
+            <div class="empty-inbox-title">No messages yet</div>
+            <div>Find an item and message its owner to start a conversation</div>
+          </div>
+        `;
+        return;
+      }
+
+      const wallet = WalletAuth.getWallet();
+      container.innerHTML = conversations.map(conv => {
+        const otherParticipant = conv.participantInfo.find(p => p.accountId !== wallet.publicKey);
+        const lastMsg = conv.lastMessage;
+        const timeAgo = lastMsg ? formatTimeAgo(lastMsg.timestamp) : '';
+        
+        return `
+          <div class="conversation-card ${conv.unreadCount > 0 ? 'unread' : ''}" 
+               onclick="openConversation('${conv.conversationId}', '${otherParticipant?.accountId}')">
+            <div class="conversation-header">
+              <div class="conversation-participant">${escapeHtml(otherParticipant?.displayName || 'Unknown')}</div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                ${conv.unreadCount > 0 ? `<span class="unread-badge">${conv.unreadCount}</span>` : ''}
+                <div class="conversation-time">${timeAgo}</div>
+              </div>
+            </div>
+            <div class="conversation-preview">[Encrypted message]</div>
+            ${lastMsg?.payload?.itemId ? `<div class="conversation-item-badge">About an item</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    // localStorage helpers for contact backup
+    function getLocalContacts() {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return [];
+        const key = `contacts_${wallet.publicKey.substring(0, 16)}`;
+        return JSON.parse(localStorage.getItem(key) || '[]');
+      } catch (e) { return []; }
+    }
+    
+    function saveLocalContacts(contacts) {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+        const key = `contacts_${wallet.publicKey.substring(0, 16)}`;
+        localStorage.setItem(key, JSON.stringify(contacts));
+      } catch (e) { console.error('Failed to save local contacts:', e); }
+    }
+    
+    function addLocalContact(contactId, displayName) {
+      const contacts = getLocalContacts();
+      if (!contacts.find(c => c.accountId === contactId)) {
+        contacts.push({ accountId: contactId, displayName: displayName || contactId.substring(0, 12) + '...' });
+        saveLocalContacts(contacts);
+      }
+    }
+
+    async function loadContacts() {
+      try {
+        const response = await fetch('/api/messages/contacts', {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (checkAuthAndRedirect(response)) return;
+        
+        const data = await response.json();
+
+        if (data.success) {
+          // Merge server contacts with local backup
+          const serverContacts = data.contacts || [];
+          const localContacts = getLocalContacts();
+          
+          // Build merged list (server takes priority for display names)
+          const merged = new Map();
+          for (const c of localContacts) {
+            merged.set(c.accountId, c);
+          }
+          for (const c of serverContacts) {
+            merged.set(c.accountId, c);
+          }
+          
+          const allContacts = Array.from(merged.values());
+          
+          // Save merged list back to localStorage
+          saveLocalContacts(allContacts);
+          
+          // Re-add any local-only contacts to server
+          for (const local of localContacts) {
+            if (!serverContacts.find(s => s.accountId === local.accountId)) {
+              // Silently re-add to server
+              fetch('/api/messages/contacts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+                body: JSON.stringify({ contactId: local.accountId, displayName: local.displayName })
+              }).catch(() => {});
+            }
+          }
+          
+          renderContacts(allContacts);
+        }
+      } catch (error) {
+        console.error('Failed to load contacts:', error);
+        // Fall back to local contacts
+        const localContacts = getLocalContacts();
+        if (localContacts.length > 0) {
+          renderContacts(localContacts);
+        }
+      }
+    }
+
+    function renderContacts(contacts) {
+      const container = document.getElementById('contactsList');
+      
+      if (contacts.length === 0) {
+        container.innerHTML = `
+          <div class="empty-inbox">
+            <div class="empty-inbox-title">No contacts yet</div>
+            <div>Message someone to add them to your contacts</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = contacts.map(contact => `
+        <div class="contact-card">
+          <div class="contact-info">
+            <div class="contact-avatar">${contact.displayName[0].toUpperCase()}</div>
+            <div>
+              <div class="contact-name">${escapeHtml(contact.displayName)}</div>
+              <div class="contact-role">
+                ${contact.isManufacturer ? 'Manufacturer' : contact.isAuthenticator ? 'Authenticator' : 'User'}
+              </div>
+            </div>
+          </div>
+          <div class="contact-actions">
+            <button onclick="startConversation('${contact.accountId}')">Message</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ============================================================
+    // GROUP CHAT FUNCTIONS
+    // ============================================================
+    
+    let groups = [];
+    let currentGroupId = null;
+    let currentGroupMembers = [];
+    let selectedGroupMembers = new Set();
+
+    async function loadGroups() {
+      try {
+        const response = await fetch('/api/messages/groups', {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (checkAuthAndRedirect(response)) return;
+        
+        if (!response.ok) throw new Error('Failed to load groups');
+        
+        const data = await response.json();
+        if (data.success) {
+          groups = data.groups;
+          renderGroups();
+        }
+      } catch (error) {
+        console.error('Failed to load groups:', error);
+        document.getElementById('groupsList').innerHTML = 
+          '<div class="empty-inbox"><div class="empty-inbox-title">Failed to load groups</div></div>';
+      }
+    }
+
+    function renderGroups() {
+      const container = document.getElementById('groupsList');
+      
+      if (groups.length === 0) {
+        container.innerHTML = `
+          <div class="empty-inbox">
+            <div class="empty-inbox-icon">👥</div>
+            <div class="empty-inbox-title">No groups yet</div>
+            <div>Create a group to chat with multiple contacts</div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = groups.map(group => {
+        const timeAgo = formatTimeAgo(group.lastMessageAt);
+        return `
+          <div class="group-card" onclick="openGroupChat('${group.groupId}')">
+            <div class="conversation-header">
+              <div style="display: flex; align-items: center;">
+                <div class="group-icon">👥</div>
+                <div>
+                  <div class="group-name">${escapeHtml(group.name)}</div>
+                  <div class="group-members-count">${group.members.length} members</div>
+                </div>
+              </div>
+              <div class="conversation-time">${timeAgo}</div>
+            </div>
+            <div class="conversation-preview">${group.messageCount} messages</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showCreateGroupModal() {
+      selectedGroupMembers.clear();
+      document.getElementById('groupNameInput').value = '';
+      
+      // Get contacts for member selection
+      const localContacts = getLocalContacts();
+      const container = document.getElementById('memberSelectList');
+      
+      if (localContacts.length === 0) {
+        container.innerHTML = '<div style="color: #888; text-align: center; padding: 1rem;">Add contacts first to create a group</div>';
+      } else {
+        container.innerHTML = localContacts.map(contact => `
+          <div class="member-select-item" onclick="toggleMemberSelection('${contact.accountId}', this)">
+            <input type="checkbox" class="member-checkbox" id="member_${contact.accountId}">
+            <div class="contact-avatar" style="width: 32px; height: 32px; font-size: 0.9rem;">${contact.displayName[0].toUpperCase()}</div>
+            <span>${escapeHtml(contact.displayName)}</span>
+          </div>
+        `).join('');
+      }
+      
+      document.getElementById('createGroupModal').style.display = 'flex';
+    }
+
+    function toggleMemberSelection(memberId, element) {
+      const checkbox = element.querySelector('.member-checkbox');
+      
+      if (selectedGroupMembers.has(memberId)) {
+        selectedGroupMembers.delete(memberId);
+        checkbox.checked = false;
+        element.classList.remove('selected');
+      } else {
+        selectedGroupMembers.add(memberId);
+        checkbox.checked = true;
+        element.classList.add('selected');
+      }
+    }
+
+    async function createGroup() {
+      const name = document.getElementById('groupNameInput').value.trim();
+      
+      if (!name) {
+        alert('Please enter a group name');
+        return;
+      }
+      
+      if (selectedGroupMembers.size === 0) {
+        alert('Please select at least one member');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/messages/groups', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            name,
+            memberIds: Array.from(selectedGroupMembers)
+          })
+        });
+
+        if (checkAuthAndRedirect(response)) return;
+
+        const data = await response.json();
+        if (data.success) {
+          closeModals();
+          await loadGroups();
+          switchTab('groups');
+          alert('Group created successfully!');
+        } else {
+          alert('Failed to create group: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Create group error:', error);
+        alert('Failed to create group');
+      }
+    }
+
+    async function openGroupChat(groupId) {
+      currentGroupId = groupId;
+      currentConversationId = null;
+      currentRecipientId = null;
+      
+      // Get group info
+      const group = groups.find(g => g.groupId === groupId);
+      if (!group) {
+        alert('Group not found');
+        return;
+      }
+      
+      currentGroupMembers = group.members;
+      
+      document.getElementById('inboxView').style.display = 'none';
+      document.getElementById('chatView').classList.add('active');
+      document.getElementById('chatParticipantName').textContent = '👥 ' + group.name;
+      document.getElementById('chatItemContext').textContent = group.members.length + ' members';
+      
+      // Update the Add button to show Settings for groups
+      const addBtn = document.getElementById('addContactChatBtn');
+      addBtn.textContent = '⚙️ Settings';
+      addBtn.classList.remove('added');
+      addBtn.onclick = showManageGroupModal;
+      
+      await loadGroupMessages(groupId);
+      
+      stopInboxPolling();
+      startGroupMessagePolling();
+    }
+
+    async function loadGroupMessages(groupId) {
+      try {
+        const response = await fetch(`/api/messages/groups/${groupId}/messages`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (checkAuthAndRedirect(response)) return;
+        
+        const data = await response.json();
+        if (data.success) {
+          renderGroupMessages(data.messages);
+        }
+      } catch (error) {
+        console.error('Failed to load group messages:', error);
+      }
+    }
+
+    function renderGroupMessages(messages) {
+      const container = document.getElementById('chatMessages');
+      const wallet = WalletAuth.getWallet();
+      
+      if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-inbox"><div class="empty-inbox-title">No messages yet</div><div>Start the conversation!</div></div>';
+        return;
+      }
+
+      container.innerHTML = messages.map(msg => {
+        const isSent = msg.senderId === wallet.publicKey;
+        let content = '[Encrypted]';
+        
+        // Decrypt message
+        if (msg.encryptedContent && myEncryptionKeyPair) {
+          try {
+            content = decryptMessage(msg.encryptedContent, msg.senderId);
+          } catch (e) {
+            content = '[Unable to decrypt]';
+          }
+        }
+        
+        const senderName = isSent ? 'You' : (msg.senderId.substring(0, 8) + '...');
+        
+        return `
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+            ${!isSent ? `<div class="group-message-sender">${senderName}</div>` : ''}
+            <div class="message-text">${escapeHtml(content)}</div>
+            <div class="message-meta">${formatTime(msg.timestamp)}</div>
+          </div>
+        `;
+      }).join('');
+      
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendGroupMessage() {
+      if (!currentGroupId) {
+        console.error('No group selected');
+        return;
+      }
+      
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const sendBtn = document.getElementById('sendBtn');
+      if (sendBtn) sendBtn.disabled = true;
+
+      try {
+        // Create message envelope
+        const messageEnvelope = JSON.stringify({
+          type: 'text',
+          content: text,
+          timestamp: Date.now()
+        });
+
+        // Encrypt message for each group member
+        const encryptedContentByMember = {};
+        
+        for (const memberId of currentGroupMembers) {
+          try {
+            const encrypted = await encryptForRecipient(messageEnvelope, memberId);
+            encryptedContentByMember[memberId] = encrypted;
+          } catch (e) {
+            console.error('Failed to encrypt for member:', memberId, e);
+            // Use plaintext as fallback if encryption fails
+            encryptedContentByMember[memberId] = messageEnvelope;
+          }
+        }
+
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ encryptedContentByMember })
+        });
+
+        if (checkAuthAndRedirect(response)) return;
+
+        const data = await response.json();
+        if (data.success) {
+          input.value = '';
+          await loadGroupMessages(currentGroupId);
+        } else {
+          alert('Failed to send message: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Send group message error:', error);
+        alert('Failed to send message: ' + error.message);
+      } finally {
+        if (sendBtn) sendBtn.disabled = false;
+      }
+    }
+
+    let groupMessagePollingInterval = null;
+
+    function startGroupMessagePolling() {
+      stopGroupMessagePolling();
+      groupMessagePollingInterval = setInterval(async () => {
+        if (currentGroupId) {
+          await loadGroupMessages(currentGroupId);
+        }
+      }, POLL_INTERVAL_MS);
+    }
+
+    function stopGroupMessagePolling() {
+      if (groupMessagePollingInterval) {
+        clearInterval(groupMessagePollingInterval);
+        groupMessagePollingInterval = null;
+      }
+    }
+
+    // ============================================================
+    // GROUP MANAGEMENT FUNCTIONS
+    // ============================================================
+
+    let currentGroupInfo = null;
+
+    async function showManageGroupModal() {
+      if (!currentGroupId) return;
+      
+      // Fetch fresh group info
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        if (!response.ok) throw new Error('Failed to load group');
+        
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        
+        currentGroupInfo = data.group;
+        
+        document.getElementById('manageGroupName').textContent = '👥 ' + currentGroupInfo.name;
+        
+        // Show current members
+        const wallet = WalletAuth.getWallet();
+        const isAdmin = currentGroupInfo.adminId === wallet.publicKey;
+        const currentMembersList = document.getElementById('currentMembersList');
+        
+        currentMembersList.innerHTML = currentGroupInfo.members.map(memberId => {
+          const isMe = memberId === wallet.publicKey;
+          const isMemberAdmin = memberId === currentGroupInfo.adminId;
+          const shortId = memberId.substring(0, 12) + '...';
+          
+          return `
+            <div class="member-select-item">
+              <div class="contact-avatar" style="width: 32px; height: 32px; font-size: 0.9rem; margin-right: 0.75rem;">
+                ${isMemberAdmin ? '👑' : '👤'}
+              </div>
+              <span style="flex: 1;">${isMe ? 'You' : shortId}${isMemberAdmin ? ' (Admin)' : ''}</span>
+              ${isAdmin && !isMe ? `<button onclick="removeMemberFromGroup('${memberId}')" style="background: #ff4444; border: none; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Remove</button>` : ''}
+            </div>
+          `;
+        }).join('');
+        
+        // Show contacts that can be added
+        const localContacts = getLocalContacts();
+        const nonMembers = localContacts.filter(c => !currentGroupInfo.members.includes(c.accountId));
+        const addMembersList = document.getElementById('addMembersList');
+        
+        if (nonMembers.length === 0) {
+          addMembersList.innerHTML = '<div style="color: #888; text-align: center; padding: 0.5rem;">All contacts are already members</div>';
+        } else {
+          addMembersList.innerHTML = nonMembers.map(contact => `
+            <div class="member-select-item" onclick="addMemberToGroup('${contact.accountId}')">
+              <div class="contact-avatar" style="width: 32px; height: 32px; font-size: 0.9rem; margin-right: 0.75rem;">${contact.displayName[0].toUpperCase()}</div>
+              <span style="flex: 1;">${escapeHtml(contact.displayName)}</span>
+              <span style="color: #4CAF50;">+ Add</span>
+            </div>
+          `).join('');
+        }
+        
+        document.getElementById('manageGroupModal').style.display = 'flex';
+        
+      } catch (error) {
+        console.error('Failed to load group info:', error);
+        alert('Failed to load group settings');
+      }
+    }
+
+    async function addMemberToGroup(memberId) {
+      if (!currentGroupId) return;
+      
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/members`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ memberId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Refresh group info and modal
+          await loadGroups();
+          currentGroupMembers.push(memberId);
+          await showManageGroupModal();
+        } else {
+          alert('Failed to add member: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Add member error:', error);
+        alert('Failed to add member');
+      }
+    }
+
+    async function removeMemberFromGroup(memberId) {
+      if (!currentGroupId) return;
+      
+      if (!confirm('Remove this member from the group?')) return;
+      
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/members/${memberId}`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Refresh group info and modal
+          await loadGroups();
+          currentGroupMembers = currentGroupMembers.filter(m => m !== memberId);
+          await showManageGroupModal();
+        } else {
+          alert('Failed to remove member: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Remove member error:', error);
+        alert('Failed to remove member');
+      }
+    }
+
+    async function leaveCurrentGroup() {
+      if (!currentGroupId) return;
+      
+      if (!confirm('Are you sure you want to leave this group?')) return;
+      
+      try {
+        const response = await fetch(`/api/messages/groups/${currentGroupId}/leave`, {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          closeModals();
+          showInbox();
+          await loadGroups();
+          alert('You have left the group');
+        } else {
+          alert('Failed to leave group: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Leave group error:', error);
+        alert('Failed to leave group');
+      }
+    }
+
+    async function openConversation(conversationId, recipientId) {
+      currentConversationId = conversationId;
+      currentRecipientId = recipientId;
+      currentGroupId = null; // Reset group context
+      currentItemId = null;
+      document.getElementById('chatItemContext').textContent = '';
+      
+      // Get recipient's public key for encryption
+      currentRecipientPublicKey = recipientId; // In our system, accountId IS the public key
+      
+      document.getElementById('inboxView').style.display = 'none';
+      document.getElementById('chatView').classList.add('active');
+      
+      // Reset the Add button for 1-on-1 chats
+      const addBtn = document.getElementById('addContactChatBtn');
+      addBtn.textContent = '➕ Add';
+      addBtn.onclick = addCurrentRecipientToContacts;
+      
+      // Set participant name
+      const conv = conversations.find(c => c.conversationId === conversationId);
+      const participant = conv?.participantInfo.find(p => p.accountId === recipientId);
+      document.getElementById('chatParticipantName').textContent = participant?.displayName || recipientId.substring(0, 12) + '...';
+      
+      await loadMessages(conversationId);
+      
+      // Reset message count for new conversation
+      lastMessageCount = 0;
+      
+      // Stop inbox polling, start message polling
+      stopInboxPolling();
+      startMessagePolling();
+    }
+    
+    let lastMessageCount = 0;
+    
+    function startMessagePolling() {
+      stopMessagePolling(); // Clear any existing interval
+      messagePollingInterval = setInterval(async () => {
+        if (currentConversationId) {
+          await pollForNewMessages(currentConversationId);
+        }
+      }, POLL_INTERVAL_MS);
+    }
+    
+    async function pollForNewMessages(conversationId) {
+      try {
+        const response = await fetch(`/api/messages/conversation/${conversationId}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+        
+        if (data.success && data.messages) {
+          // Only update if message count changed (new messages arrived)
+          if (data.messages.length !== lastMessageCount) {
+            const container = document.getElementById('chatMessages');
+            const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+            
+            lastMessageCount = data.messages.length;
+            await renderMessages(data.messages);
+            
+            // Auto-scroll to bottom only if user was already at bottom
+            if (wasAtBottom) {
+              container.scrollTop = container.scrollHeight;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Poll error:', error);
+      }
+    }
+    
+    function stopMessagePolling() {
+      if (messagePollingInterval) {
+        clearInterval(messagePollingInterval);
+        messagePollingInterval = null;
+      }
+    }
+    
+    function startInboxPolling() {
+      stopInboxPolling();
+      inboxPollingInterval = setInterval(async () => {
+        await loadConversations();
+      }, POLL_INTERVAL_MS);
+    }
+    
+    function stopInboxPolling() {
+      if (inboxPollingInterval) {
+        clearInterval(inboxPollingInterval);
+        inboxPollingInterval = null;
+      }
+    }
+
+    // ============================================================
+    // SEARCH, TYPING, REACTIONS, MUTE, ONLINE STATUS FUNCTIONS
+    // ============================================================
+
+    let searchTimeout = null;
+    let typingTimeout = null;
+    let onlineHeartbeatInterval = null;
+    const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😢'];
+
+    // Search with debounce
+    function debounceSearch(query) {
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => searchMessages(query), 300);
+    }
+
+    async function searchMessages(query) {
+      if (!query || query.length < 2) {
+        loadConversations(); // Reset to normal view
+        return;
+      }
+      try {
+        const response = await fetch(`/api/messages/search?q=${encodeURIComponent(query)}&limit=50`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+        if (data.success) {
+          displaySearchResults(data.messages);
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      }
+    }
+
+    function displaySearchResults(messages) {
+      const container = document.getElementById('conversationList');
+      if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-state">No messages found</div>';
+        return;
+      }
+      container.innerHTML = messages.map(msg => `
+        <div class="conversation-item" onclick="openConversation('${msg.conversationId}', '${msg.senderId}')">
+          <div class="conversation-info">
+            <div class="conversation-name">Message from ${msg.senderId.slice(0,8)}...</div>
+            <div class="conversation-preview">${new Date(msg.timestamp).toLocaleString()}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Typing indicators
+    function sendTypingIndicator() {
+      if (!currentConversationId) return;
+      if (typingTimeout) clearTimeout(typingTimeout);
+      
+      fetch('/api/messages/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+        body: JSON.stringify({ conversationId: currentConversationId })
+      }).catch(() => {});
+      
+      typingTimeout = setTimeout(() => { typingTimeout = null; }, 3000);
+    }
+
+    async function checkTypingUsers() {
+      if (!currentConversationId) return;
+      try {
+        const response = await fetch(`/api/messages/conversation/${currentConversationId}/typing`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+        updateTypingIndicator(data.typingUsers || []);
+      } catch (error) {}
+    }
+
+    function updateTypingIndicator(users) {
+      let indicator = document.getElementById('typingIndicator');
+      if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'typingIndicator';
+        indicator.className = 'typing-indicator';
+        const container = document.getElementById('chatMessages');
+        if (container) container.parentNode.insertBefore(indicator, container.nextSibling);
+      }
+      
+      const wallet = WalletAuth.getWallet();
+      const otherUsers = users.filter(u => u !== wallet?.publicKey);
+      
+      if (otherUsers.length > 0) {
+        indicator.innerHTML = `<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span> typing`;
+        indicator.style.display = 'block';
+      } else {
+        indicator.style.display = 'none';
+      }
+    }
+
+    // Message reactions
+    async function addReaction(messageId, emoji) {
+      try {
+        await fetch(`/api/messages/${messageId}/react`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+          body: JSON.stringify({ emoji })
+        });
+        hideReactionPicker();
+        if (currentConversationId) loadMessages(currentConversationId);
+      } catch (error) {
+        console.error('Reaction error:', error);
+      }
+    }
+
+    async function removeReaction(messageId) {
+      try {
+        await fetch(`/api/messages/${messageId}/react`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        if (currentConversationId) loadMessages(currentConversationId);
+      } catch (error) {
+        console.error('Remove reaction error:', error);
+      }
+    }
+
+    function showReactionPicker(messageId, event) {
+      event.stopPropagation();
+      hideReactionPicker();
+      const picker = document.createElement('div');
+      picker.className = 'reaction-picker show';
+      picker.id = 'reactionPicker';
+      picker.innerHTML = REACTION_EMOJIS.map(e => 
+        `<button onclick="addReaction('${messageId}', '${e}')">${e}</button>`
+      ).join('');
+      event.target.closest('.message-bubble').appendChild(picker);
+    }
+
+    function hideReactionPicker() {
+      const picker = document.getElementById('reactionPicker');
+      if (picker) picker.remove();
+    }
+
+    document.addEventListener('click', hideReactionPicker);
+
+    // Mute/unmute conversations
+    async function toggleMute(conversationId, isMuted) {
+      try {
+        const endpoint = isMuted ? 'unmute' : 'mute';
+        await fetch(`/api/messages/conversation/${conversationId}/${endpoint}`, {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        loadConversations();
+      } catch (error) {
+        console.error('Mute error:', error);
+      }
+    }
+
+    // Online status heartbeat
+    function startOnlineHeartbeat() {
+      sendOnlineHeartbeat();
+      onlineHeartbeatInterval = setInterval(sendOnlineHeartbeat, 60000); // Every minute
+    }
+
+    function stopOnlineHeartbeat() {
+      if (onlineHeartbeatInterval) {
+        clearInterval(onlineHeartbeatInterval);
+        onlineHeartbeatInterval = null;
+      }
+    }
+
+    async function sendOnlineHeartbeat() {
+      try {
+        await fetch('/api/messages/online', {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+      } catch (error) {}
+    }
+
+    async function checkOnlineStatus(userId) {
+      try {
+        const response = await fetch(`/api/messages/user/${userId}/online`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        return await response.json();
+      } catch (error) {
+        return { isOnline: false, lastSeen: null };
+      }
+    }
+
+    // Mark messages as read
+    async function markMessagesAsRead(messages) {
+      const wallet = WalletAuth.getWallet();
+      for (const msg of messages) {
+        if (msg.senderId !== wallet?.publicKey) {
+          fetch(`/api/messages/${msg.messageId}/read`, {
+            method: 'POST',
+            headers: WalletAuth.getAuthHeaders()
+          }).catch(() => {});
+        }
+      }
+    }
+
+    // File attachment handling
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const ALLOWED_FILE_TYPES = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'zip', 'rar'];
+
+    async function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!ALLOWED_FILE_TYPES.includes(ext)) {
+        alert(`File type not allowed. Allowed: ${ALLOWED_FILE_TYPES.join(', ')}`);
+        event.target.value = '';
+        return;
+      }
+      
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+        event.target.value = '';
+        return;
+      }
+      
+      try {
+        const data = await fileToBase64(file);
+        pendingMedia = {
+          type: 'file',
+          data: data,
+          name: file.name,
+          size: file.size,
+          extension: ext
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('File processing error:', e);
+        alert('Failed to process file');
+      }
+      event.target.value = '';
+    }
+
+    function getFileIcon(extension) {
+      const icons = {
+        pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
+        txt: '📃', csv: '📊', zip: '📦', rar: '📦'
+      };
+      return icons[extension] || '📎';
+    }
+
+    // Start heartbeat on page load
+    if (WalletAuth.getWallet()) {
+      startOnlineHeartbeat();
+    }
+
+    // ============================================================
+    // DISAPPEARING MESSAGES FUNCTIONS
+    // ============================================================
+
+    function updateDisappearTimer() {
+      // Called on change for UI feedback if needed
+      const select = document.getElementById('disappearTimer');
+      const timer = parseInt(select.value) || 0;
+      console.log('[Disappear] Timer changed to:', timer, 'ms');
+    }
+
+    function getDisappearSettings() {
+      // Always read directly from DOM to get current values
+      const select = document.getElementById('disappearTimer');
+      const checkbox = document.getElementById('expiresAfterView');
+      const timerValue = select ? parseInt(select.value) || 0 : 0;
+      const afterView = checkbox ? checkbox.checked : false;
+      
+      console.log('[Disappear] Sending with timer:', timerValue, 'afterView:', afterView);
+      
+      return {
+        selfDestructAfter: timerValue > 0 ? timerValue : undefined,
+        expiresAfterView: afterView
+      };
+    }
+
+    function formatTimeRemaining(expiresAt) {
+      const now = Date.now();
+      const remaining = expiresAt - now;
+      
+      if (remaining <= 0) return 'Expired';
+      
+      if (remaining < 60000) {
+        return Math.ceil(remaining / 1000) + 's';
+      } else if (remaining < 3600000) {
+        return Math.ceil(remaining / 60000) + 'm';
+      } else if (remaining < 86400000) {
+        return Math.ceil(remaining / 3600000) + 'h';
+      } else {
+        return Math.ceil(remaining / 86400000) + 'd';
+      }
+    }
+
+    async function deleteMessage(messageId) {
+      if (!confirm('Delete this message for everyone?')) return;
+      
+      try {
+        const response = await fetch(`/api/messages/${messageId}`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          // Refresh messages
+          if (currentConversationId) {
+            await loadMessages(currentConversationId);
+          } else if (currentGroupId) {
+            await loadGroupMessages(currentGroupId);
+          }
+        } else {
+          alert('Failed to delete: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Delete message error:', error);
+        alert('Failed to delete message');
+      }
+    }
+
+    async function markMessageViewed(messageId) {
+      try {
+        await fetch(`/api/messages/${messageId}/viewed`, {
+          method: 'POST',
+          headers: WalletAuth.getAuthHeaders()
+        });
+      } catch (error) {
+        console.error('Mark viewed error:', error);
+      }
+    }
+
+    async function openConversationWithItem(recipientId, itemId) {
+      currentRecipientId = recipientId;
+      currentRecipientPublicKey = recipientId;
+      currentItemId = itemId;
+      
+      // Generate conversation ID
+      const wallet = WalletAuth.getWallet();
+      const sorted = [wallet.publicKey, recipientId].sort();
+      const response = await fetch(`/api/registry/item/${itemId}`);
+      const itemData = await response.json();
+      
+      document.getElementById('chatItemContext').textContent = 
+        `About: ${itemData.item?.metadata?.name || itemId}`;
+      
+      // Use the item-specific conversation
+      const convId = await generateConversationId(wallet.publicKey, recipientId, itemId);
+      currentConversationId = convId;
+      
+      document.getElementById('inboxView').style.display = 'none';
+      document.getElementById('chatView').classList.add('active');
+      document.getElementById('chatParticipantName').textContent = 'Item Owner';
+      
+      await loadMessages(convId);
+      
+      // Stop inbox polling, start message polling
+      stopInboxPolling();
+      startMessagePolling();
+    }
+
+    async function generateConversationId(p1, p2, itemId) {
+      const sorted = [p1, p2].sort();
+      const base = `${sorted[0]}:${sorted[1]}${itemId ? ':' + itemId : ''}`;
+      const encoder = new TextEncoder();
+      const hash = await crypto.subtle.digest('SHA-256', encoder.encode(base));
+      const hashArray = Array.from(new Uint8Array(hash));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+    }
+
+    async function loadMessages(conversationId) {
+      const container = document.getElementById('chatMessages');
+      container.innerHTML = '<div class="loading-spinner"><div class="spinner"></div></div>';
+      
+      try {
+        const response = await fetch(`/api/messages/conversation/${conversationId}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const data = await response.json();
+
+        if (data.success) {
+          renderMessages(data.messages);
+        }
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+        container.innerHTML = '<div style="text-align:center;color:#888;">Failed to load messages</div>';
+      }
+    }
+
+    function renderMessages(messages) {
+      const container = document.getElementById('chatMessages');
+      const wallet = WalletAuth.getWallet();
+      
+      if (messages.length === 0) {
+        container.innerHTML = `
+          <div style="text-align:center;color:#888;padding:2rem;">
+            Start the conversation by sending a message
+          </div>
+        `;
+        return;
+      }
+
+      // Track which messages need to be marked as viewed
+      const messagesToMarkViewed = [];
+      
+      container.innerHTML = messages.map(msg => {
+        const isSent = msg.senderId === wallet.publicKey;
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const expiresIn = formatTimeUntil(msg.expiresAt);
+        
+        // Mark received messages with expiresAfterView as viewed
+        if (!isSent && msg.expiresAfterView && !msg.viewedAt) {
+          messagesToMarkViewed.push(msg.messageId);
+        }
+        
+        // Decrypt message (in production, use actual decryption)
+        let decryptedText = '[Encrypted]';
+        try {
+          // For now, show placeholder - real decryption would happen client-side
+          decryptedText = decryptMessage(msg.encryptedContent);
+        } catch (e) {
+          decryptedText = '[Could not decrypt]';
+        }
+        
+        // Show disappearing indicator for expiresAfterView messages
+        const disappearIcon = msg.expiresAfterView ? '👁️ ' : '';
+        
+        return `
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+            <div class="message-text">${escapeHtml(decryptedText)}</div>
+            <div class="message-meta">
+              ${disappearIcon}${timeStr}
+              <span class="message-expires">• expires ${expiresIn}</span>
+              <button class="reaction-btn" onclick="showReactionPicker('${msg.messageId}', event)" title="React">😀</button>
+            </div>
+            <div class="message-reactions" id="reactions-${msg.messageId}"></div>
+          </div>
+        `;
+      }).join('');
+      
+      // Scroll to bottom
+      container.scrollTop = container.scrollHeight;
+      
+      // Mark viewed messages (fire-and-forget, don't await)
+      messagesToMarkViewed.forEach(messageId => {
+        markMessageViewed(messageId);
+      });
+    }
+
+    function decryptMessage(encryptedContent, senderId) {
+      // Try to decrypt E2E encrypted message
+      try {
+        const parsed = JSON.parse(encryptedContent);
+        
+        // Check for v1 encrypted format
+        if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
+          // This is encrypted - need async decryption
+          // Return marker for async handling
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        
+        // Legacy unencrypted format
+        if (parsed.type && parsed.type !== 'text') {
+          return JSON.stringify(parsed);
+        }
+        if (parsed.content) return parsed.content;
+      } catch (e) {}
+      return encryptedContent;
+    }
+
+    // Async decrypt for rendering
+    async function decryptMessageAsync(encryptedContent, senderId) {
+      try {
+        const parsed = JSON.parse(encryptedContent);
+        
+        // Check for v1 encrypted format
+        if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
+          const decrypted = await decryptFromSender(encryptedContent, senderId);
+          if (decrypted) {
+            return decrypted;
+          }
+          return '[Could not decrypt]';
+        }
+        
+        // Legacy unencrypted format
+        if (parsed.type && parsed.type !== 'text') {
+          return JSON.stringify(parsed);
+        }
+        if (parsed.content) return parsed.content;
+      } catch (e) {}
+      return encryptedContent;
+    }
+
+    async function sendMessage() {
+      // Route to group message if in group chat
+      if (currentGroupId) {
+        return sendGroupMessage();
+      }
+      
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+      if (!text || !currentRecipientId) return;
+
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = true;
+      
+      try {
+        // Create message envelope
+        const messageEnvelope = JSON.stringify({
+          type: 'text',
+          content: text,
+          timestamp: Date.now()
+        });
+        
+        // Encrypt for recipient
+        let encryptedForRecipient = messageEnvelope;
+        let encryptedForSender = messageEnvelope;
+        
+        if (myEncryptionKeyPair) {
+          // E2E encrypt the message
+          encryptedForRecipient = await encryptForRecipient(messageEnvelope, currentRecipientId);
+          // Also encrypt for self (so we can read our own sent messages)
+          const wallet = WalletAuth.getWallet();
+          encryptedForSender = await encryptForRecipient(messageEnvelope, wallet.publicKey);
+        }
+        
+        // Get disappearing message settings
+        const disappearSettings = getDisappearSettings();
+        
+        const response = await fetch('/api/messages/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            recipientId: currentRecipientId,
+            encryptedContent: encryptedForRecipient,
+            encryptedForSender: encryptedForSender,
+            itemId: currentItemId || undefined,
+            conversationId: currentConversationId || undefined,
+            mediaType: 'text',
+            selfDestructAfter: disappearSettings.selfDestructAfter,
+            expiresAfterView: disappearSettings.expiresAfterView
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          input.value = '';
+          if (data.conversationId) {
+            currentConversationId = data.conversationId;
+          }
+          // Reload messages to show the new one
+          await loadMessages(currentConversationId);
+          // Refresh inbox list so you can see the conversation immediately
+          loadConversations();
+        } else {
+          alert(data.error || 'Failed to send message');
+        }
+      } catch (error) {
+        console.error('Send error:', error);
+        alert('Failed to send message');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    function showInbox() {
+      document.getElementById('chatView').classList.remove('active');
+      document.getElementById('inboxView').style.display = 'block';
+      currentConversationId = null;
+      currentRecipientId = null;
+      currentGroupId = null;
+      
+      // Stop message polling, start inbox polling
+      stopMessagePolling();
+      stopGroupMessagePolling();
+      startInboxPolling();
+      
+      loadConversations();
+    }
+
+    function startConversation(contactId) {
+      openConversation(null, contactId);
+    }
+
+    function formatTimeAgo(timestamp) {
+      const seconds = Math.floor((Date.now() - timestamp) / 1000);
+      if (seconds < 60) return 'now';
+      if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+      return Math.floor(seconds / 86400) + 'd';
+    }
+
+    function formatTimeUntil(timestamp) {
+      const seconds = Math.floor((timestamp - Date.now()) / 1000);
+      if (seconds < 0) return 'expired';
+      if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+      return Math.floor(seconds / 86400) + 'd';
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ============================================================
+    // CONTACT SHARING FUNCTIONS
+    // ============================================================
+
+    function showShareModal() {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet) return;
+      
+      // Generate shareable link
+      const baseUrl = window.location.origin;
+      const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
+      document.getElementById('shareLink').value = shareUrl;
+      
+      // Generate QR code using qrcodejs library (same as mobile-verify.html)
+      const qrContainer = document.getElementById('qrContainer');
+      qrContainer.innerHTML = '';
+      
+      try {
+        if (typeof QRCode !== 'function') {
+          qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR library not available</div>';
+          return;
+        }
+        new QRCode(qrContainer, {
+          text: shareUrl,
+          width: 200,
+          height: 200,
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch (e) {
+        console.error('QR generation error:', e);
+        qrContainer.innerHTML = '<div style="color:#ff6b6b;padding:20px;">QR generation failed</div>';
+      }
+      
+      document.getElementById('shareModal').style.display = 'flex';
+    }
+
+    function showAddContactModal() {
+      document.getElementById('addContactInput').value = '';
+      document.getElementById('addContactModal').style.display = 'flex';
+    }
+
+    // QR Scanner state
+    let qrScannerStream = null;
+    let qrScannerActive = false;
+
+    async function toggleQrScanner() {
+      if (qrScannerActive) {
+        stopQrScanner();
+      } else {
+        await startQrScanner();
+      }
+    }
+
+    async function startQrScanner() {
+      const container = document.getElementById('qrScannerContainer');
+      const video = document.getElementById('qrScannerVideo');
+      const status = document.getElementById('qrScannerStatus');
+      const btn = document.getElementById('scanQrBtn');
+      
+      try {
+        qrScannerStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        video.srcObject = qrScannerStream;
+        await video.play();
+        
+        container.style.display = 'block';
+        btn.textContent = '✕ Stop Scanner';
+        btn.style.background = '#c0392b';
+        qrScannerActive = true;
+        status.textContent = 'Point camera at QR code...';
+        
+        // Start scanning
+        scanQrCode(video, status);
+      } catch (e) {
+        console.error('Camera error:', e);
+        status.textContent = 'Could not access camera';
+        alert('Could not access camera. Please grant permission.');
+      }
+    }
+
+    function stopQrScanner() {
+      const container = document.getElementById('qrScannerContainer');
+      const video = document.getElementById('qrScannerVideo');
+      const btn = document.getElementById('scanQrBtn');
+      
+      if (qrScannerStream) {
+        qrScannerStream.getTracks().forEach(t => t.stop());
+        qrScannerStream = null;
+      }
+      video.srcObject = null;
+      container.style.display = 'none';
+      btn.textContent = '📷 Scan QR Code';
+      btn.style.background = '#333';
+      qrScannerActive = false;
+    }
+
+    function scanQrCode(video, status) {
+      if (!qrScannerActive) return;
+      
+      // Use canvas to capture frame and analyze
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      
+      const scan = () => {
+        if (!qrScannerActive) return;
+        
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Use jsQR library if available, otherwise try BarcodeDetector API
+        if (typeof jsQR !== 'undefined') {
+          const code = jsQR(imageData.data, canvas.width, canvas.height);
+          if (code && code.data) {
+            handleQrResult(code.data);
+            return;
+          }
+        } else if ('BarcodeDetector' in window) {
+          const detector = new BarcodeDetector({ formats: ['qr_code'] });
+          detector.detect(canvas).then(barcodes => {
+            if (barcodes.length > 0) {
+              handleQrResult(barcodes[0].rawValue);
+              return;
+            }
+          }).catch(() => {});
+        }
+        
+        // Continue scanning
+        requestAnimationFrame(scan);
+      };
+      
+      requestAnimationFrame(scan);
+    }
+
+    function handleQrResult(data) {
+      console.log('QR scanned:', data);
+      
+      // Stop scanner FIRST and ensure camera is fully released
+      stopQrScanner();
+      
+      // Extract contact ID from scanned data
+      let contactId = data;
+      if (data.includes('contact=')) {
+        const match = data.match(/contact=([^&]+)/);
+        if (match) contactId = match[1];
+      } else if (data.includes('/m/messages?')) {
+        try {
+          const url = new URL(data);
+          contactId = url.searchParams.get('contact') || data;
+        } catch {}
+      }
+      
+      // Close modal and add contact (don't auto-open conversation to avoid camera conflicts)
+      closeModals();
+      
+      if (contactId) {
+        // Just add contact to list, don't open conversation immediately
+        addContactOnly(contactId);
+      }
+    }
+    
+    async function addContactOnly(contactId) {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet || contactId === wallet.publicKey) {
+        alert("You can't add yourself as a contact");
+        return;
+      }
+      
+      // Always save to localStorage first (backup)
+      addLocalContact(contactId);
+      
+      try {
+        const res = await fetch('/api/messages/contacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ contactId: contactId })
+        });
+        
+        if (res.ok) {
+          alert('Contact added! Tap their name in the list to start chatting.');
+          loadContacts(); // Refresh contacts list
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert('Failed to add contact: ' + (data.error || 'Unknown error'));
+        }
+      } catch (e) {
+        console.error('Add contact error:', e);
+        alert('Contact saved locally. Will sync when server is available.');
+      }
+    }
+
+    function closeModals() {
+      stopQrScanner();
+      document.getElementById('shareModal').style.display = 'none';
+      document.getElementById('addContactModal').style.display = 'none';
+      document.getElementById('createGroupModal').style.display = 'none';
+      document.getElementById('manageGroupModal').style.display = 'none';
+    }
+
+    function copyShareLink() {
+      const input = document.getElementById('shareLink');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        const btn = input.nextElementSibling;
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
+
+    function addContactFromInput() {
+      const input = document.getElementById('addContactInput').value.trim();
+      if (!input) return;
+      
+      // Extract accountId from input (could be full URL or just the ID)
+      let contactId = input;
+      
+      // Check if it's a URL with contact parameter
+      if (input.includes('contact=')) {
+        const match = input.match(/contact=([^&]+)/);
+        if (match) contactId = match[1];
+      } else if (input.includes('/m/messages?')) {
+        const url = new URL(input);
+        contactId = url.searchParams.get('contact') || input;
+      }
+      
+      if (contactId) {
+        addContactAndStartChat(contactId);
+        closeModals();
+      }
+    }
+
+    async function addContactAndStartChat(contactId) {
+      const wallet = WalletAuth.getWallet();
+      if (!wallet || contactId === wallet.publicKey) {
+        alert("You can't add yourself as a contact");
+        return;
+      }
+      
+      // Add to contacts via API
+      try {
+        await fetch('/api/messages/contacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ contactId })
+        });
+      } catch (e) {
+        console.log('Contact add request:', e);
+      }
+      
+      // Clear URL parameters
+      window.history.replaceState({}, '', '/m/messages');
+      
+      // Start conversation with the contact
+      currentRecipientId = contactId;
+      currentRecipientPublicKey = contactId;
+      currentItemId = null;
+      currentConversationId = null;
+      
+      document.getElementById('inboxView').style.display = 'none';
+      document.getElementById('chatView').classList.add('active');
+      document.getElementById('chatParticipantName').textContent = contactId.substring(0, 12) + '...';
+      document.getElementById('chatItemContext').textContent = '';
+      
+      // Load any existing messages (might be empty for new contact)
+      const convId = await generateConversationId(wallet.publicKey, contactId, null);
+      currentConversationId = convId;
+      await loadMessages(convId);
+      
+      // Refresh contacts
+      loadContacts();
+    }
+
+    async function addCurrentRecipientToContacts() {
+      if (!currentRecipientId) return;
+      
+      const btn = document.getElementById('addContactChatBtn');
+      btn.disabled = true;
+      
+      try {
+        const response = await fetch('/api/messages/contacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({ contactId: currentRecipientId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          btn.textContent = '✓ Added';
+          btn.classList.add('added');
+          loadContacts();
+        } else {
+          alert(data.error || 'Failed to add contact');
+        }
+      } catch (e) {
+        console.error('Add contact error:', e);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function updateAddContactButton(isAlreadyContact) {
+      const btn = document.getElementById('addContactChatBtn');
+      if (isAlreadyContact) {
+        btn.textContent = '✓ Contact';
+        btn.classList.add('added');
+      } else {
+        btn.textContent = '➕ Add';
+        btn.classList.remove('added');
+      }
+    }
+
+    // ============================================================
+    // MEDIA MESSAGING FUNCTIONS
+    // ============================================================
+    
+    let pendingMedia = null; // { type: 'image'|'video'|'audio', data: base64, name: string, size: number }
+    let audioRecorder = null;
+    let audioChunks = [];
+    let audioTimerInterval = null;
+    let audioStartTime = null;
+    const MAX_AUDIO_SECONDS = 30;
+    const MAX_VIDEO_SECONDS = 15;
+    const MAX_IMAGE_SIZE = 500 * 1024; // 500KB after compression
+    const MAX_VIDEO_SIZE = 5 * 1024 * 1024; // 5MB
+
+    async function handlePhotoSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      try {
+        const compressed = await compressImage(file, MAX_IMAGE_SIZE);
+        pendingMedia = {
+          type: 'image',
+          data: compressed.data,
+          name: file.name || 'Photo',
+          size: compressed.size
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('Photo processing error:', e);
+        alert('Failed to process photo');
+      }
+      event.target.value = ''; // Reset input
+    }
+
+    async function handleVideoSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      if (file.size > MAX_VIDEO_SIZE) {
+        alert(`Video too large. Maximum size is ${Math.round(MAX_VIDEO_SIZE / 1024 / 1024)}MB`);
+        event.target.value = '';
+        return;
+      }
+      
+      try {
+        const data = await fileToBase64(file);
+        pendingMedia = {
+          type: 'video',
+          data: data,
+          name: file.name || 'Video',
+          size: file.size
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('Video processing error:', e);
+        alert('Failed to process video');
+      }
+      event.target.value = '';
+    }
+
+    async function compressImage(file, maxSize) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Scale down if needed
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round(height * maxDim / width);
+                width = maxDim;
+              } else {
+                width = Math.round(width * maxDim / height);
+                height = maxDim;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Try different quality levels
+            let quality = 0.8;
+            let data = canvas.toDataURL('image/jpeg', quality);
+            
+            while (data.length > maxSize * 1.37 && quality > 0.1) { // base64 is ~37% larger
+              quality -= 0.1;
+              data = canvas.toDataURL('image/jpeg', quality);
+            }
+            
+            resolve({
+              data: data,
+              size: Math.round(data.length * 0.73) // Approximate actual size
+            });
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    
+    // Detect iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    // Convert base64 data URL to Blob URL for better mobile video compatibility
+    function base64ToBlobUrl(base64DataUrl) {
+      try {
+        const parts = base64DataUrl.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'video/mp4';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        return { url: URL.createObjectURL(blob), mime: mime };
+      } catch (e) {
+        console.error('Failed to convert base64 to blob:', e);
+        return { url: base64DataUrl, mime: 'video/mp4' };
+      }
+    }
+    
+    // Track blob URLs and base64 for cleanup/fallback
+    const videoBlobUrls = new Map();
+    const videoBase64Data = new Map();
+
+    function showMediaPreview() {
+      if (!pendingMedia) return;
+      
+      const preview = document.getElementById('mediaPreview');
+      const thumb = document.getElementById('mediaPreviewThumb');
+      const name = document.getElementById('mediaPreviewName');
+      const size = document.getElementById('mediaPreviewSize');
+      
+      name.textContent = pendingMedia.type.charAt(0).toUpperCase() + pendingMedia.type.slice(1);
+      size.textContent = formatFileSize(pendingMedia.size);
+      
+      if (pendingMedia.type === 'image') {
+        thumb.innerHTML = `<img src="${pendingMedia.data}" alt="Preview">`;
+      } else if (pendingMedia.type === 'video') {
+        thumb.innerHTML = `<video src="${pendingMedia.data}" muted></video>`;
+      } else if (pendingMedia.type === 'audio') {
+        thumb.innerHTML = `<div style="font-size:2rem">🎵</div>`;
+      }
+      
+      preview.classList.add('active');
+    }
+
+    function clearMediaPreview() {
+      pendingMedia = null;
+      document.getElementById('mediaPreview').classList.remove('active');
+      document.getElementById('mediaPreviewThumb').innerHTML = '';
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // Audio Recording - detect best supported format for iOS/Android compatibility
+    function getSupportedAudioMimeType() {
+      const types = [
+        'audio/mp4',           // iOS Safari preferred
+        'audio/aac',           // iOS fallback
+        'audio/webm;codecs=opus', // Chrome/Firefox preferred
+        'audio/webm',          // Generic WebM
+        'audio/ogg;codecs=opus',
+        ''                     // Let browser choose default
+      ];
+      for (const type of types) {
+        if (type === '' || MediaRecorder.isTypeSupported(type)) {
+          return type;
+        }
+      }
+      return '';
+    }
+
+    let audioMimeType = '';
+
+    async function toggleAudioRecording() {
+      if (audioRecorder && audioRecorder.state === 'recording') {
+        // Already recording - stop will be handled by sendAudioRecording
+        return;
+      }
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Use iOS-compatible format if available
+        audioMimeType = getSupportedAudioMimeType();
+        const options = audioMimeType ? { mimeType: audioMimeType } : {};
+        
+        audioRecorder = new MediaRecorder(stream, options);
+        audioChunks = [];
+        
+        console.log('Recording with MIME type:', audioRecorder.mimeType);
+        
+        audioRecorder.ondataavailable = (e) => {
+          audioChunks.push(e.data);
+        };
+        
+        audioRecorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+        };
+        
+        audioRecorder.start();
+        audioStartTime = Date.now();
+        
+        // Show recorder UI
+        document.getElementById('audioRecorder').classList.add('active');
+        document.getElementById('audioBtn').classList.add('recording');
+        
+        // Start timer
+        audioTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - audioStartTime) / 1000);
+          document.getElementById('audioTimer').textContent = 
+            `${Math.floor(elapsed / 60)}:${(elapsed % 60).toString().padStart(2, '0')}`;
+          
+          // Auto-stop at max duration
+          if (elapsed >= MAX_AUDIO_SECONDS) {
+            sendAudioRecording();
+          }
+        }, 100);
+        
+      } catch (e) {
+        console.error('Audio recording error:', e);
+        alert('Could not access microphone. Please grant permission.');
+      }
+    }
+
+    function cancelAudioRecording() {
+      if (audioRecorder && audioRecorder.state === 'recording') {
+        audioRecorder.stop();
+      }
+      clearAudioRecorder();
+    }
+
+    function clearAudioRecorder() {
+      if (audioTimerInterval) {
+        clearInterval(audioTimerInterval);
+        audioTimerInterval = null;
+      }
+      audioRecorder = null;
+      audioChunks = [];
+      audioStartTime = null;
+      document.getElementById('audioRecorder').classList.remove('active');
+      document.getElementById('audioBtn').classList.remove('recording');
+      document.getElementById('audioTimer').textContent = '0:00';
+    }
+
+    async function sendAudioRecording() {
+      if (!audioRecorder || audioRecorder.state !== 'recording') return;
+      
+      audioRecorder.stop();
+      
+      // Wait for data to be available
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Use the actual MIME type from the recorder (handles iOS MP4 vs Chrome WebM)
+      const actualMimeType = audioRecorder?.mimeType || audioMimeType || 'audio/webm';
+      const blob = new Blob(audioChunks, { type: actualMimeType });
+      console.log('Audio blob created with type:', actualMimeType);
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      pendingMedia = {
+        type: 'audio',
+        data: data,
+        name: 'Voice message',
+        size: blob.size
+      };
+      
+      clearAudioRecorder();
+      
+      // Send immediately
+      await sendMediaMessage();
+    }
+
+    async function sendMediaMessage() {
+      if (!pendingMedia || !currentRecipientId) return;
+      
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = true;
+      
+      try {
+        // Create media envelope
+        const mediaEnvelope = JSON.stringify({
+          type: pendingMedia.type,
+          content: pendingMedia.data,
+          name: pendingMedia.name,
+          timestamp: Date.now()
+        });
+        
+        // Encrypt for recipient
+        let encryptedForRecipient = mediaEnvelope;
+        let encryptedForSender = mediaEnvelope;
+        
+        if (myEncryptionKeyPair) {
+          // E2E encrypt the media
+          encryptedForRecipient = await encryptForRecipient(mediaEnvelope, currentRecipientId);
+          // Also encrypt for self
+          const wallet = WalletAuth.getWallet();
+          encryptedForSender = await encryptForRecipient(mediaEnvelope, wallet.publicKey);
+        }
+        
+        // Get disappearing message settings
+        const disappearSettings = getDisappearSettings();
+        
+        const response = await fetch('/api/messages/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            recipientId: currentRecipientId,
+            encryptedContent: encryptedForRecipient,
+            encryptedForSender: encryptedForSender,
+            itemId: currentItemId || undefined,
+            conversationId: currentConversationId || undefined,
+            // Include media type and disappearing settings
+            mediaType: pendingMedia.type,
+            selfDestructAfter: disappearSettings.selfDestructAfter,
+            expiresAfterView: disappearSettings.expiresAfterView
+          })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          clearMediaPreview();
+          if (data.conversationId) {
+            currentConversationId = data.conversationId;
+          }
+          await loadMessages(currentConversationId);
+          loadConversations();
+        } else {
+          alert(data.error || 'Failed to send media');
+        }
+      } catch (error) {
+        console.error('Send media error:', error);
+        alert('Failed to send media');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    // Override sendMessage to handle pending media
+    const originalSendMessage = sendMessage;
+    sendMessage = async function() {
+      if (pendingMedia) {
+        await sendMediaMessage();
+      } else {
+        await originalSendMessage();
+      }
+    };
+
+    // ============================================================
+    // PUSH-TO-TALK (WALKIE-TALKIE) FUNCTIONS
+    // ============================================================
+    
+    let pttRecorder = null;
+    let pttChunks = [];
+    let pttStream = null;
+    let pttActive = false;
+    
+    function initPushToTalk() {
+      const pttBtn = document.getElementById('pttBtn');
+      if (!pttBtn) return;
+      
+      // Mouse events (desktop)
+      pttBtn.addEventListener('mousedown', startPTT);
+      pttBtn.addEventListener('mouseup', stopPTT);
+      pttBtn.addEventListener('mouseleave', stopPTT);
+      
+      // Touch events (mobile)
+      pttBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startPTT();
+      });
+      pttBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopPTT();
+      });
+      pttBtn.addEventListener('touchcancel', stopPTT);
+    }
+    
+    async function startPTT() {
+      if (pttActive || !currentRecipientId) return;
+      
+      try {
+        pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        const mimeType = getSupportedAudioMimeType();
+        const options = mimeType ? { mimeType } : {};
+        
+        pttRecorder = new MediaRecorder(pttStream, options);
+        pttChunks = [];
+        
+        pttRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) pttChunks.push(e.data);
+        };
+        
+        pttRecorder.onstop = async () => {
+          // Clean up stream
+          if (pttStream) {
+            pttStream.getTracks().forEach(t => t.stop());
+            pttStream = null;
+          }
+          
+          // Only send if we have audio data
+          if (pttChunks.length > 0) {
+            await sendPTTAudio();
+          }
+        };
+        
+        pttRecorder.start();
+        pttActive = true;
+        
+        // Show recording UI
+        document.getElementById('pttBtn').classList.add('recording');
+        document.getElementById('pttRecording').classList.add('active');
+        
+      } catch (e) {
+        console.error('PTT start error:', e);
+        alert('Could not access microphone');
+      }
+    }
+    
+    function stopPTT() {
+      if (!pttActive || !pttRecorder) return;
+      
+      pttActive = false;
+      document.getElementById('pttBtn').classList.remove('recording');
+      document.getElementById('pttRecording').classList.remove('active');
+      
+      if (pttRecorder.state === 'recording') {
+        pttRecorder.stop();
+      }
+    }
+    
+    async function sendPTTAudio() {
+      if (pttChunks.length === 0) return;
+      
+      const actualMimeType = pttRecorder?.mimeType || 'audio/webm';
+      const blob = new Blob(pttChunks, { type: actualMimeType });
+      
+      // Convert to base64
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      // Set as pending media and send
+      pendingMedia = {
+        type: 'audio',
+        data: data,
+        name: 'Voice message',
+        size: blob.size,
+        isPTT: true // Mark as push-to-talk for auto-play
+      };
+      
+      pttChunks = [];
+      pttRecorder = null;
+      
+      await sendMediaMessage();
+    }
+    
+    // Initialize PTT when DOM is ready
+    document.addEventListener('DOMContentLoaded', initPushToTalk);
+
+    // Fullscreen media viewer
+    function openFullscreen(srcOrId, type) {
+      const container = document.getElementById('fullscreenContent');
+      if (type === 'image') {
+        container.innerHTML = `<img src="${srcOrId}" alt="Fullscreen">`;
+      } else if (type === 'video') {
+        // srcOrId might be a video element ID - get the blob URL from our map
+        const blobUrl = videoBlobUrls.get(srcOrId) || srcOrId;
+        container.innerHTML = `<video src="${blobUrl}" controls autoplay playsinline webkit-playsinline></video>`;
+      }
+      document.getElementById('mediaFullscreen').classList.add('active');
+    }
+
+    function closeFullscreen() {
+      document.getElementById('mediaFullscreen').classList.remove('active');
+      document.getElementById('fullscreenContent').innerHTML = '';
+    }
+
+    // Update renderMessages to show media with async E2E decryption
+    const originalRenderMessages = renderMessages;
+    renderMessages = async function(messages) {
+      const container = document.getElementById('chatMessages');
+      const wallet = WalletAuth.getWallet();
+      
+      if (messages.length === 0) {
+        container.innerHTML = `
+          <div style="text-align:center;color:#888;padding:2rem;">
+            Start the conversation by sending a message
+          </div>
+        `;
+        return;
+      }
+
+      // Process messages with async decryption
+      const processedMessages = await Promise.all(messages.map(async (msg) => {
+        const isSent = msg.senderId === wallet.publicKey;
+        const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const expiresIn = formatTimeUntil(msg.expiresAt);
+        
+        // Choose correct encrypted content based on who sent it
+        const contentToDecrypt = isSent ? msg.encryptedForSender : msg.encryptedContent;
+        
+        let content = '';
+        try {
+          // Async decrypt the message
+          const decrypted = await decryptMessageAsync(contentToDecrypt || msg.encryptedContent, msg.senderId);
+          const parsed = JSON.parse(decrypted);
+          
+          if (parsed.type === 'image') {
+            content = `
+              <div class="message-media">
+                <img src="${parsed.content}" alt="Photo" onclick="openFullscreen(this.src, 'image')">
+              </div>
+            `;
+          } else if (parsed.type === 'video') {
+            // Convert base64 to Blob URL for mobile compatibility
+            const videoId = 'vid_' + msg.timestamp + '_' + Math.random().toString(36).substr(2, 9);
+            const blobData = base64ToBlobUrl(parsed.content);
+            videoBlobUrls.set(videoId, blobData.url);
+            videoBase64Data.set(videoId, parsed.content); // Keep base64 as fallback for iOS
+            
+            // iOS needs special handling - use source element without fragment
+            if (isIOS) {
+              content = `
+                <div class="message-media">
+                  <video id="${videoId}" controls playsinline webkit-playsinline preload="auto"
+                         onclick="openFullscreen('${videoId}', 'video')">
+                    <source src="${blobData.url}" type="${blobData.mime}">
+                    Your browser does not support video.
+                  </video>
+                </div>
+              `;
+            } else {
+              content = `
+                <div class="message-media">
+                  <video id="${videoId}" src="${blobData.url}#t=0.1" controls playsinline webkit-playsinline preload="metadata"
+                         onclick="openFullscreen('${videoId}', 'video')"></video>
+                </div>
+              `;
+            }
+          } else if (parsed.type === 'audio') {
+            content = `
+              <div class="message-media">
+                <audio src="${parsed.content}" controls></audio>
+              </div>
+            `;
+          } else {
+            content = `<div class="message-text">${escapeHtml(parsed.content || decrypted)}</div>`;
+          }
+        } catch (e) {
+          // Fallback for legacy or failed decryption
+          try {
+            const fallback = await decryptMessageAsync(msg.encryptedContent, msg.senderId);
+            content = `<div class="message-text">${escapeHtml(fallback)}</div>`;
+          } catch (e2) {
+            content = `<div class="message-text" style="color:#ff6b6b;">[Could not decrypt]</div>`;
+          }
+        }
+        
+        return `
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+            ${content}
+            <div class="message-meta">
+              ${timeStr}
+              <span class="message-expires">• expires ${expiresIn}</span>
+            </div>
+          </div>
+        `;
+      }));
+
+      container.innerHTML = processedMessages.join('');
+      container.scrollTop = container.scrollHeight;
+    };
+  </script>
+</body>
+</html>

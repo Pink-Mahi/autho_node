@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Consignment Checkout - Autho</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 6px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 18px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      color: #d4af37;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+    }
+
+    .row:last-child { border-bottom: none; }
+
+    .k { color: #999; font-size: 12px; }
+    .v { color: #fff; font-size: 12px; max-width: 65%; text-align: right; word-break: break-all; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      gap: 8px;
+    }
+
+    .badge.red {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.10);
+      color: #ff6b6b;
+    }
+
+    .badge.green {
+      border-color: rgba(76, 217, 100, 0.35);
+      background: rgba(76, 217, 100, 0.10);
+      color: #4cd964;
+    }
+
+    .btn {
+      width: 100%;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s;
+      margin-top: 10px;
+    }
+
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: rgba(212, 175, 55, 0.12);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+    }
+
+    .msg {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+      font-size: 13px;
+      display: none;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .msg.error {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.10);
+      color: #ff6b6b;
+    }
+
+    .mono { font-family: 'Courier New', monospace; }
+
+    .outputs {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(212, 175, 55, 0.15);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #fff;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .footer {
+      margin-top: 18px;
+      text-align: center;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .footer a { color: #d4af37; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div style="flex:1; min-width:0;">
+      <h1>Consignment Checkout</h1>
+      <div id="loggedInAs" style="margin-top:2px; font-size:11px; color:#999; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Logged in as: —</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card" id="itemCard" style="display:none;">
+      <div class="card-title">📦 Item</div>
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <div style="width:90px; height:90px; border-radius:12px; overflow:hidden; background: rgba(0,0,0,0.25); border: 1px solid rgba(212, 175, 55, 0.15); flex: 0 0 auto;">
+          <img id="itemImage" src="" alt="Item" style="width:100%; height:100%; object-fit:cover; display:none;" />
+          <div id="itemImagePlaceholder" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#777; font-size:11px; text-align:center; padding:8px;">No photo</div>
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+            <div id="itemName" style="font-weight:800; color:#fff; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">—</div>
+            <div id="itemVerified" class="badge" style="display:none;"></div>
+          </div>
+          <div id="itemDescription" style="margin-top:8px; color:#bbb; font-size:12px; line-height:1.4;">—</div>
+          <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="color:#999; font-size:11px;">Item ID</div>
+              <div id="itemIdDetail" class="mono" style="color:#fff; font-size:11px; max-width:65%; text-align:right; word-break:break-word;">—</div>
+            </div>
+            <div id="itemSerialRow" style="display:none; justify-content:space-between; gap:10px;">
+              <div style="color:#999; font-size:11px;">Serial</div>
+              <div id="itemSerialDetail" class="mono" style="color:#fff; font-size:11px; max-width:65%; text-align:right; word-break:break-word;">—</div>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="color:#999; font-size:11px;">Manufacturer</div>
+              <div id="itemManufacturer" style="color:#fff; font-size:11px; max-width:65%; text-align:right; word-break:break-word;">—</div>
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="color:#999; font-size:11px;">Created</div>
+              <div id="itemCreatedAt" style="color:#fff; font-size:11px; max-width:65%; text-align:right; word-break:break-word;">—</div>
+            </div>
+            <div id="itemQrBox" style="margin-top:8px; display:none;">
+              <div style="color:#999; font-size:11px; margin-bottom:6px;">Verify this item (scan QR)</div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <div style="background:#fff; padding:8px; border-radius:10px;">
+                  <img id="itemVerifyQr" src="" alt="Verify QR" style="width:120px; height:120px; display:block;" />
+                </div>
+                <div style="flex:1; min-width:0;">
+                  <div class="mono" id="itemVerifyUrl" style="color:#bbb; font-size:10px; word-break:break-all;">—</div>
+                  <a id="itemVerifyLink" href="#" style="display:inline-block; margin-top:6px; color:#d4af37; text-decoration:none; font-size:12px;">Open verification page</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🧾 Order</div>
+      <div class="row"><div class="k">Consignment</div><div class="v mono" id="consignmentId">—</div></div>
+      <div class="row"><div class="k">Item</div><div class="v mono" id="itemId">—</div></div>
+      <div class="row"><div class="k">Total</div><div class="v" id="totalSats">—</div></div>
+      <div class="row"><div class="k">Expires</div><div class="v" id="expiresAt">—</div></div>
+      <div class="row"><div class="k">Checkout Lock</div><div class="v" id="lockStatus">—</div></div>
+      <div id="globalMsg" class="msg"></div>
+      <button class="btn btn-secondary" id="lockBtn" onclick="lockCheckout()" disabled>Lock Checkout (15 min)</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📤 Payment Outputs</div>
+      <div class="row"><div class="k">Owner Payout</div><div class="v" id="sellerPayout">—</div></div>
+      <div class="row"><div class="k">Retailer Commission</div><div class="v" id="retailerCommission">—</div></div>
+      <div class="row"><div class="k">Title Update Fee</div><div class="v" id="platformFee">—</div></div>
+      <div class="outputs" id="outputsBox">Loading...</div>
+      <div id="payMsg" class="msg"></div>
+      <button class="btn" id="payBtn" onclick="completePayment()" disabled>💳 Complete Payment</button>
+      <button class="btn btn-secondary" id="recordTxidBtn" onclick="recordPaymentTxid()">Already Paid? Record TXID</button>
+    </div>
+
+    <div class="card" id="cancelCard">
+      <div class="card-title">🧯 Cancellation</div>
+      <div class="row"><div class="k">Status</div><div class="v" id="consignmentStatus">—</div></div>
+      <div class="row"><div class="k">Cancel Requested</div><div class="v" id="cancelRequested">—</div></div>
+      <div class="row"><div class="k">Cancel Confirmed</div><div class="v" id="cancelConfirmed">—</div></div>
+      <div id="cancelMsg" class="msg"></div>
+      <button class="btn btn-secondary" id="cancelRequestBtn" onclick="requestCancel()" disabled>Request Cancel</button>
+      <button class="btn btn-secondary" id="cancelConfirmBtn" onclick="confirmCancel()" disabled>Confirm Cancel</button>
+    </div>
+
+    <div class="footer">
+      If you need to sign in: <a href="/retailer/login">/retailer/login</a> or <a href="/customer/login">/customer/login</a>
+    </div>
+  </div>
+
+  <script src="/js/btc.bundle.js"></script>
+  <script>
+    let checkout = null;
+    let consignment = null;
+    let itemRecord = null;
+
+    function getConsignmentIdFromUrl() {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        return String(sp.get('consignmentId') || sp.get('id') || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function getSessionId() {
+      try {
+        return String(localStorage.getItem('autho_session_id') || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function getSessionAccountId() {
+      try {
+        return String(localStorage.getItem('autho_account_id') || '').trim();
+      } catch {
+        return '';
+      }
+    }
+
+    function clearSession() {
+      try { localStorage.removeItem('autho_session_id'); } catch {}
+      try { localStorage.removeItem('autho_account_id'); } catch {}
+    }
+
+    function getReturnUrl() {
+      const cid = getConsignmentIdFromUrl();
+      return cid ? `/m/consignment?consignmentId=${encodeURIComponent(cid)}` : '/m/consignment';
+    }
+
+    function redirectToLogin() {
+      const returnUrl = getReturnUrl();
+      window.location.href = `/customer/login?return=${encodeURIComponent(returnUrl)}`;
+    }
+
+    async function updateLoggedInAs() {
+      const el = document.getElementById('loggedInAs');
+      if (!el) return;
+      const sid = getSessionId();
+      if (!sid) {
+        el.textContent = 'Logged in as: (not signed in)';
+        return;
+      }
+      try {
+        const r = await apiFetch('/api/auth/me', { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          clearSession();
+          el.textContent = 'Logged in as: (not signed in)';
+          return;
+        }
+        const a = data.account || {};
+        const email = String(a.email || '').trim();
+        const username = String(a.username || '').trim();
+        const accountId = String(a.accountId || '').trim();
+        const ident = email || username || (accountId ? `${accountId.substring(0, 12)}...` : '—');
+        const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
+        el.textContent = `Logged in as: ${shortId && ident !== shortId ? `${ident} (${shortId})` : ident}`;
+      } catch {
+        clearSession();
+        el.textContent = 'Logged in as: (not signed in)';
+      }
+    }
+
+    function fmtTs(ts) {
+      const n = Number(ts || 0);
+      if (!n) return '—';
+      try { return new Date(n).toLocaleString(); } catch { return String(n); }
+    }
+
+    function setMsg(elId, text, isError) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      if (!text) {
+        el.style.display = 'none';
+        el.textContent = '';
+        el.classList.remove('error');
+        return;
+      }
+      el.textContent = String(text);
+      el.style.display = 'block';
+      if (isError) el.classList.add('error');
+      else el.classList.remove('error');
+    }
+
+    function badgeHtml(text, kind) {
+      const t = String(text || '').toLowerCase();
+      const cls = kind ? String(kind) : (t.includes('locked') ? 'green' : (t.includes('expired') ? 'red' : ''));
+      return `<span class="badge ${cls}">${String(text)}</span>`;
+    }
+
+    async function apiFetch(path, options) {
+      const sessionId = getSessionId();
+      const headers = Object.assign({}, (options && options.headers) || {});
+      if (sessionId) headers['Authorization'] = `Bearer ${sessionId}`;
+      if (!headers['Content-Type'] && options && options.body) headers['Content-Type'] = 'application/json';
+      return fetch(path, Object.assign({}, options || {}, { headers }));
+    }
+
+    async function ensureLoggedInOrRedirect() {
+      const sessionId = getSessionId();
+      if (sessionId) return true;
+      redirectToLogin();
+      return false;
+    }
+
+    async function loadCheckout() {
+      setMsg('globalMsg', '', false);
+      setMsg('payMsg', '', false);
+      setMsg('cancelMsg', '', false);
+
+      try {
+        const cc = document.getElementById('cancelCard');
+        if (cc) cc.style.display = 'none';
+      } catch {}
+
+      const cid = getConsignmentIdFromUrl();
+      if (!cid) {
+        setMsg('globalMsg', 'Missing consignmentId. Open this page from a store QR code or include ?consignmentId=...', true);
+        document.getElementById('outputsBox').textContent = '—';
+        return;
+      }
+
+      document.getElementById('consignmentId').textContent = cid;
+
+      const ok = await ensureLoggedInOrRedirect();
+      if (!ok) return;
+
+      try {
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(cid)}/checkout`, { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          clearSession();
+          redirectToLogin();
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to load checkout');
+        }
+        checkout = data;
+        renderCheckout();
+
+        try {
+          const c = checkout && checkout.consignment ? checkout.consignment : null;
+          const sessionAccountId = getSessionAccountId();
+          const isOwnerOrRetailer = sessionAccountId && (sessionAccountId === String(c?.ownerAccountId || '') || sessionAccountId === String(c?.retailerAccountId || ''));
+          const cc = document.getElementById('cancelCard');
+          if (cc) cc.style.display = isOwnerOrRetailer ? 'block' : 'none';
+          if (isOwnerOrRetailer) {
+            await loadConsignmentDetails(cid);
+          }
+        } catch {}
+
+        try {
+          const c = checkout && checkout.consignment ? checkout.consignment : null;
+          if (c && c.itemId) await loadItemDetails(String(c.itemId));
+        } catch {}
+      } catch (e) {
+        setMsg('globalMsg', String(e && e.message ? e.message : e), true);
+        document.getElementById('outputsBox').textContent = '—';
+        try { renderConsignmentDetails(); } catch {}
+      }
+    }
+
+    async function loadItemDetails(itemId) {
+      try {
+        const r = await fetch(`/api/registry/item/${encodeURIComponent(String(itemId))}`, { cache: 'no-store' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) return;
+        itemRecord = data.itemRecord || null;
+        renderItemDetails();
+      } catch {}
+    }
+
+    function renderItemDetails() {
+      const it = itemRecord || null;
+      const card = document.getElementById('itemCard');
+      if (!card || !it) return;
+
+      const md = it.metadata || {};
+      const name = String(md.name || md.itemType || it.itemType || 'Item').trim();
+      const desc = String(md.description || '').trim();
+      const imgUrl = String(md.imageUrl || '').trim();
+
+      const idEl = document.getElementById('itemIdDetail');
+      if (idEl) idEl.textContent = String(it.itemId || '—');
+
+      const serialDisplay = String(
+        it?.serialNumberDisplay ||
+        md?.serialNumberDisplay ||
+        md?.serialNumber ||
+        md?.serial ||
+        md?.additionalData?.serialNumber ||
+        md?.additionalData?.serial ||
+        ''
+      ).trim();
+      const serialHash = String(it?.serialNumberHash || '').trim();
+      const serialText = serialDisplay || (serialHash ? `Hash: ${serialHash.substring(0, 12)}...` : '');
+      const serialRow = document.getElementById('itemSerialRow');
+      const serialEl = document.getElementById('itemSerialDetail');
+      if (serialRow && serialEl) {
+        if (serialText) {
+          serialRow.style.display = 'flex';
+          serialEl.textContent = serialText;
+        } else {
+          serialRow.style.display = 'none';
+          serialEl.textContent = '—';
+        }
+      }
+
+      const manufacturerName = String(it.manufacturerDisplayName || it.manufacturerName || it.manufacturerId || '').trim();
+      const manufacturerEl = document.getElementById('itemManufacturer');
+      if (manufacturerEl) manufacturerEl.textContent = manufacturerName || '—';
+
+      const manufacturingDate = Number(md.manufacturingDate || 0);
+      const createdAt = manufacturingDate > 0 ? manufacturingDate : Number(it.registeredAt || 0);
+      const createdEl = document.getElementById('itemCreatedAt');
+      if (createdEl) createdEl.textContent = createdAt > 0 ? fmtTs(createdAt) : '—';
+
+      const nameEl = document.getElementById('itemName');
+      if (nameEl) nameEl.textContent = name || 'Item';
+
+      const descEl = document.getElementById('itemDescription');
+      if (descEl) descEl.textContent = desc || '—';
+
+      const imgEl = document.getElementById('itemImage');
+      const phEl = document.getElementById('itemImagePlaceholder');
+      if (imgEl) {
+        let resolvedUrl = imgUrl;
+        if (!resolvedUrl) {
+          try {
+            const imgs = Array.isArray(md.images) ? md.images : [];
+            const first = imgs && imgs.length ? imgs[0] : null;
+            const mime = first && first.mime ? String(first.mime) : '';
+            const b64 = first && first.dataB64 ? String(first.dataB64) : '';
+            if (mime && b64) {
+              resolvedUrl = `data:${mime};base64,${b64}`;
+            }
+          } catch {}
+        }
+
+        if (resolvedUrl) {
+          imgEl.src = resolvedUrl;
+          imgEl.style.display = 'block';
+          try { if (phEl) phEl.style.display = 'none'; } catch {}
+        } else {
+          imgEl.style.display = 'none';
+          try { if (phEl) phEl.style.display = 'flex'; } catch {}
+        }
+      }
+
+      const status = String(it.verificationStatus || '').toLowerCase();
+      const badge = document.getElementById('itemVerified');
+      if (badge) {
+        if (status === 'verified') {
+          badge.style.display = 'inline-flex';
+          badge.textContent = 'VERIFIED';
+          badge.classList.add('green');
+        } else {
+          badge.style.display = 'inline-flex';
+          badge.textContent = 'UNVERIFIED';
+          badge.classList.remove('green');
+        }
+      }
+
+      try {
+        const itemId = String(it.itemId || '').trim();
+        const box = document.getElementById('itemQrBox');
+        const qr = document.getElementById('itemVerifyQr');
+        const urlEl = document.getElementById('itemVerifyUrl');
+        const linkEl = document.getElementById('itemVerifyLink');
+        if (itemId && box && qr && urlEl && linkEl) {
+          const verifyUrl = `${window.location.origin}/m/verify?itemId=${encodeURIComponent(itemId)}`;
+          urlEl.textContent = verifyUrl;
+          linkEl.href = verifyUrl;
+          qr.src = `/api/qr.png?text=${encodeURIComponent(verifyUrl)}`;
+          box.style.display = 'block';
+        } else {
+          if (box) box.style.display = 'none';
+        }
+      } catch {}
+
+      card.style.display = 'block';
+    }
+
+    async function loadConsignmentDetails(consignmentId) {
+      try {
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(consignmentId)}`, { method: 'GET' });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          clearSession();
+          redirectToLogin();
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to load consignment');
+        }
+        consignment = data.consignment || null;
+        renderConsignmentDetails();
+      } catch (e) {
+        setMsg('cancelMsg', String(e && e.message ? e.message : e), true);
+      }
+    }
+
+    function renderConsignmentDetails() {
+      const c = consignment || null;
+      if (!c) return;
+
+      const status = String(c.status || '');
+      document.getElementById('consignmentStatus').innerHTML = status
+        ? badgeHtml(status, (status === 'cancelled' || status === 'expired') ? 'red' : (status === 'active' ? 'green' : ''))
+        : '—';
+
+      const req = c.cancelRequested;
+      const conf = c.cancelConfirmed;
+      document.getElementById('cancelRequested').textContent = req
+        ? `${String(req.requestedByAccountId || '')} @ ${fmtTs(req.requestedAt)}`
+        : '—';
+      document.getElementById('cancelConfirmed').textContent = conf
+        ? `${String(conf.confirmedByAccountId || '')} @ ${fmtTs(conf.confirmedAt)}`
+        : '—';
+
+      const sessionAccountId = String(localStorage.getItem('autho_account_id') || '').trim();
+      const isOwnerOrRetailer = sessionAccountId && (sessionAccountId === String(c.ownerAccountId || '') || sessionAccountId === String(c.retailerAccountId || ''));
+      const hasTxid = !!String(c.txid || '').trim();
+      const closed = status === 'completed' || status === 'cancelled' || status === 'expired';
+
+      const canRequest = isOwnerOrRetailer && !closed && !hasTxid && !req;
+      const canConfirm = isOwnerOrRetailer && !closed && !hasTxid && !!req && !conf && String(req.requestedByAccountId || '') !== sessionAccountId;
+
+      document.getElementById('cancelRequestBtn').disabled = !canRequest;
+      document.getElementById('cancelConfirmBtn').disabled = !canConfirm;
+    }
+
+    async function requestCancel() {
+      setMsg('cancelMsg', '', false);
+      const cid = getConsignmentIdFromUrl();
+      if (!cid) return;
+      const btn = document.getElementById('cancelRequestBtn');
+      const original = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Requesting...';
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(cid)}/cancel/request`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          clearSession();
+          redirectToLogin();
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Cancel request failed');
+        }
+        setMsg('cancelMsg', 'Cancel requested. Waiting for the other party to confirm.', false);
+      } catch (e) {
+        setMsg('cancelMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = original;
+        await loadConsignmentDetails(cid);
+      }
+    }
+
+    async function confirmCancel() {
+      setMsg('cancelMsg', '', false);
+      const cid = getConsignmentIdFromUrl();
+      if (!cid) return;
+      const btn = document.getElementById('cancelConfirmBtn');
+      const original = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Confirming...';
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(cid)}/cancel/confirm`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          clearSession();
+          redirectToLogin();
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Cancel confirm failed');
+        }
+        setMsg('cancelMsg', 'Cancelled.', false);
+      } catch (e) {
+        setMsg('cancelMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = original;
+        await loadConsignmentDetails(cid);
+      }
+    }
+
+    function renderCheckout() {
+      const c = checkout && checkout.consignment ? checkout.consignment : null;
+      if (!c) return;
+
+      document.getElementById('itemId').textContent = String(c.itemId || '—');
+      document.getElementById('totalSats').textContent = `${Number(checkout.totalSats || 0).toLocaleString()} sats`;
+      document.getElementById('expiresAt').textContent = fmtTs(c.expiresAt);
+      document.getElementById('sellerPayout').textContent = `${Number(c.sellerPayoutSats || 0).toLocaleString()} sats`;
+      document.getElementById('retailerCommission').textContent = `${Number(c.retailerCommissionSats || 0).toLocaleString()} sats`;
+      document.getElementById('platformFee').textContent = `${Number(c.platformFeeSats || 0).toLocaleString()} sats`;
+
+      const lock = checkout.checkoutLock;
+      const lockHeld = Boolean(checkout.lockHeldByYou);
+      const lockText = lock
+        ? (lockHeld ? `LOCKED (you) until ${fmtTs(lock.lockedUntil)}` : `LOCKED by another buyer until ${fmtTs(lock.lockedUntil)}`)
+        : 'Not locked';
+
+      document.getElementById('lockStatus').innerHTML = lock
+        ? badgeHtml(lockHeld ? 'LOCKED (YOU)' : 'LOCKED', lockHeld ? 'green' : 'red')
+        : badgeHtml('NOT LOCKED');
+
+      const lockBtn = document.getElementById('lockBtn');
+      lockBtn.disabled = Boolean(lock);
+
+      const outputs = Array.isArray(checkout.paymentOutputs) ? checkout.paymentOutputs : [];
+      const lines = outputs.map(o => {
+        if (o && typeof o.scriptHex === 'string' && String(o.scriptHex).trim()) {
+          const sh = String(o.scriptHex).trim();
+          const preview = sh.length > 20 ? sh.slice(0, 20) + '...' : sh;
+          return `${Number(o.amountSats || 0).toLocaleString()} sats  ->  OP_RETURN ${preview}`;
+        }
+        return `${Number(o.amountSats || 0).toLocaleString()} sats  ->  ${String(o.address || '')}`;
+      }).join('\n');
+      document.getElementById('outputsBox').textContent = lines || '—';
+
+      const payBtn = document.getElementById('payBtn');
+      payBtn.disabled = !(lock && lockHeld && outputs.length);
+
+      if (!lock) {
+        setMsg('globalMsg', 'Lock checkout to freeze price and reserve this consignment for 15 minutes.', false);
+      } else if (!lockHeld) {
+        setMsg('globalMsg', 'Checkout is currently locked by another buyer. Please wait and refresh.', true);
+      } else {
+        setMsg('globalMsg', 'Checkout locked. You can now complete payment.', false);
+      }
+    }
+
+    async function lockCheckout() {
+      setMsg('globalMsg', '', false);
+      const cid = getConsignmentIdFromUrl();
+      if (!cid) return;
+
+      const btn = document.getElementById('lockBtn');
+      const original = btn.textContent;
+
+      try {
+        btn.disabled = true;
+        btn.textContent = '⏳ Locking...';
+
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(cid)}/checkout/lock`, { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(data.error || 'Failed to lock checkout');
+        }
+
+        await loadCheckout();
+      } catch (e) {
+        setMsg('globalMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = original;
+      }
+    }
+
+    function bytesFromB64(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    async function deriveVaultKey(password, salt, iterations) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+
+    async function decryptWalletVault(walletVault, password) {
+      if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+        throw new Error('Unsupported wallet vault format');
+      }
+      const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+      const iterations = Number(walletVault.kdf?.iterations || 0);
+      const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+      const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+      const key = await deriveVaultKey(password, salt, iterations);
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+      const json = new TextDecoder().decode(pt);
+      return JSON.parse(json);
+    }
+
+    async function completePayment() {
+      setMsg('payMsg', '', false);
+
+      const cid = getConsignmentIdFromUrl();
+      if (!cid) return;
+
+      const outputs = Array.isArray(checkout?.paymentOutputs) ? checkout.paymentOutputs : [];
+      if (!outputs.length) {
+        setMsg('payMsg', 'Payment outputs not available. Refresh and try again.', true);
+        return;
+      }
+
+      const DUST_LIMIT_SATS = 546;
+      const normalizedOutputs = (() => {
+        const list = outputs
+          .map(o => {
+            if (o && typeof o.scriptHex === 'string' && String(o.scriptHex).trim()) {
+              return { scriptHex: String(o.scriptHex).trim(), amountSats: Number(o?.amountSats || 0) };
+            }
+            return { address: String(o?.address || '').trim(), amountSats: Number(o?.amountSats || 0) };
+          })
+          .filter(o => {
+            const amt = Number(o?.amountSats || 0);
+            if (typeof o?.scriptHex === 'string') return Number.isFinite(amt) && amt >= 0;
+            if (!Number.isFinite(amt) || amt <= 0) return false;
+            return !!String(o?.address || '').trim();
+          });
+
+        const dust = list.filter(o => Number(o.amountSats) > 0 && Number(o.amountSats) < DUST_LIMIT_SATS && typeof o?.scriptHex !== 'string');
+        const kept = list.filter(o => !(Number(o.amountSats) > 0 && Number(o.amountSats) < DUST_LIMIT_SATS && typeof o?.scriptHex !== 'string'));
+
+        const dustSum = dust.reduce((s, o) => s + Number(o.amountSats || 0), 0);
+        if (dustSum > 0) {
+          if (kept.length > 0) {
+            let maxIdx = 0;
+            for (let i = 0; i < kept.length; i++) {
+              if (typeof kept[i]?.scriptHex === 'string') continue;
+              if (typeof kept[maxIdx]?.scriptHex === 'string') maxIdx = i;
+              else if (Number(kept[i].amountSats || 0) > Number(kept[maxIdx].amountSats || 0)) maxIdx = i;
+            }
+            kept[maxIdx].amountSats = Number(kept[maxIdx].amountSats || 0) + dustSum;
+          } else {
+            return list;
+          }
+        }
+        return kept;
+      })();
+
+      const lockHeldByYou = Boolean(checkout?.lockHeldByYou);
+      if (!lockHeldByYou) {
+        setMsg('payMsg', 'Checkout must be locked by you before paying.', true);
+        return;
+      }
+
+      const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+      const fromAddress = wallet.paymentAddress || wallet.address;
+      if (!fromAddress) {
+        setMsg('payMsg', 'No wallet found. Please create a wallet first.', true);
+        window.location.href = '/m/wallet';
+        return;
+      }
+
+      const vaultStr = localStorage.getItem('autho_wallet_vault');
+      if (!vaultStr) {
+        setMsg('payMsg', 'Wallet vault not found. Please sign in again to restore your wallet.', true);
+        return;
+      }
+
+      let vault;
+      try {
+        vault = JSON.parse(vaultStr);
+      } catch {
+        setMsg('payMsg', 'Wallet vault is corrupted. Please sign in again.', true);
+        return;
+      }
+
+      const lines = normalizedOutputs.map(o => {
+        if (o && typeof o.scriptHex === 'string' && String(o.scriptHex).trim()) {
+          const sh = String(o.scriptHex).trim();
+          const preview = sh.length > 20 ? sh.slice(0, 20) + '...' : sh;
+          return `- ${Number(o.amountSats).toLocaleString()} sats → OP_RETURN ${preview}`;
+        }
+        return `- ${Number(o.amountSats).toLocaleString()} sats → ${String(o.address)}`;
+      }).join('\n');
+      const confirmed = confirm(`Complete Payment?\n\nTotal: ${Number(checkout?.totalSats || 0).toLocaleString()} sats\n\nOutputs:\n${lines}\n\nThis will send Bitcoin from your wallet.`);
+      if (!confirmed) return;
+
+      const password = prompt('Enter your wallet passcode to complete payment:');
+      if (!password) return;
+
+      const btn = document.getElementById('payBtn');
+      const originalText = btn.textContent;
+
+      try {
+        btn.textContent = '⏳ Processing...';
+        btn.disabled = true;
+
+        const walletNet = String(wallet.network || '').toLowerCase();
+        const networkName = walletNet.includes('test') ? 'testnet' : 'mainnet';
+
+        const utxoRes = await fetch(`/api/chain/address/${encodeURIComponent(String(fromAddress))}/utxo`, { cache: 'no-store' });
+        const utxosRaw = await utxoRes.json().catch(() => ([]));
+        if (!utxoRes.ok) {
+          throw new Error(String(utxosRaw?.error || `Failed to fetch UTXOs (HTTP ${utxoRes.status})`));
+        }
+
+        const spendable = (Array.isArray(utxosRaw) ? utxosRaw : [])
+          .filter(u => u && u.txid && u.status?.confirmed)
+          .map(u => ({ txid: u.txid, vout: u.vout, value: u.value }));
+
+        if (spendable.length === 0) {
+          throw new Error('No confirmed funds available in your wallet.');
+        }
+
+        const totalBalance = spendable.reduce((sum, u) => sum + u.value, 0);
+
+        let feeRate = 2;
+        try {
+          const feeRes = await fetch('/api/chain/fee-estimates', { cache: 'no-store' });
+          const feeJson = await feeRes.json().catch(() => ({}));
+          const picked = Number(feeJson?.['2'] ?? feeJson?.['1'] ?? feeJson?.['6'] ?? feeJson?.['3']);
+          if (feeRes.ok && Number.isFinite(picked) && picked > 0) {
+            feeRate = Math.max(0.6, Math.min(500, picked));
+          }
+        } catch {}
+
+        let payload;
+        try {
+          payload = await decryptWalletVault(vault, password);
+        } catch {
+          throw new Error('Failed to decrypt wallet. Incorrect passcode.');
+        }
+
+        const mnemonic = String(payload?.mnemonic || '');
+        if (!mnemonic) {
+          throw new Error('Mnemonic missing in vault');
+        }
+
+        if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+          throw new Error('Bitcoin signing library not loaded. Please refresh the page.');
+        }
+
+        let signed;
+        try {
+          signed = window.AuthoBTC.buildAndSignP2WPKH({
+            mnemonic,
+            outputs: normalizedOutputs,
+            utxos: spendable,
+            feeRateSatPerVb: feeRate,
+            network: networkName,
+          });
+        } catch (e) {
+          const msg = String(e?.message || e || '').toLowerCase();
+          if (msg.includes('fractional') || msg.includes('missing change')) {
+            const retryRate = Math.max(1, Math.ceil(Number(feeRate || 1)));
+            signed = window.AuthoBTC.buildAndSignP2WPKH({
+              mnemonic,
+              outputs: normalizedOutputs,
+              utxos: spendable,
+              feeRateSatPerVb: retryRate,
+              network: networkName,
+            });
+          } else {
+            const outputsTotal = normalizedOutputs.reduce((sum, o) => sum + Number(o?.amountSats || 0), 0);
+            if (msg.includes('insufficient funds')) {
+              throw new Error(`Insufficient funds.\n\nOutputs: ${Number(outputsTotal).toLocaleString()} sats\nBalance (confirmed): ${Number(totalBalance).toLocaleString()} sats\nFee rate: ~${Number(feeRate).toFixed(2)} sat/vB`);
+            }
+            throw new Error('Payment failed: ' + (e?.message || String(e)));
+          }
+        }
+
+        const broadcastRes = await fetch('/api/chain/tx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ txHex: signed.txHex }),
+        });
+        const broadcastJson = await broadcastRes.json().catch(() => ({}));
+        if (!broadcastRes.ok || !broadcastJson || broadcastJson.success !== true) {
+          throw new Error(`Broadcast failed: ${String(broadcastJson?.error || `HTTP ${broadcastRes.status}`)}`);
+        }
+
+        const txid = String(broadcastJson.txid || '').trim();
+        if (!txid) throw new Error('Broadcast failed: missing txid');
+
+        try {
+          const submitRes = await apiFetch(`/api/consignments/${encodeURIComponent(cid)}/payment-submitted`, {
+            method: 'POST',
+            body: JSON.stringify({ txid }),
+          });
+          const submitJson = await submitRes.json().catch(() => ({}));
+          if (!submitRes.ok || !submitJson || submitJson.success !== true) {
+            throw new Error(String(submitJson?.error || `HTTP ${submitRes.status}`));
+          }
+        } catch (e) {
+          setMsg('payMsg', `✅ Payment broadcast.
+
+Transaction ID:
+${txid}
+
+⚠️ The app could not record this payment with the server yet.
+
+Please refresh this page and try again.`, true);
+          return;
+        }
+
+        try {
+          const feeSats = Number(signed?.feeSats || 0);
+          setMsg('payMsg', `✅ Payment sent.\n\nTransaction ID:\n${txid}\n\nNetwork fee: ~${feeSats.toLocaleString()} sats\n\nTitle transfers after confirmation.`, false);
+        } catch {
+          setMsg('payMsg', `✅ Payment sent.\n\nTransaction ID:\n${txid}\n\nTitle transfers after confirmation.`, false);
+        }
+
+        await loadCheckout();
+      } catch (e) {
+        setMsg('payMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    async function recordPaymentTxid() {
+      setMsg('payMsg', '', false);
+
+      const cid = getConsignmentIdFromUrl();
+      if (!cid) return;
+
+      const input = prompt('Paste the payment TXID (64 hex characters):');
+      const txid = String(input || '').trim().toLowerCase();
+      if (!txid) return;
+      if (!/^[0-9a-f]{64}$/.test(txid)) {
+        setMsg('payMsg', 'Invalid TXID. Please paste the 64-character hex transaction id.', true);
+        return;
+      }
+
+      const btn = document.getElementById('recordTxidBtn');
+      const original = btn ? btn.textContent : '';
+
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '⏳ Recording...';
+        }
+
+        const r = await apiFetch(`/api/consignments/${encodeURIComponent(cid)}/payment-submitted`, {
+          method: 'POST',
+          body: JSON.stringify({ txid }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          clearSession();
+          redirectToLogin();
+          return;
+        }
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(String(data?.error || `HTTP ${r.status}`));
+        }
+
+        const reconciled = Number(data?.reconciled || 0);
+        setMsg('payMsg', reconciled > 0
+          ? '✅ Payment recorded. Ownership updated.'
+          : '✅ Payment recorded. Waiting for confirmation to transfer ownership.', false);
+
+        await loadCheckout();
+        await loadConsignmentDetails(cid);
+      } catch (e) {
+        setMsg('payMsg', String(e && e.message ? e.message : e), true);
+      } finally {
+        if (btn) {
+          btn.textContent = original || 'Already Paid? Record TXID';
+          btn.disabled = false;
+        }
+      }
+    }
+
+    function goBack() {
+      window.location.href = '/m';
+    }
+
+    loadCheckout();
+    updateLoggedInAs().catch(() => {});
+  </script>
+</body>
+</html>

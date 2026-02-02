@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verifier Profile - Bitcoin Ownership Protocol</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@300;400;500;600&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+      padding: 20px;
+      color: #d4af37;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 980px; margin: 0 auto; }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+      border: 2px solid #d4af37;
+      padding: 28px;
+      border-radius: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 20px 60px rgba(212, 175, 55, 0.18), inset 0 1px 0 rgba(212, 175, 55, 0.08);
+    }
+
+    .title {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .sub { color: #b9a35a; opacity: 0.95; }
+
+    .card {
+      background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      padding: 22px;
+      border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(212, 175, 55, 0.06);
+    }
+
+    .row { display: grid; grid-template-columns: 220px 1fr; gap: 14px; padding: 10px 0; border-bottom: 1px solid rgba(212, 175, 55, 0.12); }
+    .row:last-child { border-bottom: none; }
+
+    .label { color: #999; text-transform: uppercase; letter-spacing: 0.8px; font-size: 0.8rem; }
+    .value { color: #d4af37; word-break: break-word; }
+
+    a { color: #f4d03f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      background: rgba(212, 175, 55, 0.10);
+    }
+
+    .pill.revoked {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.12);
+      color: #ff6b6b;
+    }
+
+    .error {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.12);
+      color: #ff6b6b;
+      display: none;
+    }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+
+    .top-actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+      color: #0a0a0a;
+      border: 1px solid #f4d03f;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+
+    .btn-secondary {
+      background: rgba(212, 175, 55, 0.14);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+    }
+
+    @media (max-width: 720px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title" id="title">Verifier Profile</div>
+      <div class="sub" id="subtitle">Loading...</div>
+      <div class="top-actions">
+        <button class="btn btn-secondary" type="button" onclick="window.history.back()">Back</button>
+      </div>
+    </div>
+
+    <div class="card" id="card" style="display:none;">
+      <div class="row"><div class="label">Status</div><div class="value" id="status"></div></div>
+      <div class="row"><div class="label">Role</div><div class="value" id="role"></div></div>
+      <div class="row"><div class="label">Display Name</div><div class="value" id="displayName"></div></div>
+      <div class="row"><div class="label">Company</div><div class="value" id="companyName"></div></div>
+      <div class="row"><div class="label">Website</div><div class="value" id="website"></div></div>
+      <div class="row"><div class="label">Rating</div><div class="value" id="rating"></div></div>
+      <div class="row"><div class="label">Reports</div><div class="value" id="reports"></div></div>
+      <div class="row"><div class="label">Phone</div><div class="value" id="phone"></div></div>
+      <div class="row"><div class="label">Address</div><div class="value" id="address"></div></div>
+      <div class="row"><div class="label">Contact Email</div><div class="value" id="contactEmail"></div></div>
+      <div class="row"><div class="label">Notes</div><div class="value" id="notes"></div></div>
+      <div class="row"><div class="label">Account</div><div class="value mono" id="accountId"></div></div>
+      <div class="row"><div class="label">Wallet</div><div class="value mono" id="walletAddress"></div></div>
+      <div class="row"><div class="label">Bond Status</div><div class="value" id="bondStatus"></div></div>
+      <div class="row"><div class="label">Bond Confirmed</div><div class="value mono" id="bondConfirmed"></div></div>
+      <div class="row"><div class="label">Bond Minimum</div><div class="value mono" id="bondMin"></div></div>
+      <div class="row"><div class="label">Bond Last Checked</div><div class="value" id="bondLastChecked"></div></div>
+      <div class="row"><div class="label">Updated</div><div class="value" id="updatedAt"></div></div>
+    </div>
+
+    <div class="card" id="reputationCard" style="display:none; margin-top: 16px;">
+      <div class="title" style="font-size: 1.35rem;">Reputation Feedback</div>
+      <div class="sub" style="margin-top: 6px;">You can only rate/report if you have an on-ledger relationship with this verifier (issuer item you currently own, or a completed verification job you paid for).</div>
+
+      <div class="error" id="repError" style="display:none;"></div>
+      <div class="error" id="repSuccess" style="display:none; border-color: rgba(52, 199, 89, 0.35); background: rgba(52, 199, 89, 0.12); color: #4cd964;"></div>
+
+      <div class="sub" id="repFeeInfo" style="margin-top: 10px; display:none;"></div>
+
+      <div style="margin-top: 14px; display:grid; grid-template-columns: 1fr; gap: 12px;">
+        <div>
+          <div class="label" style="margin-bottom: 6px;">Eligible Context</div>
+          <select id="repContext" style="width:100%; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;"></select>
+          <div class="sub" id="repHint" style="margin-top: 8px;"></div>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <div id="repFeeTxWrap" style="display:none; min-width: 320px; flex: 2;">
+            <div class="label" style="margin-bottom: 6px;">Rating Fee Txid</div>
+            <input id="repFeeTxid" type="text" placeholder="64-hex txid paying the fee address" style="width:100%; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff; font-family: monospace;" />
+          </div>
+          <div>
+            <div class="label" style="margin-bottom: 6px;">Rate (1..5)</div>
+            <select id="repRating" style="padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+              <option value="5" selected>5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+          <button class="btn" type="button" onclick="submitRating()">Submit Rating</button>
+        </div>
+
+        <div>
+          <div class="label" style="margin-bottom: 6px;">Report</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <select id="repReason" style="flex:1; min-width: 220px; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+              <option value="">Reason (optional)</option>
+              <option value="fraud">Fraud</option>
+              <option value="non_delivery">Non-delivery</option>
+              <option value="poor_quality">Poor quality</option>
+              <option value="spam">Spam</option>
+              <option value="other">Other</option>
+            </select>
+            <input id="repDetails" type="text" placeholder="Optional details" style="flex:2; min-width: 260px; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;" />
+            <button class="btn btn-secondary" type="button" onclick="submitReport()">Submit Report</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="error" id="error"></div>
+  </div>
+
+  <script>
+    function getAccountIdFromUrl() {
+      const p = new URLSearchParams(window.location.search);
+      const q = (p.get('accountId') || '').trim();
+      if (q) return q;
+      const h = (window.location.hash || '').replace('#', '').trim();
+      return h || '';
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function fmtTs(ts) {
+      const n = Number(ts || 0);
+      if (!n) return '';
+      try {
+        return new Date(n).toLocaleString();
+      } catch {
+        return String(ts);
+      }
+    }
+
+    function setText(id, v) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = v ? String(v) : '';
+    }
+
+    function showRepError(msg) {
+      const el = document.getElementById('repError');
+      const ok = document.getElementById('repSuccess');
+      if (ok) { ok.style.display = 'none'; ok.textContent = ''; }
+      if (!el) return;
+      if (!msg) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+      }
+      el.textContent = String(msg);
+      el.style.display = 'block';
+    }
+
+    function showRepSuccess(msg) {
+      const el = document.getElementById('repSuccess');
+      const err = document.getElementById('repError');
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+      if (!el) return;
+      if (!msg) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+      }
+      el.textContent = String(msg);
+      el.style.display = 'block';
+    }
+
+    function getSessionId() {
+      try { return localStorage.getItem('autho_session_id') || ''; } catch { return ''; }
+    }
+
+    let __repRatingFee = null;
+
+    function setLinkOrText(id, v) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const s = v ? String(v).trim() : '';
+      if (!s) {
+        el.textContent = '';
+        return;
+      }
+      if (id === 'website') {
+        const href = s.startsWith('http://') || s.startsWith('https://') ? s : `https://${s}`;
+        el.innerHTML = `<a href="${href}" target="_blank" rel="noreferrer">${s}</a>`;
+      } else {
+        el.textContent = s;
+      }
+    }
+
+    async function loadProfile() {
+      const accountId = getAccountIdFromUrl();
+      if (!accountId) {
+        showError('Missing accountId. Use ?accountId=...');
+        document.getElementById('subtitle').textContent = 'Missing accountId.';
+        return;
+      }
+
+      document.getElementById('subtitle').textContent = `Account: ${accountId.substring(0, 18)}...`;
+
+      const r = await fetch(`/api/verifiers/${encodeURIComponent(accountId)}/profile`, { cache: 'no-store' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || data.success !== true) {
+        showError(String(data?.error || 'Failed to load profile'));
+        document.getElementById('subtitle').textContent = 'Failed to load profile.';
+        return;
+      }
+
+      const p = data.profile || {};
+      const name = p.displayName || p.companyName || p.username || 'Verifier';
+      document.getElementById('title').textContent = String(name);
+      document.getElementById('subtitle').textContent = `${String(p.role || '')} profile`;
+
+      const status = String(p.verifierStatus || 'active');
+      const statusEl = document.getElementById('status');
+      statusEl.innerHTML = `<span class="pill ${status === 'revoked' ? 'revoked' : ''}">${status.toUpperCase()}</span>`;
+
+      setText('role', p.role);
+      setText('displayName', p.displayName);
+      setText('companyName', p.companyName);
+      setLinkOrText('website', p.website);
+      setText('phone', p.phone);
+      setText('address', p.address);
+      setText('contactEmail', p.contactEmail);
+      setText('notes', p.notes);
+      setText('accountId', p.accountId);
+      setText('walletAddress', p.walletAddress);
+
+      const ratingAvg = (typeof p.ratingAvg === 'number') ? Number(p.ratingAvg) : 0;
+      const ratingCount = (typeof p.ratingCount === 'number') ? Number(p.ratingCount) : 0;
+      const reportCount = (typeof p.reportCount === 'number') ? Number(p.reportCount) : 0;
+      setText('rating', ratingCount ? `${ratingAvg.toFixed(2)} (${ratingCount})` : '');
+      setText('reports', reportCount ? String(reportCount) : '');
+      const meets = (typeof p.bondMeetsMin === 'boolean') ? Boolean(p.bondMeetsMin) : null;
+      const minSats = Number(p.bondMinSats || 0);
+      const confirmedSats = Number(p.bondConfirmedSats || 0);
+
+      if (!minSats) {
+        setText('bondStatus', 'Not required');
+        setText('bondConfirmed', confirmedSats ? `${confirmedSats.toLocaleString()} sats` : '');
+        setText('bondMin', '0 sats');
+      } else {
+        setText('bondStatus', meets === true ? 'OK' : (meets === false ? 'Not met' : 'Unknown'));
+        setText('bondConfirmed', `${confirmedSats.toLocaleString()} sats`);
+        setText('bondMin', `${minSats.toLocaleString()} sats`);
+      }
+      setText('bondLastChecked', fmtTs(p.bondLastCheckedAt));
+      setText('updatedAt', fmtTs(p.updatedAt));
+
+      document.getElementById('card').style.display = 'block';
+
+      try {
+        await loadEligibleContexts();
+      } catch {}
+    }
+
+    async function loadEligibleContexts() {
+      const accountId = getAccountIdFromUrl();
+      const sessionId = getSessionId();
+      const card = document.getElementById('reputationCard');
+      if (!sessionId) {
+        if (card) card.style.display = 'none';
+        return;
+      }
+
+      const r = await fetch(`/api/verifiers/${encodeURIComponent(accountId)}/reputation/eligible`, {
+        headers: { 'Authorization': `Bearer ${sessionId}` },
+        cache: 'no-store'
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || data.success !== true) {
+        if (card) card.style.display = 'none';
+        return;
+      }
+
+      const contexts = Array.isArray(data.contexts) ? data.contexts : [];
+      if (!contexts.length) {
+        if (card) card.style.display = 'none';
+        return;
+      }
+
+      __repRatingFee = data && data.ratingFee ? data.ratingFee : null;
+      const feeInfo = document.getElementById('repFeeInfo');
+      const feeWrap = document.getElementById('repFeeTxWrap');
+      const feeEnabled = Boolean(__repRatingFee && __repRatingFee.enabled);
+      if (feeInfo) {
+        if (feeEnabled) {
+          const addr = String(__repRatingFee.feeAddress || '');
+          const sats = Number(__repRatingFee.feeMinSats || 0);
+          const confs = Number(__repRatingFee.requiredConfirmations || 1);
+          feeInfo.style.display = 'block';
+          feeInfo.textContent = `Rating fee required: pay ${sats.toLocaleString()} sats to ${addr} (confirmations: ${confs}).`;
+        } else {
+          feeInfo.style.display = 'none';
+          feeInfo.textContent = '';
+        }
+      }
+      if (feeWrap) feeWrap.style.display = feeEnabled ? 'block' : 'none';
+
+      const sel = document.getElementById('repContext');
+      if (!sel) return;
+      sel.innerHTML = contexts.map((c, idx) => {
+        const ct = String(c.contextType || '');
+        const cid = String(c.contextId || '');
+        const label = String(c.label || `${ct}:${cid}`);
+        const suffix = c.hasRated ? ` (rated ${Number(c.myRating || 0)})` : (c.hasReported ? ' (reported)' : '');
+        return `<option value="${encodeURIComponent(ct)}::${encodeURIComponent(cid)}" ${idx === 0 ? 'selected' : ''}>${label}${suffix}</option>`;
+      }).join('');
+
+      const hint = document.getElementById('repHint');
+      if (hint) hint.textContent = 'Choose a context to anchor your feedback.';
+
+      showRepError('');
+      showRepSuccess('');
+      if (card) card.style.display = 'block';
+    }
+
+    function getSelectedContext() {
+      const sel = document.getElementById('repContext');
+      const v = sel ? String(sel.value || '') : '';
+      const parts = v.split('::');
+      if (parts.length !== 2) return null;
+      return { contextType: decodeURIComponent(parts[0]), contextId: decodeURIComponent(parts[1]) };
+    }
+
+    async function submitRating() {
+      try {
+        showRepError('');
+        showRepSuccess('');
+        const accountId = getAccountIdFromUrl();
+        const sessionId = getSessionId();
+        if (!sessionId) { showRepError('Sign in required.'); return; }
+        const ctx = getSelectedContext();
+        if (!ctx) { showRepError('Missing context'); return; }
+        const rating = Number(document.getElementById('repRating')?.value || 0);
+        const feeEnabled = Boolean(__repRatingFee && __repRatingFee.enabled);
+        const feeTxid = feeEnabled ? String(document.getElementById('repFeeTxid')?.value || '').trim() : '';
+        if (feeEnabled && !feeTxid) {
+          showRepError('Rating fee txid required.');
+          return;
+        }
+        const r = await fetch(`/api/verifiers/${encodeURIComponent(accountId)}/rate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+          body: JSON.stringify({ contextType: ctx.contextType, contextId: ctx.contextId, rating, feeTxid: feeTxid || undefined })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          showRepError(data?.error || 'Rating failed');
+          return;
+        }
+        showRepSuccess('Rating submitted.');
+        await loadProfile();
+      } catch (e) {
+        showRepError(e?.message || String(e));
+      }
+    }
+
+    async function submitReport() {
+      try {
+        showRepError('');
+        showRepSuccess('');
+        const accountId = getAccountIdFromUrl();
+        const sessionId = getSessionId();
+        if (!sessionId) { showRepError('Sign in required.'); return; }
+        const ctx = getSelectedContext();
+        if (!ctx) { showRepError('Missing context'); return; }
+        const reasonCode = String(document.getElementById('repReason')?.value || '').trim() || undefined;
+        const details = String(document.getElementById('repDetails')?.value || '').trim() || undefined;
+        const r = await fetch(`/api/verifiers/${encodeURIComponent(accountId)}/report`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+          body: JSON.stringify({ contextType: ctx.contextType, contextId: ctx.contextId, reasonCode, details })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          showRepError(data?.error || 'Report failed');
+          return;
+        }
+        showRepSuccess('Report submitted.');
+        await loadProfile();
+      } catch (e) {
+        showRepError(e?.message || String(e));
+      }
+    }
+
+    window.addEventListener('load', () => {
+      loadProfile().catch(e => {
+        showError(e?.message || String(e));
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operator Management - Autho Admin</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      color: #333;
+      font-size: 24px;
+    }
+
+    .back-btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .back-btn:hover {
+      background: #5568d3;
+    }
+
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .form-group small {
+      display: block;
+      margin-top: 5px;
+      color: #888;
+      font-size: 12px;
+    }
+
+    .btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .btn:hover {
+      background: #5568d3;
+    }
+
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .alert {
+      padding: 12px 20px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+
+    .alert-success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .alert-error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .operators-list {
+      margin-top: 30px;
+    }
+
+    .operator-item {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      border-left: 4px solid #667eea;
+    }
+
+    .operator-item.pending {
+      border-left-color: #ffc107;
+    }
+
+    .operator-item.rejected {
+      border-left-color: #dc3545;
+    }
+
+    .operator-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .operator-id {
+      font-weight: 600;
+      color: #333;
+      font-size: 16px;
+    }
+
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-badge.active {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-badge.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-badge.rejected {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .operator-details {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .operator-details div {
+      margin-bottom: 5px;
+    }
+
+    .operator-actions {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🌐 Operator Management</h1>
+      <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+    </div>
+
+    <div class="card">
+      <h2>Approve New Operator</h2>
+      <div id="message"></div>
+      
+      <form id="approveForm">
+        <div class="form-group">
+          <label for="operatorId">Operator ID *</label>
+          <input type="text" id="operatorId" required placeholder="operator-8724a84257ddb84a">
+          <small>Unique identifier for the operator node</small>
+        </div>
+
+        <div class="form-group">
+          <label for="publicKey">Public Key *</label>
+          <textarea id="publicKey" required placeholder="3056301006072a8648ce3d020106052b8104000a..."></textarea>
+          <small>ECDSA public key (hex format)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="btcAddress">Bitcoin Address *</label>
+          <input type="text" id="btcAddress" required placeholder="bc1q...">
+          <small>Where operator will receive platform fees</small>
+        </div>
+
+        <div class="form-group">
+          <label for="name">Operator Name</label>
+          <input type="text" id="name" placeholder="Cart Path Cleaning Operator">
+          <small>Optional: Human-readable name</small>
+        </div>
+
+        <div class="form-group">
+          <label for="description">Description</label>
+          <textarea id="description" placeholder="Secondary operator node for failover and decentralization"></textarea>
+          <small>Optional: Description of the operator</small>
+        </div>
+
+        <button type="submit" class="btn" id="approveBtn">✓ Approve Operator</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Registered Operators</h2>
+      <div id="operatorsList" class="operators-list">
+        <div class="loading">Loading operators...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    function getAdminToken() {
+      return sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
+    }
+
+    function showMessage(message, isError = false) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.innerHTML = `<div class="alert ${isError ? 'alert-error' : 'alert-success'}">${message}</div>`;
+      setTimeout(() => {
+        messageDiv.innerHTML = '';
+      }, 5000);
+    }
+
+    async function loadOperators() {
+      try {
+        const token = getAdminToken();
+        if (!token) {
+          window.location.href = '/admin/login';
+          return;
+        }
+
+        const response = await fetch(`${API_BASE}/api/network/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load operators');
+        }
+
+        const data = await response.json();
+        const operators = data.operators || [];
+
+        const listDiv = document.getElementById('operatorsList');
+        
+        if (operators.length === 0) {
+          listDiv.innerHTML = '<div class="loading">No operators registered yet</div>';
+          return;
+        }
+
+        listDiv.innerHTML = operators.map(op => `
+          <div class="operator-item ${op.status || 'pending'}">
+            <div class="operator-header">
+              <div class="operator-id">${op.operatorId || op.id}</div>
+              <span class="status-badge ${op.status || 'pending'}">${(op.status || 'pending').toUpperCase()}</span>
+            </div>
+            <div class="operator-details">
+              ${op.operatorUrl ? `<div><strong>URL:</strong> ${op.operatorUrl}</div>` : ''}
+              ${op.name ? `<div><strong>Name:</strong> ${op.name}</div>` : ''}
+              ${op.btcAddress ? `<div><strong>BTC Address:</strong> ${op.btcAddress}</div>` : ''}
+              ${op.publicKey ? `<div><strong>Public Key:</strong> ${op.publicKey.substring(0, 40)}...</div>` : ''}
+              ${op.description ? `<div><strong>Description:</strong> ${op.description}</div>` : ''}
+            </div>
+            ${op.status !== 'active' ? `
+              <div class="operator-actions">
+                <button class="btn" onclick="quickApprove('${op.operatorId || op.id}', '${op.publicKey || ''}', '${op.btcAddress || ''}')">✓ Approve</button>
+                <button class="btn btn-danger" onclick="rejectOperator('${op.operatorId || op.id}')">✗ Reject</button>
+              </div>
+            ` : ''}
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading operators:', error);
+        document.getElementById('operatorsList').innerHTML = '<div class="loading">Error loading operators</div>';
+      }
+    }
+
+    async function quickApprove(operatorId, publicKey, btcAddress) {
+      if (!confirm(`Approve operator ${operatorId}?`)) return;
+
+      const token = getAdminToken();
+      const approveBtn = event.target;
+      approveBtn.disabled = true;
+      approveBtn.textContent = 'Approving...';
+
+      try {
+        const response = await fetch(`${API_BASE}/api/admin/operators/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            operatorId,
+            publicKey,
+            btcAddress
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage(`Operator ${operatorId} approved successfully!`);
+          await loadOperators();
+        } else {
+          throw new Error(data.error || 'Approval failed');
+        }
+      } catch (error) {
+        showMessage(error.message, true);
+        approveBtn.disabled = false;
+        approveBtn.textContent = '✓ Approve';
+      }
+    }
+
+    async function rejectOperator(operatorId) {
+      const reason = prompt(`Reject operator ${operatorId}?\n\nEnter reason:`);
+      if (!reason) return;
+
+      const token = getAdminToken();
+
+      try {
+        const response = await fetch(`${API_BASE}/api/admin/operators/reject`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            operatorId,
+            reason
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage(`Operator ${operatorId} rejected`);
+          await loadOperators();
+        } else {
+          throw new Error(data.error || 'Rejection failed');
+        }
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    }
+
+    document.getElementById('approveForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const token = getAdminToken();
+      if (!token) {
+        window.location.href = '/admin/login';
+        return;
+      }
+
+      const approveBtn = document.getElementById('approveBtn');
+      approveBtn.disabled = true;
+      approveBtn.textContent = 'Approving...';
+
+      const formData = {
+        operatorId: document.getElementById('operatorId').value.trim(),
+        publicKey: document.getElementById('publicKey').value.trim(),
+        btcAddress: document.getElementById('btcAddress').value.trim(),
+        name: document.getElementById('name').value.trim() || undefined,
+        description: document.getElementById('description').value.trim() || undefined
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/api/admin/operators/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showMessage(`Operator ${formData.operatorId} approved successfully!`);
+          document.getElementById('approveForm').reset();
+          await loadOperators();
+        } else {
+          throw new Error(data.error || 'Approval failed');
+        }
+      } catch (error) {
+        showMessage(error.message, true);
+      } finally {
+        approveBtn.disabled = false;
+        approveBtn.textContent = '✓ Approve Operator';
+      }
+    });
+
+    // Check authentication on page load
+    window.addEventListener('load', () => {
+      const token = getAdminToken();
+      if (!token) {
+        window.location.href = '/admin/login.html?redirect=/admin/operators.html';
+        return;
+      }
+      
+      // Load operators on page load
+      loadOperators();
+      
+      // Refresh every 30 seconds
+      setInterval(loadOperators, 30000);
+    });
+  </script>
+</body>
+</html>

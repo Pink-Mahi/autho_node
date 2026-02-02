@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Wizard - Bitcoin Ownership Protocol</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .wizard-container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .wizard-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .wizard-header h1 {
+            font-size: 2rem;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .wizard-header p {
+            color: #666;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+
+        .step-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            margin: 0 5px;
+            transition: all 0.3s;
+        }
+
+        .step-dot.active {
+            background: #667eea;
+            transform: scale(1.3);
+        }
+
+        .step-dot.completed {
+            background: #28a745;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .wallet-option {
+            border: 2px solid #e0e0e0;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .wallet-option:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .wallet-option.selected {
+            border-color: #667eea;
+            background: #e7f3ff;
+        }
+
+        .wallet-option h3 {
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .wallet-option p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .mnemonic-display {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #ffc107;
+            margin: 20px 0;
+        }
+
+        .mnemonic-words {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .mnemonic-word {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .warning strong {
+            color: #856404;
+        }
+
+        .success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .success h2 {
+            color: #155724;
+            margin-bottom: 10px;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="wizard-container">
+        <div class="wizard-header">
+            <h1>🚀 Quick Setup</h1>
+            <p>Get started in 3 easy steps</p>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step-dot active" id="dot1"></div>
+            <div class="step-dot" id="dot2"></div>
+            <div class="step-dot" id="dot3"></div>
+        </div>
+
+        <!-- Step 1: Choose Role -->
+        <div class="step active" id="step1">
+            <h2 style="margin-bottom: 20px;">What would you like to do?</h2>
+            
+            <div class="wallet-option" onclick="selectRole('operator')">
+                <h3>🖥️ Run an Operator Node</h3>
+                <p>Earn BTC fees by validating transactions</p>
+            </div>
+
+            <div class="wallet-option" onclick="selectRole('buyer')">
+                <h3>🛍️ Buy Items</h3>
+                <p>Scan and purchase authenticated products</p>
+            </div>
+
+            <div class="wallet-option" onclick="selectRole('seller')">
+                <h3>💼 Sell Items</h3>
+                <p>List and sell your authenticated items</p>
+            </div>
+
+            <div class="wallet-option" onclick="selectRole('manufacturer')">
+                <h3>🏭 Manufacturer</h3>
+                <p>Register and mint new items</p>
+            </div>
+        </div>
+
+        <!-- Step 2: Wallet Setup -->
+        <div class="step" id="step2">
+            <h2 style="margin-bottom: 20px;">Bitcoin Wallet Setup</h2>
+            
+            <div class="wallet-option" onclick="selectWalletOption('create')">
+                <h3>✨ Create New Wallet</h3>
+                <p>We'll generate a secure Bitcoin wallet for you</p>
+            </div>
+
+            <div class="wallet-option" onclick="selectWalletOption('import')">
+                <h3>📥 Import Existing Wallet</h3>
+                <p>Use your existing Bitcoin wallet address</p>
+            </div>
+
+            <div class="wallet-option" onclick="selectWalletOption('restore')">
+                <h3>🔄 Restore from Seed Phrase</h3>
+                <p>Recover wallet from 24-word mnemonic</p>
+            </div>
+
+            <div id="walletInputs" style="display: none; margin-top: 30px;">
+                <!-- Import Address -->
+                <div id="importInput" style="display: none;">
+                    <div class="form-group">
+                        <label>Bitcoin Address</label>
+                        <input type="text" id="btcAddress" placeholder="bc1q...">
+                    </div>
+                </div>
+
+                <!-- Restore from Mnemonic -->
+                <div id="restoreInput" style="display: none;">
+                    <div class="form-group">
+                        <label>24-Word Seed Phrase</label>
+                        <textarea id="mnemonic" rows="4" placeholder="word1 word2 word3 ..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Create New Wallet Display -->
+                <div id="createDisplay" style="display: none;">
+                    <div class="warning">
+                        <strong>⚠️ IMPORTANT:</strong> Write down these 24 words and store them safely. This is the ONLY way to recover your wallet!
+                    </div>
+
+                    <div class="mnemonic-display">
+                        <strong>Your Recovery Phrase:</strong>
+                        <div class="mnemonic-words" id="mnemonicWords"></div>
+                        <button class="copy-btn" onclick="copyMnemonic()">📋 Copy to Clipboard</button>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>Your Bitcoin Address:</strong><br>
+                        <code id="generatedAddress" style="word-break: break-all;"></code>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn" onclick="nextStep()" id="walletNextBtn" style="display: none;">Continue</button>
+            <button class="btn btn-secondary" onclick="prevStep()">Back</button>
+        </div>
+
+        <!-- Step 3: Final Configuration -->
+        <div class="step" id="step3">
+            <h2 style="margin-bottom: 20px;">Almost Done!</h2>
+
+            <div class="form-group">
+                <label>Your Name / Node ID</label>
+                <input type="text" id="nodeName" placeholder="My Node">
+            </div>
+
+            <div class="info-box">
+                <strong>💰 Fee Structure:</strong><br>
+                • Main Node: 60% of fees<br>
+                • Other Operators: 40% split equally<br>
+                • You earn on every successful sale!
+            </div>
+
+            <div class="form-group" id="operatorConfig" style="display: none;">
+                <label>Port Number</label>
+                <input type="number" id="port" value="3000">
+            </div>
+
+            <button class="btn" onclick="completeSetup()">🚀 Complete Setup</button>
+            <button class="btn btn-secondary" onclick="prevStep()">Back</button>
+        </div>
+
+        <!-- Step 4: Success -->
+        <div class="step" id="step4">
+            <div class="success">
+                <h2>✅ Setup Complete!</h2>
+                <p>Your account is ready to use</p>
+            </div>
+
+            <div class="info-box" style="margin-top: 30px;">
+                <strong>Your Details:</strong><br>
+                <div id="finalDetails"></div>
+            </div>
+
+            <button class="btn" onclick="goToDashboard()">Go to Dashboard</button>
+        </div>
+    </div>
+
+    <script src="/js/btc.bundle.js"></script>
+    <script>
+        let currentStep = 1;
+        let selectedRole = '';
+        let selectedWalletOption = '';
+        let walletData = {};
+
+        function selectRole(role) {
+            selectedRole = role;
+            document.querySelectorAll('.wallet-option').forEach(el => el.classList.remove('selected'));
+            event.target.closest('.wallet-option').classList.add('selected');
+            setTimeout(() => nextStep(), 500);
+        }
+
+        function selectWalletOption(option) {
+            selectedWalletOption = option;
+            document.querySelectorAll('.wallet-option').forEach(el => el.classList.remove('selected'));
+            event.target.closest('.wallet-option').classList.add('selected');
+
+            document.getElementById('walletInputs').style.display = 'block';
+            document.getElementById('importInput').style.display = option === 'import' ? 'block' : 'none';
+            document.getElementById('restoreInput').style.display = option === 'restore' ? 'block' : 'none';
+            document.getElementById('createDisplay').style.display = option === 'create' ? 'block' : 'none';
+            document.getElementById('walletNextBtn').style.display = 'block';
+
+            if (option === 'create') {
+                generateWallet();
+            }
+        }
+
+        async function generateWallet() {
+            try {
+                if (!window.AuthoBTC || typeof window.AuthoBTC.generateMnemonic24 !== 'function') {
+                    throw new Error('Wallet library not loaded');
+                }
+
+                const network = 'mainnet';
+                const mnemonic = window.AuthoBTC.generateMnemonic24();
+                const address = window.AuthoBTC.getAddressFromMnemonic(mnemonic, network, 0, 0);
+                const publicKey = window.AuthoBTC.getPublicKeyFromMnemonic(mnemonic, network, 0, 0);
+
+                const wallet = {
+                    mnemonic,
+                    address,
+                    publicKey,
+                    derivationPath: "m/84'/0'/0'/0/0",
+                    network,
+                };
+                const mnemonicWords = document.getElementById('mnemonicWords');
+                mnemonicWords.innerHTML = '';
+                
+                // Display real 24-word mnemonic
+                const words = wallet.mnemonic.split(' ');
+                words.forEach((word, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'mnemonic-word';
+                    div.textContent = `${i + 1}. ${word}`;
+                    mnemonicWords.appendChild(div);
+                });
+
+                // Store real wallet data
+                walletData.mnemonic = wallet.mnemonic;
+                walletData.address = wallet.address;
+                walletData.publicKey = wallet.publicKey;
+                walletData.derivationPath = wallet.derivationPath;
+                walletData.network = wallet.network;
+                
+                document.getElementById('generatedAddress').textContent = wallet.address;
+                
+                console.log('✅ Real Bitcoin wallet generated:', wallet.address);
+            } catch (error) {
+                console.error('Wallet generation error:', error);
+                alert('Failed to generate wallet. Please try again or contact support.');
+            }
+        }
+
+        function copyMnemonic() {
+            navigator.clipboard.writeText(walletData.mnemonic);
+            alert('✅ Copied to clipboard! Store this safely!');
+        }
+
+        function nextStep() {
+            if (currentStep < 4) {
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                document.getElementById(`dot${currentStep}`).classList.add('completed');
+                currentStep++;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                document.getElementById(`dot${currentStep}`).classList.add('active');
+
+                if (currentStep === 3 && selectedRole === 'operator') {
+                    document.getElementById('operatorConfig').style.display = 'block';
+                }
+            }
+        }
+
+        function prevStep() {
+            if (currentStep > 1) {
+                document.getElementById(`step${currentStep}`).classList.remove('active');
+                document.getElementById(`dot${currentStep}`).classList.remove('active');
+                currentStep--;
+                document.getElementById(`step${currentStep}`).classList.add('active');
+                document.getElementById(`dot${currentStep}`).classList.remove('completed');
+            }
+        }
+
+        function completeSetup() {
+            const name = document.getElementById('nodeName').value || 'User';
+            
+            let details = `
+                <strong>Role:</strong> ${selectedRole}<br>
+                <strong>Name:</strong> ${name}<br>
+                <strong>Bitcoin Address:</strong> ${walletData.address || document.getElementById('btcAddress')?.value || 'N/A'}<br>
+            `;
+
+            if (selectedRole === 'operator') {
+                const port = document.getElementById('port').value;
+                details += `<strong>Port:</strong> ${port}<br>`;
+                details += `<strong>Fee Share:</strong> 60% main node, 40% split with others<br>`;
+            }
+
+            document.getElementById('finalDetails').innerHTML = details;
+
+            // Save configuration (in production, send to backend)
+            const config = {
+                role: selectedRole,
+                name,
+                wallet: walletData,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('userConfig', JSON.stringify(config));
+
+            nextStep();
+        }
+
+        function goToDashboard() {
+            if (selectedRole === 'operator') {
+                window.location.href = '/operator/dashboard';
+            } else if (selectedRole === 'manufacturer') {
+                window.location.href = '/manufacturer';
+            } else {
+                window.location.href = '/scan';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account - Autho</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #d4af37;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-align: center;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #999;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #d4af37;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 10px;
+            color: #0a0a0a;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid #ff4444;
+            color: #ff4444;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success {
+            background: rgba(68, 255, 68, 0.1);
+            border: 1px solid #44ff44;
+            color: #44ff44;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .link {
+            text-align: center;
+            margin-top: 20px;
+            color: #999;
+        }
+
+        .link a {
+            color: #d4af37;
+            text-decoration: none;
+        }
+
+        .link a:hover {
+            text-decoration: underline;
+        }
+
+        .info-box {
+            background: rgba(212, 175, 55, 0.1);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 9999;
+        }
+
+        .modal {
+            max-width: 720px;
+            width: 100%;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+        }
+
+        .modal h2 {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+            color: #d4af37;
+        }
+
+        .modal p {
+            color: #ccc;
+            margin-bottom: 14px;
+            line-height: 1.4;
+        }
+
+        .seed-box {
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 10px;
+            padding: 14px;
+            color: #fff;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            word-break: break-word;
+            margin-bottom: 14px;
+        }
+
+        .modal-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .btn-secondary {
+            width: 100%;
+            padding: 15px;
+            background: transparent;
+            border: 1px solid rgba(212, 175, 55, 0.6);
+            border-radius: 10px;
+            color: #d4af37;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(212, 175, 55, 0.15);
+        }
+
+        .btn-confirm {
+            grid-column: 1 / -1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Create Account</h1>
+        <p class="subtitle">Join the Bitcoin Ownership Protocol</p>
+
+        <div class="info-box">
+            ℹ️ Your Bitcoin wallet will be created as part of account setup. Your wallet's public key becomes your unique account ID.
+        </div>
+
+        <div id="errorMessage" class="error"></div>
+        <div id="successMessage" class="success"></div>
+
+        <!-- Step 1: Account Info -->
+        <div id="step1" style="display: block;">
+            <form id="accountForm" onsubmit="handleAccountInfo(event)">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="username" required minlength="3" placeholder="Choose a username">
+                </div>
+
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required placeholder="your@email.com">
+                </div>
+
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" required minlength="8" placeholder="At least 8 characters">
+                </div>
+
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="confirmPassword" required placeholder="Re-enter password">
+                </div>
+
+                <button type="submit" class="btn" id="nextBtn">Next: Create Wallet</button>
+            </form>
+        </div>
+
+        <!-- Step 2: Wallet Creation -->
+        <div id="step2" style="display: none;">
+            <h2 style="font-size: 1.5rem; margin-bottom: 20px; color: #d4af37;">Create Your Bitcoin Wallet</h2>
+            
+            <div class="form-group">
+                <label>Wallet Passcode (6+ characters)</label>
+                <input type="password" id="walletPasscode" required minlength="6" placeholder="Secure your wallet">
+            </div>
+
+            <div class="form-group">
+                <label>Confirm Passcode</label>
+                <input type="password" id="walletPasscodeConfirm" required placeholder="Re-enter passcode">
+            </div>
+
+            <button type="button" class="btn" id="createWalletBtn" onclick="handleWalletCreation()">Create Wallet & Register</button>
+            <button type="button" class="btn" style="background: transparent; color: #d4af37; margin-top: 10px;" onclick="showStep1()">← Back</button>
+        </div>
+
+        <div class="link">
+            Already have an account? <a href="/customer/login">Sign In</a>
+        </div>
+    </div>
+
+    <div id="seedModalOverlay" class="modal-overlay" role="dialog" aria-modal="true">
+        <div class="modal">
+            <h2>⚠️ Back up your 24-word seed phrase</h2>
+            <p>
+                This seed phrase is the ONLY way to recover your wallet. Anyone who has it can spend your Bitcoin.
+                Write it down and store it somewhere safe and private.
+            </p>
+            <div id="seedPhraseBox" class="seed-box"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="seedCopyBtn">Copy</button>
+                <button type="button" class="btn-secondary" id="seedDownloadBtn">Download</button>
+                <button type="button" class="btn btn-confirm" id="seedConfirmBtn">I wrote it down</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/btc.bundle.js"></script>
+    <script>
+        let accountData = {};
+        let transientMnemonic = '';
+
+        function b64FromBytes(bytes) {
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        function bytesFromB64(b64) {
+            return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        }
+
+        async function sha256Hex(input) {
+            const data = new TextEncoder().encode(String(input));
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function deriveVaultKey(password, saltBytes, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(String(password)),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptWalletVault(walletPayload, password) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const iterations = 210000;
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = new TextEncoder().encode(JSON.stringify(walletPayload));
+            const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, pt);
+            return {
+                v: 'AUTHO_WALLET_VAULT_V1',
+                kdf: { saltB64: b64FromBytes(salt), iterations, hash: 'SHA-256' },
+                enc: { ivB64: b64FromBytes(iv), ctB64: b64FromBytes(new Uint8Array(ct)) }
+            };
+        }
+
+        function isValidPassword(password) {
+            const pw = String(password || '');
+            if (pw.length < 8) return false;
+            if (pw.length > 256) return false;
+            if (pw.includes(' ')) {
+                return pw.length >= 14;
+            }
+            const hasUpper = /[A-Z]/.test(pw);
+            const hasLower = /[a-z]/.test(pw);
+            const hasDigit = /\d/.test(pw);
+            const hasSpecial = /[^A-Za-z0-9]/.test(pw);
+            return pw.length >= 12 && hasUpper && hasLower && hasDigit && hasSpecial;
+        }
+
+        function showStep1() {
+            document.getElementById('step1').style.display = 'block';
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        function showStep2() {
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        function handleAccountInfo(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            const errorEl = document.getElementById('errorMessage');
+
+            errorEl.style.display = 'none';
+
+            // Validation
+            if (password !== confirmPassword) {
+                errorEl.textContent = 'Passwords do not match';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (!isValidPassword(password)) {
+                errorEl.textContent = 'Password must be either a 14+ character passphrase (with spaces) or a 12+ character password with upper/lower/digit/special.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            // Store account data for step 2
+            accountData = { username, email, password };
+            showStep2();
+        }
+
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(String(text));
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        function downloadSeedText(seedPhrase) {
+            const content = `Autho Seed Phrase Backup\n\nDate: ${new Date().toISOString()}\n\nSeed Phrase:\n${seedPhrase}\n`;
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `autho-seed-phrase-${new Date().toISOString().slice(0, 10)}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function showSeedModal(seedPhrase) {
+            const overlay = document.getElementById('seedModalOverlay');
+            const phraseBox = document.getElementById('seedPhraseBox');
+            const copyBtn = document.getElementById('seedCopyBtn');
+            const dlBtn = document.getElementById('seedDownloadBtn');
+            const confirmBtn = document.getElementById('seedConfirmBtn');
+
+            phraseBox.textContent = String(seedPhrase || '');
+            overlay.style.display = 'flex';
+
+            const cleanup = () => {
+                overlay.style.display = 'none';
+                phraseBox.textContent = '';
+                copyBtn.onclick = null;
+                dlBtn.onclick = null;
+                confirmBtn.onclick = null;
+            };
+
+            return new Promise((resolve) => {
+                copyBtn.onclick = async () => {
+                    const ok = await copyToClipboard(seedPhrase);
+                    if (!ok) {
+                        alert('Copy failed. Please write down the seed phrase manually.');
+                    }
+                };
+                dlBtn.onclick = () => downloadSeedText(seedPhrase);
+                confirmBtn.onclick = () => {
+                    cleanup();
+                    resolve();
+                };
+            });
+        }
+
+        async function handleWalletCreation() {
+            const walletPasscode = document.getElementById('walletPasscode').value;
+            const walletPasscodeConfirm = document.getElementById('walletPasscodeConfirm').value;
+
+            const errorEl = document.getElementById('errorMessage');
+            const successEl = document.getElementById('successMessage');
+            const createBtn = document.getElementById('createWalletBtn');
+
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+
+            // Validation
+            if (walletPasscode !== walletPasscodeConfirm) {
+                errorEl.textContent = 'Passcodes do not match';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (walletPasscode.length < 6) {
+                errorEl.textContent = 'Passcode must be at least 6 characters';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            try {
+                createBtn.disabled = true;
+                createBtn.textContent = 'Creating Wallet...';
+
+                if (!window.AuthoBTC || typeof window.AuthoBTC.generateMnemonic24 !== 'function') {
+                    throw new Error('Wallet library not loaded');
+                }
+
+                const network = 'mainnet';
+                const mnemonic = window.AuthoBTC.generateMnemonic24();
+                const address = window.AuthoBTC.getAddressFromMnemonic(mnemonic, network, 0, 0);
+                const publicKey = window.AuthoBTC.getPublicKeyFromMnemonic(mnemonic, network, 0, 0);
+
+                transientMnemonic = String(mnemonic || '');
+                if (!transientMnemonic) {
+                    throw new Error('Failed to generate seed phrase. Please try again.');
+                }
+
+                // Always show seed phrase in-page (alerts can be blocked by browser)
+                createBtn.textContent = 'Back up seed phrase...';
+                await showSeedModal(transientMnemonic);
+
+                const emailHash = await sha256Hex(accountData.email.trim().toLowerCase());
+                const usernameHash = await sha256Hex(accountData.username.trim().toLowerCase());
+                const walletPayload = {
+                    mnemonic: transientMnemonic,
+                    publicKey,
+                    address,
+                    paymentAddress: address,
+                    network,
+                    derivationPath: "m/84'/0'/0'/0/0",
+                    createdAt: Date.now()
+                };
+                const walletVault = await encryptWalletVault(walletPayload, accountData.password);
+
+                // Store wallet locally (no plaintext seed/mnemonic stored)
+                localStorage.setItem('autho_wallet', JSON.stringify({
+                    publicKey,
+                    address,
+                    paymentAddress: address,
+                    network,
+                    derivationPath: "m/84'/0'/0'/0/0"
+                }));
+                localStorage.setItem('autho_wallet_encrypted', btoa(JSON.stringify({ createdAt: Date.now() })));
+                localStorage.setItem('autho_wallet_vault', JSON.stringify(walletVault));
+                localStorage.setItem('autho_wallet_pin', btoa(walletPasscode));
+                sessionStorage.setItem('autho_wallet_unlocked', 'true');
+                sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
+
+                createBtn.textContent = 'Registering Account...';
+
+                // Step 2: Register account with wallet info
+                // NOTE: Only hashes are sent to ledger - no plaintext email/username stored
+                const registerResponse = await fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        usernameHash,  // Only hash - no plaintext username on ledger
+                        emailHash,  // Only hash - no plaintext email on ledger
+                        password: accountData.password,
+                        role: 'customer',
+                        bitcoinAddress: address,
+                        publicKey,
+                        walletVault,
+                        passwordKdf: walletVault.kdf
+                    })
+                });
+
+                {
+                    const ct = registerResponse.headers.get('content-type') || '';
+                    let registerData = null;
+                    let registerText = '';
+                    if (ct.includes('application/json')) {
+                        registerData = await registerResponse.json().catch(() => null);
+                    } else {
+                        registerText = await registerResponse.text().catch(() => '');
+                    }
+
+                    if (!registerResponse.ok) {
+                        const msg = (registerData && (registerData.error || registerData.message))
+                            ? (registerData.error || registerData.message)
+                            : (registerText ? registerText.slice(0, 200) : `Registration failed (HTTP ${registerResponse.status})`);
+                        throw new Error(msg);
+                    }
+
+                    if (!registerData) {
+                        throw new Error('Unexpected server response (non-JSON)');
+                    }
+
+                    // Store account info
+                    localStorage.setItem('autho_account_id', registerData.accountId);
+                    localStorage.setItem('autho_username', accountData.username);
+                    localStorage.setItem('autho_email', accountData.email);
+                }
+
+                // Step 3: Auto-login
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: accountData.email, 
+                        password: accountData.password 
+                    })
+                });
+
+                const loginCt = loginResponse.headers.get('content-type') || '';
+                let loginData = null;
+                let loginText = '';
+                if (loginCt.includes('application/json')) {
+                    loginData = await loginResponse.json().catch(() => null);
+                } else {
+                    loginText = await loginResponse.text().catch(() => '');
+                }
+
+                if (loginResponse.ok && loginData && loginData.sessionId) {
+                    localStorage.setItem('autho_session_id', loginData.sessionId);
+
+                    // Wipe seed from memory after vault is created & stored
+                    transientMnemonic = '';
+
+                    successEl.textContent = '✅ Account created! Redirecting to wallet...';
+                    successEl.style.display = 'block';
+
+                    setTimeout(() => {
+                        // Redirect to mobile wallet to show seed phrase properly
+                        window.location.href = '/m/wallet';
+                    }, 2000);
+                } else {
+                    const msg = (loginData && (loginData.error || loginData.message))
+                        ? (loginData.error || loginData.message)
+                        : (loginText ? loginText.slice(0, 200) : `Account created but login failed (HTTP ${loginResponse.status}). Please sign in manually.`);
+                    throw new Error(msg);
+                }
+
+            } catch (error) {
+                errorEl.textContent = error.message;
+                errorEl.style.display = 'block';
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Wallet & Register';
+            }
+        }
+    </script>
+</body>
+</html>

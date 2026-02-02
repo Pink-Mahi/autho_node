@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>My Items - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+
+    .container {
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .wallet-status {
+      background: rgba(212, 175, 55, 0.1);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .wallet-label {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 5px;
+    }
+
+    .wallet-address {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #d4af37;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 12px;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #d4af37;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      color: #d4af37;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .item-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 15px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .item-card:active {
+      transform: scale(0.98);
+    }
+
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 15px;
+    }
+
+    .item-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #d4af37;
+      margin-bottom: 5px;
+    }
+
+    .item-serial {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #999;
+    }
+
+    .item-badge {
+      background: rgba(76, 217, 100, 0.2);
+      color: #4cd964;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .verification-badge {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+    }
+
+    .verification-badge.unverified {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.10);
+      color: #ff6b6b;
+    }
+
+    .consignment-badge {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+    }
+
+    .consignment-badge.pending {
+      border-color: rgba(255, 149, 0, 0.35);
+      background: rgba(255, 149, 0, 0.10);
+      color: #ffb74d;
+    }
+
+    .consignment-badge.active {
+      border-color: rgba(76, 217, 100, 0.35);
+      background: rgba(76, 217, 100, 0.10);
+      color: #4cd964;
+    }
+
+    .item-details {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .item-detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .item-detail-label {
+      color: #999;
+    }
+
+    .item-detail-value {
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .item-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+      color: #1a1a1a;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .btn:active {
+      transform: scale(0.95);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .empty-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+
+    .empty-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      color: #d4af37;
+      margin-bottom: 10px;
+    }
+
+    .empty-text {
+      color: #999;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 25px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .spinner {
+      border: 3px solid rgba(212, 175, 55, 0.2);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 3000;
+    }
+
+    .modal-content {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(25, 25, 25, 0.98);
+      border: 1px solid rgba(212, 175, 55, 0.35);
+      border-radius: 16px;
+      padding: 18px;
+    }
+
+    .modal-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      color: #d4af37;
+      margin-bottom: 10px;
+    }
+
+    .modal-subtitle {
+      color: #999;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .modal-row {
+      margin-bottom: 12px;
+    }
+
+    .modal-row label {
+      display: block;
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .modal-row input, .modal-row select {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 10px;
+      padding: 12px;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn-danger {
+      background: rgba(255, 59, 48, 0.15);
+      color: #ff6b6b;
+      border: 1px solid rgba(255, 59, 48, 0.35);
+    }
+
+    .status-box {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      background: rgba(212, 175, 55, 0.08);
+      color: #d4af37;
+      font-size: 13px;
+      line-height: 1.45;
+      display: none;
+    }
+
+    .status-box.error {
+      border-color: rgba(255, 59, 48, 0.35);
+      background: rgba(255, 59, 48, 0.08);
+      color: #ff6b6b;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div style="flex:1; min-width:0;">
+      <h1>💎 My Items</h1>
+      <div id="loggedInAs" style="margin-top:2px; font-size:11px; color:#999; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Logged in as: —</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="wallet-status" id="walletStatus">
+      <div class="wallet-label">Connected Wallet</div>
+      <div class="wallet-address" id="walletAddress">Loading...</div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value" id="totalItems">0</div>
+        <div class="stat-label">Items Owned</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalValue">$0</div>
+        <div class="stat-label">Est. Value</div>
+      </div>
+    </div>
+
+    <div class="section-title">
+      📦 Your Items
+    </div>
+
+    <div id="itemsList">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div>Loading your items...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="verifyModal">
+    <div class="modal-content">
+      <div class="modal-title">🔎 Request Verification</div>
+      <div class="modal-subtitle" id="verifyModalSubtitle">Choose an authenticator and request a paid verification for this item.</div>
+
+      <div class="modal-row">
+        <label>Item</label>
+        <input id="verifyItemId" type="text" readonly />
+      </div>
+
+      <div class="modal-row">
+        <label>Authenticator</label>
+        <select id="verifyAuthenticator"></select>
+      </div>
+
+      <div class="modal-row">
+        <label>Service Fee (sats)</label>
+        <input id="verifyServiceFee" type="number" min="1000" step="1" value="25000" />
+      </div>
+
+      <div class="modal-row">
+        <label>Max Service Fee (optional)</label>
+        <input id="verifyMaxServiceFee" type="number" min="0" step="1" placeholder="Leave blank to allow any fee" />
+      </div>
+
+      <div class="modal-row">
+        <label>Expires In (minutes)</label>
+        <input id="verifyExpiresMinutes" type="number" min="5" step="5" value="1440" />
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" type="button" onclick="closeVerifyModal()">Cancel</button>
+        <button class="btn" type="button" id="verifyCreateBtn" onclick="createVerificationRequest()">Create Request</button>
+      </div>
+
+      <div class="status-box" id="verifyModalOk"></div>
+      <div class="status-box error" id="verifyModalErr"></div>
+    </div>
+  </div>
+
+  <script src="/js/btc.bundle.js"></script>
+  <script src="/wallet-auth.js"></script>
+  <script>
+    let userWallet = null;
+    let lastLoadedItems = [];
+
+    function bytesFromB64(b64) {
+      const bin = atob(String(b64 || ''));
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    async function deriveVaultKey(password, salt, iterations) {
+      const enc = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(String(password)),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+
+    async function decryptWalletVault(walletVault, password) {
+      if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+        throw new Error('Unsupported wallet vault format');
+      }
+      const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+      const iterations = Number(walletVault.kdf?.iterations || 0);
+      const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+      const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+      const key = await deriveVaultKey(password, salt, iterations);
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+      const json = new TextDecoder().decode(pt);
+      return JSON.parse(json);
+    }
+
+    function getWalletNetworkName() {
+      let wallet = {};
+      try {
+        wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+      } catch {}
+      const net = String(wallet.network || 'mainnet').toLowerCase();
+      return net.includes('test') ? 'testnet' : 'mainnet';
+    }
+
+    async function getFeeRateSatPerVb() {
+      try {
+        const r = await fetch('/api/chain/fee-estimates', { cache: 'no-store' });
+        const j = await r.json();
+        const picked = Number(j?.['2'] ?? j?.['1'] ?? j?.['6'] ?? j?.['3']);
+        if (Number.isFinite(picked) && picked > 0) return Math.max(0.6, Math.min(500, picked));
+      } catch {}
+      return 2;
+    }
+
+    async function fetchUtxosForAddress(address) {
+      const r = await fetch(`/api/chain/address/${encodeURIComponent(String(address))}/utxo`, { cache: 'no-store' });
+      const j = await r.json().catch(() => ([]));
+      if (!r.ok) throw new Error(String(j?.error || `HTTP ${r.status}`));
+      return Array.isArray(j) ? j : [];
+    }
+
+    async function broadcastTxHexViaApi(txHex) {
+      const r = await fetch('/api/chain/tx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHex }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j || j.success !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+      return String(j.txid || '').trim();
+    }
+
+    function opReturnScriptHexFromDataHex(dataHex) {
+      const h = String(dataHex || '').trim().toLowerCase();
+      if (!/^[0-9a-f]+$/.test(h) || (h.length % 2 !== 0)) throw new Error('Invalid commitment hex');
+      const byteLen = h.length / 2;
+      if (byteLen > 75) throw new Error('Commitment too large for simple OP_RETURN');
+      return '6a' + byteLen.toString(16).padStart(2, '0') + h;
+    }
+
+    function getSessionId() {
+      return localStorage.getItem('autho_session_id');
+    }
+
+    function clearSession() {
+      try { localStorage.removeItem('autho_session_id'); } catch {}
+      try { localStorage.removeItem('autho_account_id'); } catch {}
+    }
+
+    function getAuthHeaders() {
+      const sid = getSessionId();
+      return sid ? { 'Authorization': `Bearer ${sid}` } : {};
+    }
+
+    async function updateLoggedInAs() {
+      const el = document.getElementById('loggedInAs');
+      if (!el) return;
+      const sid = String(getSessionId() || '').trim();
+      if (!sid) {
+        el.textContent = 'Logged in as: (not signed in)';
+        return;
+      }
+      try {
+        const r = await fetch('/api/auth/me', { method: 'GET', headers: getAuthHeaders() });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          clearSession();
+          el.textContent = 'Logged in as: (not signed in)';
+          return;
+        }
+        const a = data.account || {};
+        const email = String(a.email || '').trim();
+        const username = String(a.username || '').trim();
+        const accountId = String(a.accountId || '').trim();
+        const ident = email || username || (accountId ? `${accountId.substring(0, 12)}...` : '—');
+        const shortId = accountId ? `${accountId.substring(0, 10)}...` : '';
+        el.textContent = `Logged in as: ${shortId && ident !== shortId ? `${ident} (${shortId})` : ident}`;
+      } catch {
+        clearSession();
+        el.textContent = 'Logged in as: (not signed in)';
+      }
+    }
+
+    function getVerificationDraftStore() {
+      try {
+        return JSON.parse(localStorage.getItem('autho_verification_requests') || '{}') || {};
+      } catch {
+        return {};
+      }
+    }
+
+    async function payVerificationRequest(itemId) {
+      try {
+        await syncVerificationDraftsFromServer();
+      } catch {}
+
+      const store = getVerificationDraftStore();
+      const draft = store[String(itemId)] || null;
+      if (!draft || !draft.requestId) {
+        alert('No verification request found for this item. Create a request first.');
+        return;
+      }
+      if (draft.paymentTxid) {
+        alert(`Payment already sent: ${String(draft.paymentTxid)}`);
+        return;
+      }
+
+      const fromAddress = String(userWallet?.paymentAddress || userWallet?.address || '').trim();
+      if (!fromAddress) {
+        alert('Missing wallet address. Please sign in again.');
+        return;
+      }
+
+      const vaultStr = localStorage.getItem('autho_wallet_vault');
+      if (!vaultStr) {
+        alert('No encrypted wallet vault found. Please sign in again.');
+        return;
+      }
+
+      let vault;
+      try {
+        vault = JSON.parse(vaultStr);
+      } catch {
+        alert('Wallet vault is corrupted. Please sign in again.');
+        return;
+      }
+
+      const password = prompt('Enter your wallet passcode to pay the verification fee:');
+      if (!password) return;
+
+      let payload;
+      try {
+        payload = await decryptWalletVault(vault, password);
+      } catch {
+        alert('Failed to decrypt wallet. Incorrect passcode.');
+        return;
+      }
+
+      const mnemonic = String(payload?.mnemonic || '').trim();
+      if (!mnemonic) {
+        alert('Mnemonic missing in vault');
+        return;
+      }
+
+      if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+        alert('Bitcoin signing library not loaded. Please refresh the page.');
+        return;
+      }
+
+      const authenticatorWallet = String(draft.authenticatorWallet || '').trim();
+      const platformFeeAddress = String(draft.platformFeeAddress || '').trim();
+      const serviceFeeSats = Number(draft.serviceFeeSats || 0);
+      const platformFeeSats = Number(draft.platformFeeSats || 0);
+      const commitmentHex = String(draft.commitmentHex || '').trim().toLowerCase();
+      if (!authenticatorWallet || !commitmentHex) {
+        alert('Verification request is missing required payment data. Re-create the request.');
+        return;
+      }
+      if (!platformFeeAddress && platformFeeSats > 0) {
+        alert('Title update fee address is missing. Re-create the request or set FEE_ADDRESS_TESTNET on server.');
+        return;
+      }
+      if (!Number.isFinite(serviceFeeSats) || serviceFeeSats <= 0) {
+        alert('Invalid service fee.');
+        return;
+      }
+      if (!Number.isFinite(platformFeeSats) || platformFeeSats < 0) {
+        alert('Invalid title update fee.');
+        return;
+      }
+
+      const outputs = [
+        { address: authenticatorWallet, amountSats: serviceFeeSats },
+        ...(platformFeeSats > 0 ? [{ address: platformFeeAddress, amountSats: platformFeeSats }] : []),
+        { scriptHex: opReturnScriptHexFromDataHex(commitmentHex), amountSats: 0 },
+      ];
+
+      let utxosRaw;
+      try {
+        utxosRaw = await fetchUtxosForAddress(fromAddress);
+      } catch (e) {
+        alert('Failed to fetch UTXOs: ' + String(e?.message || e));
+        return;
+      }
+      const spendable = (Array.isArray(utxosRaw) ? utxosRaw : [])
+        .filter((u) => u && u.txid && (u.status?.confirmed === true))
+        .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+
+      if (spendable.length === 0) {
+        alert('No confirmed funds available in your wallet.');
+        return;
+      }
+
+      const totalBalance = spendable.reduce((sum, u) => sum + Number(u.value || 0), 0);
+      const feeRate = await getFeeRateSatPerVb();
+      const networkName = getWalletNetworkName();
+
+      let signed;
+      try {
+        signed = window.AuthoBTC.buildAndSignP2WPKH({
+          mnemonic,
+          outputs,
+          utxos: spendable,
+          feeRateSatPerVb: feeRate,
+          changeAddress: fromAddress,
+          network: networkName,
+        });
+      } catch (e) {
+        const msg = String(e?.message || e || '').toLowerCase();
+        const outputsTotal = outputs.reduce((sum, o) => sum + Number(o?.amountSats || 0), 0);
+        if (msg.includes('insufficient funds')) {
+          alert(`Insufficient funds.\n\nOutputs: ${Number(outputsTotal).toLocaleString()} sats\nBalance (confirmed): ${Number(totalBalance).toLocaleString()} sats\nFee rate: ~${Number(feeRate).toFixed(2)} sat/vB`);
+        } else {
+          alert('Payment failed: ' + (e?.message || String(e)));
+        }
+        return;
+      }
+
+      let txid = '';
+      try {
+        txid = await broadcastTxHexViaApi(signed.txHex);
+      } catch (e) {
+        alert('Broadcast failed: ' + String(e?.message || e));
+        return;
+      }
+
+      store[String(itemId)] = {
+        ...draft,
+        paymentTxid: txid,
+        paymentSentAt: Date.now(),
+      };
+      setVerificationDraftStore(store);
+
+      try {
+        const feeSats = Number(signed?.feeSats || 0);
+        alert(`✅ Verification payment sent!\n\nTXID:\n${txid}\n\nNetwork fee: ~${feeSats.toLocaleString()} sats\n\nNext: the authenticator will complete the verification after 6 confirmations.`);
+      } catch {
+        alert(`✅ Verification payment sent!\n\nTXID:\n${txid}`);
+      }
+
+      try {
+        await loadUserItems();
+      } catch {}
+    }
+
+    function setVerificationDraftStore(store) {
+      localStorage.setItem('autho_verification_requests', JSON.stringify(store || {}));
+    }
+
+    async function syncVerificationDraftsFromServer() {
+      const sid = getSessionId();
+      if (!sid) return;
+
+      const r = await fetch('/api/verification/requests', {
+        headers: { 'Authorization': `Bearer ${sid}` },
+        cache: 'no-store'
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || data.success !== true) return;
+      const requests = Array.isArray(data.requests) ? data.requests : [];
+      if (requests.length === 0) return;
+
+      const store = getVerificationDraftStore();
+
+      for (const reqObj of requests) {
+        const itemId = String(reqObj?.itemId || '').trim();
+        const requestId = String(reqObj?.requestId || '').trim();
+        if (!itemId || !requestId) continue;
+
+        const prev = store[String(itemId)] || {};
+        const prevRid = String(prev?.requestId || '').trim();
+        if (prevRid && prevRid !== requestId) {
+          continue;
+        }
+
+        store[String(itemId)] = {
+          ...prev,
+          requestId,
+          authenticatorId: String(reqObj?.authenticatorId || prev?.authenticatorId || '').trim(),
+          authenticatorWallet: String(reqObj?.authenticatorWallet || prev?.authenticatorWallet || '').trim(),
+          serviceFeeSats: Number(reqObj?.serviceFeeSats || prev?.serviceFeeSats || 0),
+          maxServiceFeeSats: reqObj?.maxServiceFeeSats !== undefined && reqObj?.maxServiceFeeSats !== null ? Number(reqObj?.maxServiceFeeSats) : prev?.maxServiceFeeSats,
+          platformFeeSats: Number(reqObj?.platformFeeSats || prev?.platformFeeSats || 0),
+          platformFeeAddress: String(reqObj?.platformFeeAddress || prev?.platformFeeAddress || '').trim(),
+          commitmentHex: String(reqObj?.commitmentHex || prev?.commitmentHex || '').trim(),
+          status: String(reqObj?.status || prev?.status || '').trim() || undefined,
+          expiresAt: reqObj?.expiresAt !== undefined && reqObj?.expiresAt !== null ? reqObj?.expiresAt : prev?.expiresAt,
+        };
+      }
+
+      setVerificationDraftStore(store);
+    }
+
+    async function sha256HexFromUtf8(text) {
+      const enc = new TextEncoder();
+      const digest = await crypto.subtle.digest('SHA-256', enc.encode(String(text || '')));
+      const b = new Uint8Array(digest);
+      let out = '';
+      for (let i = 0; i < b.length; i++) out += b[i].toString(16).padStart(2, '0');
+      return out;
+    }
+
+    function stableStringify(value) {
+      const seen = new WeakSet();
+      const helper = (v) => {
+        if (v === null || v === undefined) return v;
+        const t = typeof v;
+        if (t === 'number' || t === 'string' || t === 'boolean') return v;
+        if (t !== 'object') return String(v);
+        if (seen.has(v)) return '[Circular]';
+        seen.add(v);
+        if (Array.isArray(v)) return v.map(helper);
+        const out = {};
+        const keys = Object.keys(v).sort();
+        for (const k of keys) {
+          const vv = v[k];
+          if (vv === undefined) continue;
+          out[k] = helper(vv);
+        }
+        return out;
+      };
+      return JSON.stringify(helper(value));
+    }
+
+    function shortTxid(txid) {
+      const t = String(txid || '').trim();
+      if (!t) return '';
+      return t.length > 18 ? `${t.substring(0, 10)}...${t.substring(t.length - 8)}` : t;
+    }
+
+    function getTxExplorerUrl(txid) {
+      const t = String(txid || '').trim();
+      if (!t) return '';
+      return `https://mempool.space/tx/${encodeURIComponent(t)}`;
+    }
+
+    async function fetchChainTxStatus(txid) {
+      const r = await fetch(`/api/chain/tx/${encodeURIComponent(String(txid))}/status`, { cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j || j.ok !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+      return j;
+    }
+
+    window.addEventListener('load', () => {
+      // Check authentication
+      if (!WalletAuth.requireAuth('/m/items')) {
+        return;
+      }
+
+      try { updateLoggedInAs().catch(() => {}); } catch {}
+
+      userWallet = WalletAuth.getWallet();
+      if (userWallet) {
+        displayWalletInfo();
+        loadUserItems();
+      }
+    });
+
+    function displayWalletInfo() {
+      const preview = WalletAuth.getAddressPreview();
+      document.getElementById('walletAddress').textContent = preview;
+    }
+
+    async function loadUserItems() {
+      try {
+        const ownerAddress = String(userWallet.paymentAddress || userWallet.address || '').trim();
+        if (!ownerAddress) {
+          throw new Error('Missing wallet address');
+        }
+
+        const response = await fetch(`/api/registry/owner/${encodeURIComponent(ownerAddress)}`);
+        const data = await response.json();
+        const userItems = Array.isArray(data.items) ? data.items : [];
+
+        try {
+          await syncVerificationDraftsFromServer();
+        } catch {}
+
+        // Enrich: fetch verification status for each item so we can show verified/unverified and allow requesting.
+        try {
+          await Promise.all(userItems.map(async (it) => {
+            const itemId = String(it?.itemId || '').trim();
+            if (!itemId) return;
+            try {
+              const r = await fetch(`/api/registry/item/${encodeURIComponent(itemId)}`, { cache: 'no-store' });
+              const j = await r.json().catch(() => ({}));
+              if (r.ok && j && j.success === true && j.itemRecord) {
+                it.verificationStatus = String(j.itemRecord.verificationStatus || 'unverified');
+                it.issuerRole = String(j.itemRecord.issuerRole || '');
+              }
+            } catch {}
+          }));
+        } catch {}
+
+        // Enrich: check whether this item is currently consigned (pending/active).
+        try {
+          await Promise.all(userItems.map(async (it) => {
+            const itemId = String(it?.itemId || '').trim();
+            if (!itemId) return;
+            try {
+              const r = await fetch(`/api/consignments/item/${encodeURIComponent(itemId)}`, { cache: 'no-store' });
+              const j = await r.json().catch(() => ({}));
+              if (r.ok && j && j.success === true && j.consignment) {
+                it.consignment = j.consignment;
+              }
+            } catch {}
+          }));
+        } catch {}
+
+        try {
+          await Promise.all(userItems.map(async (it) => {
+            const txid = String(it?.feeTxid || '').trim();
+            if (!txid) {
+              it.feeConfirmations = 0;
+              it.feeConfirmed = true;
+              return;
+            }
+            try {
+              const st = await fetchChainTxStatus(txid);
+              it.feeConfirmations = Number(st?.confirmations || 0);
+              it.feeConfirmed = Number(st?.confirmations || 0) >= 6;
+              it.feeBlockHeight = st?.blockHeight;
+            } catch {
+              it.feeConfirmations = 0;
+              it.feeConfirmed = false;
+            }
+          }));
+        } catch {}
+
+        lastLoadedItems = userItems;
+        displayItems(userItems);
+        await updateStats(userItems);
+      } catch (error) {
+        console.error('Error loading items:', error);
+        document.getElementById('itemsList').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">⚠️</div>
+            <div class="empty-title">Error Loading Items</div>
+            <div class="empty-text">${error.message}</div>
+          </div>
+        `;
+      }
+    }
+
+    function displayItems(items) {
+      const container = document.getElementById('itemsList');
+
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📦</div>
+            <div class="empty-title">No Items Yet</div>
+            <div class="empty-text">
+              You don't own any items yet. Scan a QR code or make an offer to acquire items.
+            </div>
+            <button class="btn" onclick="window.location.href='/m/verify'">
+              🔍 Verify Items
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      const store = getVerificationDraftStore();
+      container.innerHTML = items.map(item => {
+        const vStatus = String(item?.verificationStatus || '').trim().toLowerCase();
+        const isVerified = vStatus === 'verified';
+        const isUnverified = vStatus === 'unverified';
+        const draft = store[String(item?.itemId || '')];
+        const hasDraft = !!draft && !!draft.requestId;
+        const draftStatus = hasDraft ? String(draft.status || '') : '';
+        const draftLabel = hasDraft ? `Request: ${String(draft.requestId).substring(0, 16)}...${draftStatus ? ` (${draftStatus.toUpperCase()})` : ''}` : '';
+        const canRequest = isUnverified || isVerified;
+        const canPay = hasDraft
+          && !draft?.paymentTxid
+          && (String(draftStatus).toLowerCase() === 'open' || String(draftStatus).toLowerCase() === 'accepted' || !draftStatus)
+          && String(draft?.authenticatorWallet || '').trim()
+          && String(draft?.commitmentHex || '').trim()
+          && (Number(draft?.platformFeeSats || 0) <= 0 || String(draft?.platformFeeAddress || '').trim());
+        const cons = item?.consignment || null;
+        const consStatus = cons ? String(cons.status || '').trim().toLowerCase() : '';
+        const hasConsignment = !!cons && (consStatus === 'pending' || consStatus === 'active');
+        const consignmentBadge = hasConsignment
+          ? `<div class="consignment-badge ${consStatus === 'active' ? 'active' : 'pending'}">${consStatus === 'active' ? 'CONSIGNED' : 'CONSIGN PENDING'}</div>`
+          : '';
+        const consignmentId = hasConsignment ? String(cons.consignmentId || '') : '';
+        const buyerLink = (consStatus === 'active' && consignmentId) ? `/consignment?id=${encodeURIComponent(consignmentId)}` : '';
+        const buyerQr = buyerLink ? `/api/qr.png?text=${encodeURIComponent(buyerLink)}` : '';
+        return `
+        <div class="item-card">
+          <div class="item-header">
+            <div>
+              <div class="item-title">${(item.metadata && (item.metadata.name || item.metadata.itemType)) || item.itemType || 'Unknown Item'}</div>
+              <div class="item-serial">SN: ${((item.metadata && item.metadata.serialNumber) || item.serialNumber || item.itemId.substring(0, 20))}</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+              <div class="verification-badge ${isVerified ? '' : 'unverified'}">${isVerified ? 'VERIFIED' : (isUnverified ? 'UNVERIFIED' : (vStatus || 'UNKNOWN').toUpperCase())}</div>
+              ${consignmentBadge}
+              <div class="item-badge">${item.status || item.state || 'ACTIVE'}</div>
+            </div>
+          </div>
+
+          ${(item?.metadata?.images && Array.isArray(item.metadata.images) && item.metadata.images.length > 0 && item.metadata.images[0]?.mime && item.metadata.images[0]?.dataB64) ? `
+            <div style="margin-bottom: 12px;">
+              <img alt="Item thumbnail" src="data:${String(item.metadata.images[0].mime)};base64,${String(item.metadata.images[0].dataB64)}" style="width:100%; max-width: 220px; height: 140px; object-fit: cover; border-radius: 12px; border: 1px solid rgba(212, 175, 55, 0.25);" />
+            </div>
+          ` : ''}
+
+          <div class="item-details">
+            <div class="item-detail-row">
+              <span class="item-detail-label">Item ID</span>
+              <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">${item.itemId.substring(0, 20)}...</span>
+            </div>
+            <div class="item-detail-row">
+              <span class="item-detail-label">Registered</span>
+              <span class="item-detail-value">${new Date(item.registeredAt).toLocaleDateString()}</span>
+            </div>
+            ${String(item?.feeTxid || '').trim() ? `
+              <div class="item-detail-row">
+                <span class="item-detail-label">Anchor Fee</span>
+                <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">
+                  ${item.feeConfirmed === false ? `Pending ${Number(item.feeConfirmations || 0)}/6` : `Confirmed (${Number(item.feeConfirmations || 0)}/6)`}
+                </span>
+              </div>
+              <div class="item-detail-row">
+                <span class="item-detail-label">Fee TX</span>
+                <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">
+                  <a href="${getTxExplorerUrl(item.feeTxid)}" target="_blank" rel="noreferrer" style="color:#d4af37; text-decoration: underline;">${shortTxid(item.feeTxid)}</a>
+                </span>
+              </div>
+            ` : ''}
+            ${hasDraft ? `
+              <div class="item-detail-row">
+                <span class="item-detail-label">Verification</span>
+                <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">${draftLabel}</span>
+              </div>
+            ` : ''}
+            ${((item.metadata && item.metadata.description) || item.description) ? `
+              <div class="item-detail-row">
+                <span class="item-detail-label">Description</span>
+                <span class="item-detail-value">${(item.metadata && item.metadata.description) || item.description}</span>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="item-actions">
+            <button class="btn btn-secondary" onclick="viewItemDetails('${item.itemId}')">
+              📋 Details
+            </button>
+            <button class="btn btn-secondary" onclick="sellItem('${item.itemId}')" ${(String(item?.feeTxid || '').trim() && item.feeConfirmed === false) || hasConsignment ? 'disabled' : ''}>
+              ${hasConsignment ? '🔒 Consigned' : (String(item?.feeTxid || '').trim() && item.feeConfirmed === false ? `⏳ Pending (${Number(item.feeConfirmations || 0)}/6)` : '🏷️ Sell')}
+            </button>
+          </div>
+
+          <div class="item-actions" style="margin-top: 10px;">
+            <button class="btn btn-secondary" onclick="consignItem('${item.itemId}')" ${(String(item?.feeTxid || '').trim() && item.feeConfirmed === false) || hasConsignment ? 'disabled' : ''}>
+              ${hasConsignment ? '🤝 Consignment Active' : '🤝 Consign with Retailer'}
+            </button>
+          </div>
+
+          ${consStatus === 'pending' && consignmentId ? `
+            <div class="item-details" style="margin-top: 12px;">
+              <div class="item-detail-row">
+                <span class="item-detail-label">Consignment</span>
+                <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">${consignmentId.substring(0, 18)}...</span>
+              </div>
+              <div class="item-detail-row">
+                <span class="item-detail-label">Next</span>
+                <span class="item-detail-value">Retailer must confirm</span>
+              </div>
+            </div>
+          ` : ''}
+
+          ${consStatus === 'active' && consignmentId ? `
+            <div class="item-details" style="margin-top: 12px;">
+              <div class="item-detail-row">
+                <span class="item-detail-label">Consignment</span>
+                <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">${consignmentId.substring(0, 18)}...</span>
+              </div>
+              <div class="item-actions" style="margin-top: 10px;">
+                <button class="btn btn-secondary" onclick="openBuyerQr('${consignmentId}')">📲 Buyer QR</button>
+              </div>
+              <div style="display:flex; justify-content:center; margin-top: 10px;">
+                <img alt="Buyer QR" src="${buyerQr}" style="width:180px; height:180px; border-radius: 12px; border: 1px solid rgba(212, 175, 55, 0.25);" />
+              </div>
+            </div>
+          ` : ''}
+          ${canRequest ? `
+            <div class="item-actions" style="margin-top: 10px;">
+              <button class="btn" onclick="openVerifyModal('${item.itemId}')">
+                ${hasDraft ? '🔄 Update Verification Request' : (isVerified ? '➕ Add Authenticator Verification' : '✅ Request Verification')}
+              </button>
+            </div>
+          ` : ''}
+
+          ${canPay ? `
+            <div class="item-actions" style="margin-top: 10px;">
+              <button class="btn" onclick="payVerificationRequest('${item.itemId}')">
+                💳 Pay Verification
+              </button>
+            </div>
+          ` : ''}
+          </div>
+      `;
+      }).join('');
+    }
+
+    async function updateStats(items) {
+      document.getElementById('totalItems').textContent = items.length;
+
+      if (!items || items.length === 0) {
+        document.getElementById('totalValue').textContent = '$0';
+        return;
+      }
+
+      let btcRate = 0;
+      try {
+        const response = await fetch('https://blockchain.info/ticker');
+        const data = await response.json();
+        btcRate = Number(data?.USD?.last || 0);
+      } catch {
+        btcRate = 0;
+      }
+
+      let totalValueUsd = 0;
+      for (const item of items) {
+        try {
+          const itemId = String(item?.itemId || '').trim();
+          if (!itemId) continue;
+          const evRes = await fetch(`/api/item/${encodeURIComponent(itemId)}/events`);
+          if (!evRes.ok) continue;
+          const events = await evRes.json();
+          const arr = Array.isArray(events) ? events : Array.isArray(events?.events) ? events.events : [];
+          const transfers = arr.filter((e) => String(e?.type || '').toUpperCase() === 'OWNERSHIP_TRANSFERRED');
+          const last = transfers.length ? transfers[transfers.length - 1] : null;
+          const sats = Number((last && ((last.payload && last.payload.price) ?? last.price)) || 0);
+          if (!Number.isFinite(sats) || sats <= 0) continue;
+          if (!btcRate || btcRate <= 0) continue;
+          totalValueUsd += (sats / 100000000) * btcRate;
+        } catch {}
+      }
+
+      document.getElementById('totalValue').textContent = `$${Math.round(totalValueUsd).toLocaleString()}`;
+    }
+
+    async function openVerifyModal(itemId) {
+      const modal = document.getElementById('verifyModal');
+      const errEl = document.getElementById('verifyModalErr');
+      const okEl = document.getElementById('verifyModalOk');
+      const btn = document.getElementById('verifyCreateBtn');
+      if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+      if (okEl) { okEl.style.display = 'none'; okEl.textContent = ''; }
+      try { if (btn) { btn.disabled = false; btn.textContent = 'Create Request'; } } catch {}
+
+      const sid = getSessionId();
+      if (!sid) {
+        if (errEl) { errEl.textContent = 'Please sign in first.'; errEl.style.display = 'block'; }
+        return;
+      }
+
+      const it = Array.isArray(lastLoadedItems)
+        ? lastLoadedItems.find((x) => String(x?.itemId || '') === String(itemId))
+        : null;
+      if (!it) {
+        if (errEl) { errEl.textContent = 'Item not found in list.'; errEl.style.display = 'block'; }
+        return;
+      }
+
+      const verifyItemIdEl = document.getElementById('verifyItemId');
+      if (verifyItemIdEl) verifyItemIdEl.value = String(itemId);
+
+      const sel = document.getElementById('verifyAuthenticator');
+      if (sel) sel.innerHTML = '<option>Loading...</option>';
+
+      try {
+        const r = await fetch('/api/verifiers', { cache: 'no-store' });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(String(data?.error || 'Failed to load authenticators'));
+        }
+
+        const verifiers = Array.isArray(data.verifiers) ? data.verifiers : [];
+        const authenticators = verifiers.filter((v) => String(v?.role || '') === 'authenticator');
+        if (authenticators.length === 0) {
+          throw new Error('No authenticators available yet. Try again later.');
+        }
+
+        const store = getVerificationDraftStore();
+        const existing = store[String(itemId)] || null;
+
+        if (sel) {
+          sel.innerHTML = authenticators.map((v) => {
+            const id = String(v.accountId || '');
+            const name = String(v.username || '').trim();
+            const label = name ? `${name} (${id.substring(0, 10)}…)` : `${id.substring(0, 16)}…`;
+            return `<option value="${id}">${label}</option>`;
+          }).join('');
+        }
+
+        if (existing && sel && existing.authenticatorId) {
+          try { sel.value = String(existing.authenticatorId); } catch {}
+        }
+        if (existing && document.getElementById('verifyServiceFee')) {
+          try { document.getElementById('verifyServiceFee').value = String(existing.serviceFeeSats || 25000); } catch {}
+        }
+        if (document.getElementById('verifyMaxServiceFee')) {
+          try { document.getElementById('verifyMaxServiceFee').value = existing && existing.maxServiceFeeSats !== undefined && existing.maxServiceFeeSats !== null ? String(existing.maxServiceFeeSats) : ''; } catch {}
+        }
+      } catch (e) {
+        if (sel) sel.innerHTML = '<option value="">(failed to load)</option>';
+        if (errEl) { errEl.textContent = String(e?.message || e); errEl.style.display = 'block'; }
+      }
+
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeVerifyModal() {
+      const modal = document.getElementById('verifyModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function createVerificationRequest() {
+      const btn = document.getElementById('verifyCreateBtn');
+      const errEl = document.getElementById('verifyModalErr');
+      const okEl = document.getElementById('verifyModalOk');
+      if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+      if (okEl) { okEl.style.display = 'none'; okEl.textContent = ''; }
+
+      const sessionId = getSessionId();
+      if (!sessionId) {
+        if (errEl) { errEl.textContent = 'Please sign in first.'; errEl.style.display = 'block'; }
+        return;
+      }
+
+      const itemId = String(document.getElementById('verifyItemId')?.value || '').trim();
+      const authenticatorId = String(document.getElementById('verifyAuthenticator')?.value || '').trim();
+      const serviceFeeSats = Number(document.getElementById('verifyServiceFee')?.value || 0);
+      const maxServiceFeeRaw = String(document.getElementById('verifyMaxServiceFee')?.value || '').trim();
+      const maxServiceFeeSats = maxServiceFeeRaw ? Number(maxServiceFeeRaw) : undefined;
+      const expiresMinutes = Number(document.getElementById('verifyExpiresMinutes')?.value || 0);
+
+      if (!itemId || !authenticatorId) {
+        if (errEl) { errEl.textContent = 'Missing item or authenticator.'; errEl.style.display = 'block'; }
+        return;
+      }
+      const minServiceSats = 1000;
+      if (!Number.isFinite(serviceFeeSats) || serviceFeeSats < minServiceSats) {
+        if (errEl) { errEl.textContent = `Invalid service fee (min ${minServiceSats} sats).`; errEl.style.display = 'block'; }
+        return;
+      }
+      if (maxServiceFeeSats !== undefined) {
+        if (!Number.isFinite(maxServiceFeeSats) || maxServiceFeeSats < serviceFeeSats) {
+          if (errEl) { errEl.textContent = 'Invalid max service fee.'; errEl.style.display = 'block'; }
+          return;
+        }
+      }
+
+      const expiresInMs = Number.isFinite(expiresMinutes) && expiresMinutes > 0
+        ? Math.max(5, expiresMinutes) * 60 * 1000
+        : 24 * 60 * 60 * 1000;
+
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+      } catch {}
+
+      try {
+        const r = await fetch('/api/verification/requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+          body: JSON.stringify({
+            itemId,
+            authenticatorId,
+            serviceFeeSats,
+            maxServiceFeeSats: maxServiceFeeSats !== undefined ? maxServiceFeeSats : undefined,
+            expiresInMs,
+          }),
+        });
+
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          throw new Error(String(data?.error || `HTTP ${r.status}`));
+        }
+
+        const reqObj = data.request || {};
+        const store = getVerificationDraftStore();
+        store[String(itemId)] = {
+          requestId: String(reqObj.requestId || ''),
+          authenticatorId,
+          authenticatorWallet: String(reqObj.authenticatorWallet || ''),
+          serviceFeeSats: Number(reqObj.serviceFeeSats || serviceFeeSats),
+          maxServiceFeeSats: reqObj.maxServiceFeeSats !== undefined && reqObj.maxServiceFeeSats !== null ? Number(reqObj.maxServiceFeeSats) : (maxServiceFeeSats !== undefined ? maxServiceFeeSats : undefined),
+          platformFeeSats: Number(reqObj.platformFeeSats || 0),
+          platformFeeAddress: String(reqObj.platformFeeAddress || ''),
+          commitmentHex: String(reqObj.commitmentHex || ''),
+          createdAt: Date.now(),
+          expiresAt: reqObj.expiresAt || null,
+          status: String(reqObj.status || 'open'),
+        };
+        setVerificationDraftStore(store);
+
+        if (okEl) {
+          const payTotal = Number(store[String(itemId)].serviceFeeSats || 0) + Number(store[String(itemId)].platformFeeSats || 0);
+          okEl.innerHTML = `✅ Request created.<br/><br/>
+            <div style="font-family: monospace; font-size: 12px;">Request: ${String(store[String(itemId)].requestId).substring(0, 18)}...</div>
+            <div style="margin-top:8px; color:#ddd;">Total target payment: <b>${payTotal.toLocaleString()}</b> sats.</div>
+            <div style="margin-top:8px; color:#999;">Commitment: ${String(store[String(itemId)].commitmentHex || '').substring(0, 16)}...</div>`;
+          okEl.style.display = 'block';
+        }
+
+        try {
+          await loadUserItems();
+        } catch {}
+      } catch (e) {
+        if (errEl) { errEl.textContent = String(e?.message || e); errEl.style.display = 'block'; }
+      } finally {
+        try {
+          if (btn) { btn.disabled = false; btn.textContent = 'Create Request'; }
+        } catch {}
+      }
+    }
+
+    function viewItemDetails(itemId) {
+      window.location.href = `/m/verify?itemId=${encodeURIComponent(itemId)}`;
+    }
+
+    function openBuyerQr(consignmentId) {
+      const id = String(consignmentId || '').trim();
+      if (!id) return;
+      window.location.href = `/consignment?id=${encodeURIComponent(id)}`;
+    }
+
+    function sellItem(itemId) {
+      const it = Array.isArray(lastLoadedItems)
+        ? lastLoadedItems.find(x => String(x?.itemId || '') === String(itemId))
+        : null;
+      if (it && String(it?.feeTxid || '').trim() && it.feeConfirmed === false) {
+        alert(`This item is still pending mainnet confirmations (${Number(it.feeConfirmations || 0)}/6). Selling is disabled until finalized.`);
+        return;
+      }
+      if (it && it.consignment && (String(it.consignment.status || '').toLowerCase() === 'active' || String(it.consignment.status || '').toLowerCase() === 'pending')) {
+        alert('This item is currently consigned. Selling is disabled until the consignment is closed.');
+        return;
+      }
+      window.location.href = `/m/offer?itemId=${encodeURIComponent(itemId)}&mode=sell`;
+    }
+
+    function consignItem(itemId) {
+      const it = Array.isArray(lastLoadedItems)
+        ? lastLoadedItems.find(x => String(x?.itemId || '') === String(itemId))
+        : null;
+      if (it && String(it?.feeTxid || '').trim() && it.feeConfirmed === false) {
+        alert(`This item is still pending mainnet confirmations (${Number(it.feeConfirmations || 0)}/6). Consignment is disabled until finalized.`);
+        return;
+      }
+      if (it && it.consignment && (String(it.consignment.status || '').toLowerCase() === 'active' || String(it.consignment.status || '').toLowerCase() === 'pending')) {
+        alert('This item already has an active/pending consignment.');
+        return;
+      }
+      window.location.href = `/m/consign?itemId=${encodeURIComponent(itemId)}`;
+    }
+
+    function goBack() {
+      window.location.href = '/m';
+    }
+  </script>
+</body>
+</html>

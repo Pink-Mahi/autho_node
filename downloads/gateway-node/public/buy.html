@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Item - Bitcoin Ownership Protocol</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+    <script src="/js/btc.bundle.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #d4af37;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            text-align: center;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #999;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .item-card {
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .item-card h3 {
+            color: #d4af37;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .item-detail {
+            color: #999;
+            margin: 8px 0;
+            font-size: 0.95rem;
+        }
+
+        .item-detail strong {
+            color: #d4af37;
+        }
+
+        .price-card {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(244, 208, 63, 0.1) 100%);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .price-card .label {
+            color: #999;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .price-card .amount {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #d4af37;
+            margin: 10px 0;
+        }
+
+        .price-card .sats {
+            color: #999;
+            font-size: 1.2rem;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 10px;
+            color: #0a0a0a;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            border: 1px solid #d4af37;
+        }
+
+        .info-box {
+            background: rgba(76, 217, 100, 0.1);
+            border: 1px solid #4cd964;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #4cd964;
+        }
+
+        .warning-box {
+            background: rgba(255, 149, 0, 0.1);
+            border: 1px solid #ff9500;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #ff9500;
+        }
+
+        .payment-section {
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .payment-section h3 {
+            color: #d4af37;
+            margin-bottom: 15px;
+        }
+
+        .qr-code-container {
+            display: inline-block;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+
+        .payment-address {
+            background: rgba(212, 175, 55, 0.1);
+            border: 1px solid #d4af37;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+            font-size: 0.85rem;
+        }
+
+        .copy-btn {
+            background: rgba(212, 175, 55, 0.2);
+            border: 1px solid #d4af37;
+            color: #d4af37;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin: 10px 5px;
+        }
+
+        .copy-btn:hover {
+            background: rgba(212, 175, 55, 0.3);
+        }
+
+        .status-pending {
+            color: #ff9500;
+        }
+
+        .status-paid {
+            color: #4cd964;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .auth-prompt {
+            background: rgba(212, 175, 55, 0.1);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+            padding: 25px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .auth-prompt h3 {
+            color: #d4af37;
+            margin-bottom: 15px;
+        }
+
+        .auth-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #d4af37;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .back-link:hover {
+            color: #f4d03f;
+            transform: translateX(-5px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Home</a>
+        <div id="loadingState" class="loading">
+            <h2>⏳ Loading offer...</h2>
+        </div>
+
+        <div id="offerContent" style="display: none;">
+            <h1>🛍️ Purchase Item</h1>
+            <p class="subtitle">Secure Bitcoin payment</p>
+
+            <div class="item-card">
+                <h3 id="itemName">Item Name</h3>
+                <div class="item-detail"><strong>Serial:</strong> <span id="itemSerial">-</span></div>
+                <div class="item-detail"><strong>Type:</strong> <span id="itemType">-</span></div>
+                <div class="item-detail"><strong>Seller:</strong> <span id="sellerAddress">-</span></div>
+                <div class="item-detail"><strong>Offer ID:</strong> <span id="offerId">-</span></div>
+                <div class="item-detail"><strong>Expires:</strong> <span id="expiresAt">-</span></div>
+            </div>
+
+            <div class="price-card">
+                <div class="label">Total Price</div>
+                <div class="amount">$<span id="priceUSD">0.00</span></div>
+                <div class="sats"><span id="priceSats">0</span> sats</div>
+            </div>
+
+            <div id="priceDisclaimer" style="margin-top: 10px; color: #999; font-size: 0.85rem; line-height: 1.5;">
+                This offer is paid in sats on Bitcoin. The USD amount is an estimate and may vary slightly at the time of payment.
+            </div>
+
+            <div id="feeDisclaimer" style="margin-top: 10px; color: #999; font-size: 0.85rem; line-height: 1.5; display: none;">
+                The title update fee is deducted from the seller’s proceeds. The buyer sends the full amount shown above.
+            </div>
+
+            <!-- Auth Required State -->
+            <div id="authRequired" style="display: none;">
+                <div class="auth-prompt">
+                    <h3>🔐 Login or Create Account</h3>
+                    <p style="color: #999; margin: 15px 0;">
+                        To complete this purchase, please login or create a free account.
+                    </p>
+                    <div class="auth-buttons">
+                        <a href="/user-signup.html" class="btn">✨ Create Account</a>
+                        <a href="/m" class="btn btn-secondary">🔓 Login</a>
+                    </div>
+                </div>
+            </div>
+
+            <div id="claimSection" style="display: none;">
+                <div class="info-box">
+                    <strong>🟡 Offer Available</strong><br>
+                    Claim this offer to lock it to your wallet and pay immediately.
+                </div>
+                <button class="btn" id="claimBtn" onclick="claimOffer()">🔒 Claim & Pay</button>
+                <button class="btn btn-secondary" id="counterBtn" onclick="makeCounterOffer()">📝 Make Counter Offer</button>
+            </div>
+
+            <div id="waitingSection" style="display: none;">
+                <div class="warning-box">
+                    <strong>⏳ Waiting for Seller</strong><br>
+                    The seller needs to accept this offer before you can pay.
+                </div>
+                <button class="btn btn-secondary" onclick="loadOffer()">🔄 Refresh</button>
+            </div>
+
+            <div id="paymentSection" style="display: none;">
+                <div class="info-box">
+                    <strong>✅ Ready to Pay</strong><br>
+                    Send Bitcoin to the address below or scan the QR code with your wallet.
+                </div>
+
+                <div class="payment-section">
+                    <h3>Payment Options</h3>
+                    
+                    <!-- Bitcoin Payment -->
+                    <div style="text-align: center; margin: 20px 0;">
+                        <h4 style="color: #d4af37; margin-bottom: 10px;">⛓️ Bitcoin (On-Chain)</h4>
+                        <div class="qr-code-container" id="bitcoinQR"></div>
+                        <div class="payment-address" id="bitcoinAddress"></div>
+                        <button class="copy-btn" onclick="copyAddress('bitcoin')">📋 Copy Address</button>
+                    </div>
+
+                    <!-- Lightning Payment (if available) -->
+                    <div id="lightningSection" style="display: none; text-align: center; margin: 20px 0;">
+                        <h4 style="color: #d4af37; margin-bottom: 10px;">⚡ Lightning Network</h4>
+                        <div class="qr-code-container" id="lightningQR"></div>
+                        <div class="payment-address" id="lightningInvoice" style="font-size: 0.7rem;"></div>
+                        <button class="copy-btn" onclick="copyAddress('lightning')">📋 Copy Invoice</button>
+                    </div>
+                </div>
+
+                <div class="warning-box">
+                    <strong>⚠️ Important:</strong><br>
+                    • Send exact amount: <strong><span id="exactSats">0</span> sats</strong><br>
+                    • Payment is monitored automatically<br>
+                    • You'll be notified when confirmed<br>
+                    • Offer expires in <strong><span id="timeRemaining">-</span></strong>
+                </div>
+
+                <div id="paymentStatus" style="text-align: center; margin: 20px 0;">
+                    <div class="status-pending">⏳ Waiting for payment...</div>
+                </div>
+
+                <button class="btn" id="payInAppBtn" style="margin-top: 10px;" onclick="completePaymentInApp()">💳 Complete Payment</button>
+            </div>
+
+            <!-- Paid State -->
+            <div id="paidSection" style="display: none;">
+                <div class="info-box" style="text-align: center; padding: 30px;">
+                    <h2 style="color: #4cd964; margin-bottom: 15px;">✅ Payment Received!</h2>
+                    <p style="color: #999;">
+                        Your payment has been confirmed.<br>
+                        The item ownership is being transferred to you.
+                    </p>
+                </div>
+                <button class="btn" onclick="window.location.href='/m'">View My Items →</button>
+            </div>
+        </div>
+
+        <div id="errorState" style="display: none; text-align: center; padding: 40px;">
+            <h2 style="color: #ff3b30;">❌ Offer Not Found</h2>
+            <p style="color: #999; margin: 20px 0;">
+                This offer may have expired or been cancelled.
+            </p>
+            <a href="/m" class="btn">← Back to Home</a>
+        </div>
+    </div>
+
+    <script>
+        let offerData = null;
+        let checkInterval = null;
+
+        async function makeCounterOffer() {
+            const btn = document.getElementById('counterBtn');
+            const originalText = btn && btn.textContent ? String(btn.textContent) : '📝 Make Counter Offer';
+            try {
+                const sessionId = localStorage.getItem('autho_session_id');
+                if (!sessionId) {
+                    alert('Please log in first.');
+                    return;
+                }
+
+                const currentSats = Number(offerData?.sats || 0);
+                const proposed = prompt(`Enter your counter offer in sats${currentSats > 0 ? ` (current: ${currentSats.toLocaleString()} sats)` : ''}:`);
+                if (proposed === null) return;
+                const sats = Number(String(proposed).replace(/[, ]/g, '').trim());
+                if (!Number.isFinite(sats) || sats <= 0) {
+                    alert('Invalid sats amount');
+                    return;
+                }
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Submitting...';
+                }
+
+                const res = await fetch(`/api/offers/${encodeURIComponent(offerId)}/counter`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${sessionId}`
+                    },
+                    body: JSON.stringify({ sats })
+                });
+
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(data?.error || 'Failed to create counter offer');
+                }
+
+                const newId = String(data?.counterOfferId || '').trim();
+                if (!newId) {
+                    throw new Error('Counter offer created but no offerId returned');
+                }
+
+                window.location.href = `/buy?offerId=${encodeURIComponent(newId)}`;
+            } catch (e) {
+                alert(e?.message || String(e));
+            } finally {
+                try {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                    }
+                } catch {}
+            }
+        }
+
+        let btcUsdCache = { rate: 0, ts: 0 };
+
+        // Get offer ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const offerId = urlParams.get('offerId');
+
+        // Load offer data
+        async function loadOffer() {
+            if (!offerId) {
+                showError();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/offers/${offerId}`);
+                if (!response.ok) throw new Error('Offer not found');
+                
+                offerData = await response.json();
+
+                const fetchJson = async (url) => {
+                    const r = await fetch(url);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return r.json();
+                };
+
+                const formatUsd = (n) => {
+                    try {
+                        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+                    } catch {
+                        return `$${Number(n).toFixed(2)}`;
+                    }
+                };
+
+                const getBtcUsdRate = async () => {
+                    const now = Date.now();
+                    if (btcUsdCache.rate > 0 && (now - btcUsdCache.ts) < 60_000) {
+                        return btcUsdCache.rate;
+                    }
+
+                    const sources = [
+                        async () => {
+                            const j = await fetchJson('https://api.coinbase.com/v2/exchange-rates?currency=BTC');
+                            const r = Number(j?.data?.rates?.USD);
+                            return Number.isFinite(r) && r > 0 ? r : 0;
+                        },
+                        async () => {
+                            const j = await fetchJson('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+                            const r = Number(j?.bitcoin?.usd);
+                            return Number.isFinite(r) && r > 0 ? r : 0;
+                        },
+                        async () => {
+                            const j = await fetchJson('https://blockchain.info/ticker');
+                            const r = Number(j?.USD?.last);
+                            return Number.isFinite(r) && r > 0 ? r : 0;
+                        },
+                    ];
+
+                    for (const fn of sources) {
+                        try {
+                            const r = await fn();
+                            if (r > 0) {
+                                btcUsdCache = { rate: r, ts: now };
+                                return r;
+                            }
+                        } catch {}
+                    }
+
+                    return 0;
+                };
+                
+                // Display offer details
+                document.getElementById('itemName').textContent = offerData.itemName || 'Unknown Item';
+                document.getElementById('itemSerial').textContent = offerData.itemId || '-';
+                document.getElementById('itemType').textContent = offerData.itemName || '-';
+                document.getElementById('sellerAddress').textContent = offerData.sellerAddress || offerData.seller || offerData.buyerAddress || 'Seller';
+                document.getElementById('offerId').textContent = offerData.offerId;
+
+                const sats = Number(offerData?.sats || 0);
+                document.getElementById('priceSats').textContent = sats.toLocaleString();
+                document.getElementById('exactSats').textContent = sats.toLocaleString();
+
+                const amountUsdRaw = Number(offerData?.amount || 0);
+                if (Number.isFinite(amountUsdRaw) && amountUsdRaw > 0) {
+                    document.getElementById('priceUSD').textContent = amountUsdRaw.toFixed(2);
+                } else {
+                    const rate = await getBtcUsdRate();
+                    if (rate > 0 && sats > 0) {
+                        const usd = (sats / 1e8) * rate;
+                        document.getElementById('priceUSD').textContent = String(Number(usd).toFixed(2));
+                    } else {
+                        document.getElementById('priceUSD').textContent = '0.00';
+                    }
+                }
+
+                const platformFeeSats = Number(offerData?.platformFeeSats || 0);
+                const sellerReceivesSats = Number(offerData?.sellerReceivesSats || 0);
+                const feeEl = document.getElementById('feeDisclaimer');
+                if (feeEl) {
+                    feeEl.style.display = (platformFeeSats > 0 && sellerReceivesSats > 0) ? 'block' : 'none';
+                }
+                
+                // Format expiry time
+                const expiryDate = new Date(offerData.expiresAt);
+                document.getElementById('expiresAt').textContent = expiryDate.toLocaleString();
+                updateTimeRemaining();
+
+                // Check if user is logged in
+                const isLoggedIn = checkUserLogin();
+                
+                if (!isLoggedIn) {
+                    // Show auth required
+                    document.getElementById('authRequired').style.display = 'block';
+                } else {
+                    const s = String(offerData?.status || '').toUpperCase();
+                    if (s === 'OPEN') {
+                        const claimEl = document.getElementById('claimSection');
+                        if (claimEl) claimEl.style.display = 'block';
+                    } else if (s === 'PENDING') {
+                        const w = document.getElementById('waitingSection');
+                        if (w) w.style.display = 'block';
+                    } else {
+                        // Show payment section
+                        showPaymentSection();
+                    }
+                }
+
+                // Show content
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('offerContent').style.display = 'block';
+
+                // Start monitoring payment if in payment state
+                if (isLoggedIn && offerData.status === 'ACCEPTED') {
+                    startPaymentMonitoring();
+                } else if (offerData.status === 'PAID') {
+                    showPaidState();
+                }
+
+            } catch (error) {
+                console.error('Error loading offer:', error);
+                showError();
+            }
+        }
+
+        function checkUserLogin() {
+            // Check if user has session/wallet
+            const sessionId = localStorage.getItem('autho_session_id');
+            const wallet = localStorage.getItem('autho_wallet');
+            const vault = localStorage.getItem('autho_wallet_vault');
+            return !!sessionId || !!wallet || !!vault;
+        }
+
+        async function claimOffer() {
+            const btn = document.getElementById('claimBtn');
+            const originalText = btn && btn.textContent ? String(btn.textContent) : '🔒 Claim & Pay';
+            try {
+                const sessionId = localStorage.getItem('autho_session_id');
+                if (!sessionId) {
+                    alert('Please log in first.');
+                    return;
+                }
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Claiming...';
+                }
+
+                const res = await fetch(`/api/offers/${encodeURIComponent(offerId)}/claim`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${sessionId}`
+                    }
+                });
+
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(data?.error || 'Failed to claim offer');
+                }
+
+                const claimEl = document.getElementById('claimSection');
+                if (claimEl) claimEl.style.display = 'none';
+
+                await loadOffer();
+            } catch (e) {
+                alert(e?.message || String(e));
+            } finally {
+                try {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                    }
+                } catch {}
+            }
+        }
+
+        function showPaymentSection() {
+            document.getElementById('paymentSection').style.display = 'block';
+
+            const payBtn = document.getElementById('payInAppBtn');
+            if (payBtn) {
+                const s = String(offerData?.status || '').toUpperCase();
+                payBtn.style.display = (s === 'ACCEPTED') ? 'block' : 'none';
+                payBtn.disabled = (s === 'PAID');
+            }
+
+            // Generate Bitcoin QR code
+            if (offerData.paymentAddress) {
+                const bitcoinURI = `bitcoin:${offerData.paymentAddress}?amount=${(offerData.sats / 100000000).toFixed(8)}`;
+                
+                const btcQR = document.getElementById('bitcoinQR');
+                btcQR.innerHTML = '';
+                new QRCode(btcQR, {
+                    text: bitcoinURI,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+
+                document.getElementById('bitcoinAddress').textContent = offerData.paymentAddress;
+            }
+
+            // Generate Lightning QR code if available
+            if (offerData.lightningInvoice) {
+                document.getElementById('lightningSection').style.display = 'block';
+                
+                const lnQR = document.getElementById('lightningQR');
+                lnQR.innerHTML = '';
+                new QRCode(lnQR, {
+                    text: offerData.lightningInvoice,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+
+                document.getElementById('lightningInvoice').textContent = offerData.lightningInvoice;
+            }
+        }
+
+        function showPaidState() {
+            document.getElementById('paymentSection').style.display = 'none';
+            document.getElementById('paidSection').style.display = 'block';
+            if (checkInterval) clearInterval(checkInterval);
+        }
+
+        function showError() {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('errorState').style.display = 'block';
+        }
+
+        function copyAddress(type) {
+            let text = '';
+            if (type === 'bitcoin') {
+                text = document.getElementById('bitcoinAddress').textContent;
+            } else if (type === 'lightning') {
+                text = document.getElementById('lightningInvoice').textContent;
+            }
+            
+            navigator.clipboard.writeText(text);
+            alert('✅ Copied to clipboard!');
+        }
+
+        function updateTimeRemaining() {
+            const now = Date.now();
+            const remaining = offerData.expiresAt - now;
+            
+            if (remaining <= 0) {
+                document.getElementById('timeRemaining').textContent = 'EXPIRED';
+                return;
+            }
+
+            const hours = Math.floor(remaining / 3600000);
+            const minutes = Math.floor((remaining % 3600000) / 60000);
+            
+            document.getElementById('timeRemaining').textContent = `${hours}h ${minutes}m`;
+            
+            setTimeout(updateTimeRemaining, 60000); // Update every minute
+        }
+
+        async function startPaymentMonitoring() {
+            checkInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/offers/${offerId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'PAID') {
+                            showPaidState();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking payment status:', error);
+                }
+            }, 10000); // Check every 10 seconds
+        }
+
+        function bytesFromB64(b64) {
+            const bin = atob(b64);
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            return arr;
+        }
+
+        async function deriveVaultKey(password, salt, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(password),
+                'PBKDF2',
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptWalletVault(walletVault, password) {
+            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+                throw new Error('Unsupported wallet vault format');
+            }
+            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+            const iterations = Number(walletVault.kdf?.iterations || 0);
+            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            const json = new TextDecoder().decode(pt);
+            return JSON.parse(json);
+        }
+
+        async function completePaymentInApp() {
+            const btn = document.getElementById('payInAppBtn');
+            const originalText = btn && btn.textContent ? String(btn.textContent) : '💳 Complete Payment';
+            try {
+                if (!offerData) {
+                    alert('Offer not loaded');
+                    return;
+                }
+
+                const st = String(offerData.status || '').toUpperCase();
+                if (st === 'OPEN') {
+                    alert('Please claim this offer first.');
+                    return;
+                }
+                if (st === 'PENDING') {
+                    alert('Waiting for seller to accept this offer.');
+                    return;
+                }
+                if (st !== 'ACCEPTED') {
+                    alert('Offer is not payable in its current state.');
+                    return;
+                }
+
+                if (offerData.paymentTxid) {
+                    alert(`Payment already submitted.\n\nTransaction ID:\n${offerData.paymentTxid}`);
+                    return;
+                }
+
+                const outputs = Array.isArray(offerData.paymentOutputs) ? offerData.paymentOutputs : [];
+                if (!outputs.length) {
+                    alert('Payment outputs not available. Please refresh and try again.');
+                    return;
+                }
+
+                const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                const fromAddress = wallet.paymentAddress || wallet.address;
+                if (!fromAddress) {
+                    alert('No wallet found. Please create a wallet first.');
+                    window.location.href = '/mobile-wallet.html';
+                    return;
+                }
+
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (!vaultStr) {
+                    alert('Wallet vault not found. Please sign in again to restore your wallet.');
+                    return;
+                }
+
+                let vault;
+                try {
+                    vault = JSON.parse(vaultStr);
+                } catch {
+                    alert('Wallet vault is corrupted. Please sign in again.');
+                    return;
+                }
+
+                const lines = outputs.map(o => `- ${Number(o.amountSats).toLocaleString()} sats → ${String(o.address)}`).join('\n');
+                const confirmed = confirm(`Complete Payment?\n\nTotal: ${Number(offerData.sats || 0).toLocaleString()} sats\n\nOutputs:\n${lines}\n\nThis will send Bitcoin from your wallet.`);
+                if (!confirmed) return;
+
+                const password = prompt('Enter your wallet passcode to complete payment:');
+                if (!password) return;
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '⏳ Processing...';
+                }
+
+                const isTestnet = /^tb1/i.test(fromAddress) || /^[mn2]/i.test(fromAddress);
+                const blockstreamBase = isTestnet ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+                const mempoolBase = isTestnet ? 'https://mempool.space/testnet/api' : 'https://mempool.space/api';
+                const networkName = isTestnet ? 'testnet' : 'mainnet';
+
+                const utxosRaw = await fetch(`${blockstreamBase}/address/${fromAddress}/utxo`).then(r => r.json());
+                const spendable = utxosRaw
+                    .filter(u => u && u.txid && u.status?.confirmed)
+                    .map(u => ({ txid: u.txid, vout: u.vout, value: u.value }));
+
+                if (spendable.length === 0) {
+                    alert('No confirmed funds available in your wallet.');
+                    return;
+                }
+
+                const totalBalance = spendable.reduce((sum, u) => sum + u.value, 0);
+
+                let feeRate = 1;
+                try {
+                    const rec = await fetch(`${mempoolBase}/v1/fees/recommended`).then(r => r.json());
+                    const minFee = Number(rec && (rec.minimumFee ?? rec.economyFee ?? rec.hourFee ?? rec.halfHourFee ?? rec.fastestFee));
+                    if (Number.isFinite(minFee) && minFee > 0) {
+                        feeRate = Math.max(0.1, Math.min(50, minFee));
+                    }
+                } catch {
+                    feeRate = 1;
+                }
+                if (!Number.isFinite(feeRate) || feeRate <= 0) feeRate = 1;
+                if (feeRate === 1) {
+                    try {
+                        const feeEst = await fetch(`${blockstreamBase}/fee-estimates`).then(r => r.json());
+                        const est = Number(feeEst && (feeEst['6'] ?? feeEst['3'] ?? feeEst['1']));
+                        const bumped = (Number.isFinite(est) && est > 0 ? est : 1) * 1.05;
+                        feeRate = Math.max(0.1, Math.min(50, bumped));
+                    } catch {
+                        feeRate = 1;
+                    }
+                }
+
+                let payload;
+                try {
+                    payload = await decryptWalletVault(vault, password);
+                } catch {
+                    alert('Failed to decrypt wallet. Incorrect passcode.');
+                    return;
+                }
+
+                const mnemonic = String(payload?.mnemonic || '');
+                if (!mnemonic) {
+                    alert('Mnemonic missing in vault');
+                    return;
+                }
+
+                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+                    alert('Bitcoin signing library not loaded. Please refresh the page.');
+                    return;
+                }
+
+                let signed;
+                try {
+                    signed = window.AuthoBTC.buildAndSignP2WPKH({
+                        mnemonic,
+                        outputs,
+                        utxos: spendable,
+                        feeRateSatPerVb: feeRate,
+                        network: networkName,
+                    });
+                } catch (e) {
+                    const msg = String(e?.message || e || '').toLowerCase();
+                    // If fractional fee rate cannot be applied (e.g., missing change output), retry at integer sat/vB.
+                    if (msg.includes('fractional') || msg.includes('missing change')) {
+                        const retryRate = Math.max(1, Math.ceil(Number(feeRate || 1)));
+                        signed = window.AuthoBTC.buildAndSignP2WPKH({
+                            mnemonic,
+                            outputs,
+                            utxos: spendable,
+                            feeRateSatPerVb: retryRate,
+                            network: networkName,
+                        });
+                    } else {
+                        const outputsTotal = outputs.reduce((sum, o) => sum + Number(o?.amountSats || 0), 0);
+                        if (msg.includes('insufficient funds')) {
+                            alert(`Insufficient funds.\n\nOutputs: ${Number(outputsTotal).toLocaleString()} sats\nBalance (confirmed): ${Number(totalBalance).toLocaleString()} sats\nFee rate: ~${Number(feeRate).toFixed(2)} sat/vB\n\nTry adding funds or waiting for your incoming transaction to confirm.`);
+                        } else {
+                            alert('Payment failed: ' + (e?.message || String(e)));
+                        }
+                        return;
+                    }
+                }
+
+                const broadcastRes = await fetch(`${blockstreamBase}/tx`, {
+                    method: 'POST',
+                    body: signed.txHex
+                });
+
+                if (!broadcastRes.ok) {
+                    const errorText = await broadcastRes.text();
+                    throw new Error(`Broadcast failed: ${errorText}`);
+                }
+
+                const txid = await broadcastRes.text();
+
+                try {
+                    await fetch(`/api/offers/${encodeURIComponent(offerId)}/payment-submitted`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ txid })
+                    });
+                } catch {}
+
+                try {
+                    const feeSats = Number(signed?.feeSats || 0);
+                    alert(`✅ Payment Sent!\n\nTransaction ID:\n${txid}\n\nNetwork fee: ~${feeSats.toLocaleString()} sats`);
+                } catch {
+                    alert(`✅ Payment Sent!\n\nTransaction ID:\n${txid}`);
+                }
+
+                await loadOffer();
+            } catch (e) {
+                console.error('Payment error:', e);
+                alert('Payment failed: ' + (e?.message || String(e)));
+            } finally {
+                try {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                    }
+                } catch {}
+            }
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', loadOffer);
+    </script>
+</body>
+</html>

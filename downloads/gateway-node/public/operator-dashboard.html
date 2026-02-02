@@ -1,0 +1,3095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Dashboard - Bitcoin Ownership Protocol</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@300;400;500;600&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            padding: 20px;
+            color: #d4af37;
+            min-height: 100vh;
+        }
+
+        .dashboard { max-width: 1200px; margin: 0 auto; }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            color: #d4af37;
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.2), inset 0 1px 0 rgba(212, 175, 55, 0.1);
+        }
+
+        .header h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .header p { color: #999; }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-top: 18px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 12px 22px;
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #d4af37;
+            transition: all 0.2s;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #0a0a0a;
+            border-color: #f4d03f;
+        }
+
+        .section {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .section.active { display: block; }
+
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            margin-bottom: 18px;
+            border-bottom: 2px solid #d4af37;
+            padding-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+            color: #0a0a0a;
+            border: 1px solid #f4d03f;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .btn-secondary {
+            background: rgba(212, 175, 55, 0.12);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%);
+            border-color: #ff3b30;
+            color: #fff;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #2a7a3f 0%, #1e5a2f 100%);
+            border-color: #2a7a3f;
+            color: #d4af37;
+        }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .success-message {
+            background: rgba(52, 199, 89, 0.12);
+            border: 1px solid rgba(52, 199, 89, 0.35);
+            color: #4cd964;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .form-group { margin-bottom: 14px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            color: #fff;
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid rgba(212, 175, 55, 0.15); font-size: 0.9rem; }
+        th { color: #d4af37; font-weight: 700; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            font-weight: 800;
+            font-size: 0.78rem;
+        }
+
+        .empty-state {
+            color: #999;
+            padding: 14px;
+            border: 1px dashed rgba(212, 175, 55, 0.25);
+            border-radius: 12px;
+            margin-top: 12px;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 26px;
+            max-width: 640px;
+            width: 100%;
+        }
+
+        .modal h2 { margin-bottom: 10px; }
+        .muted { color: #999; font-size: 0.9rem; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="modal" id="authModal" style="display:flex;">
+        <div class="modal-content">
+            <h2>🧩 Operator Sign In</h2>
+            <p class="muted">Sign in as an operator account to vote on manufacturer/authenticator applications.</p>
+
+            <div class="error-message" id="authError"></div>
+            <div class="success-message" id="authSuccess"></div>
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(212,175,55,0.25);">
+                <h3 style="margin-bottom: 10px;">🔑 Email & Password</h3>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input id="loginEmail" type="email" placeholder="operator@email.com" />
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input id="loginPassword" type="password" placeholder="••••••••" />
+                </div>
+                <div class="form-group" id="login2faGroup" style="display:none;">
+                    <label>2FA Code (if enabled)</label>
+                    <input id="loginTotp" type="text" placeholder="123456" />
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="loginWithPassword()">Sign In</button>
+                    <a class="btn btn-secondary" href="/" style="text-decoration:none;">Back</a>
+                </div>
+            </div>
+
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(212,175,55,0.25);">
+                <h3 style="margin-bottom: 10px;">✍️ Wallet Signature (Advanced)</h3>
+                <p class="muted">If you prefer, you can authenticate with a wallet signature of a nonce.</p>
+
+                <div class="form-group">
+                    <label>Account ID (Wallet Public Key Hex)</label>
+                    <input id="authAccountId" type="text" placeholder="02ab..." />
+                </div>
+
+                <div class="form-group" id="challengeGroup" style="display:none;">
+                    <label>Challenge Nonce</label>
+                    <input id="authNonce" type="text" readonly />
+                    <input id="authChallengeId" type="hidden" />
+                </div>
+
+                <div class="form-group" id="signatureGroup" style="display:none;">
+                    <label>Signature (hex) of the nonce</label>
+                    <input id="authSignature" type="text" placeholder="3044..." />
+                </div>
+
+                <div class="form-group" id="totpGroup" style="display:none;">
+                    <label>2FA Code (if enabled)</label>
+                    <input id="authTotp" type="text" placeholder="123456" />
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary" type="button" onclick="startOperatorLogin()">Get Challenge</button>
+                    <button class="btn btn-secondary" type="button" onclick="verifyOperatorLogin()">Verify & Enter</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="dashboard">
+        <div class="header">
+            <h1>🧩 Operator Dashboard</h1>
+            <p>Vote on manufacturer/authenticator applications</p>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('applications')">🏭 Applications</button>
+                <button class="nav-tab" onclick="switchTab('verifiers')">🏢 Verifiers</button>
+                <button class="nav-tab" onclick="switchTab('actions')">🧾 Verifier Actions</button>
+                <button class="nav-tab" onclick="switchTab('reputation')">⭐ Reputation</button>
+                <button class="nav-tab" onclick="switchTab('security')">🔐 Security</button>
+                <button class="nav-tab" onclick="switchTab('wallet')">💰 Wallet & Earnings</button>
+                <button class="nav-tab" onclick="switchTab('network')">🛰️ Network Health</button>
+                <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
+                <button class="nav-tab" onclick="switchTab('mempool')">📦 Mempool</button>
+                <button class="nav-tab" onclick="switchTab('anchoring')">⚓ Bitcoin Anchoring</button>
+                <button class="nav-tab" onclick="switchTab('dnsseed')">🌐 DNS Seeds</button>
+                <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <div class="section" id="applications-section">
+            <h2 class="section-title">🏭 Pending Role Applications</h2>
+            <div class="error-message" id="appsError"></div>
+            <div class="success-message" id="appsSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadApplications()">Refresh</button>
+            </div>
+            <div id="appsList" class="empty-state">Loading...</div>
+        </div>
+
+        <div class="section" id="verifiers-section">
+            <h2 class="section-title">🏢 Verifiers</h2>
+            <div class="error-message" id="verifiersError"></div>
+            <div class="success-message" id="verifiersSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadVerifiers()">Refresh</button>
+            </div>
+            <div id="verifiersList" class="empty-state">Loading...</div>
+        </div>
+
+        <div class="section" id="actions-section">
+            <h2 class="section-title">🧾 Verifier Actions</h2>
+            <div class="error-message" id="actionsError"></div>
+            <div class="success-message" id="actionsSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="btn" type="button" onclick="loadVerifierActions()">Refresh</button>
+                <select id="actionsStatusFilter" onchange="loadVerifierActions()" style="padding: 12px 16px; border-radius: 12px; background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.35); color: #d4af37;">
+                    <option value="open" selected>Open</option>
+                    <option value="finalized">Finalized</option>
+                    <option value="all">All</option>
+                </select>
+            </div>
+            <div id="actionsList" class="empty-state">Open this tab to load actions.</div>
+        </div>
+
+        <div class="section" id="anchoring-section">
+            <h2 class="section-title">⚓ Bitcoin Anchoring</h2>
+            <p class="muted" style="margin-bottom: 20px;">
+                Anchor checkpoints to Bitcoin blockchain for immutable proof of ledger state. 
+                <strong>Operators who anchor more frequently receive higher weight in fee distribution!</strong>
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">Total Checkpoints</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #d4af37;" id="totalCheckpoints">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">Anchored</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #4cd964;" id="anchoredCount">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">Unanchored</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #ff6b6b;" id="unanchoredCount">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 18px; border-radius: 12px;">
+                    <div style="font-size: 0.85rem; color: #999; margin-bottom: 6px;">My Anchors</div>
+                    <div style="font-size: 1.8rem; font-weight: 700; color: #d4af37;" id="myAnchorCount">-</div>
+                </div>
+            </div>
+
+            <div style="background: rgba(52, 199, 89, 0.08); border: 1px solid rgba(52, 199, 89, 0.25); padding: 18px; border-radius: 12px; margin-bottom: 25px;">
+                <h3 style="color: #4cd964; margin-bottom: 12px; font-size: 1.1rem;">💰 Anchor Rewards</h3>
+                <p class="muted" style="margin-bottom: 12px;">
+                    Operators earn rewards for anchoring checkpoints. Your share is weighted by your contributions:
+                </p>
+                <div style="font-size: 1.2rem; color: #4cd964; font-weight: 700; margin-top: 10px;">
+                    Your Weight: <span id="myWeight">0%</span>
+                </div>
+                <p class="muted" style="margin-top: 8px; font-size: 0.85rem;">
+                    More anchors = Higher weight = More fees earned!
+                </p>
+            </div>
+
+            <div class="error-message" id="anchoringError"></div>
+            <div class="success-message" id="anchoringSuccess"></div>
+
+            <!-- One-Click Auto Anchor Section -->
+            <div style="background: linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(52, 199, 89, 0.1)); border: 2px solid rgba(212, 175, 55, 0.4); padding: 25px; border-radius: 16px; margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                    <div style="font-size: 2.5rem;">⚡</div>
+                    <div>
+                        <h3 style="color: #d4af37; margin: 0; font-size: 1.3rem;">One-Click Bitcoin Anchor</h3>
+                        <p class="muted" style="margin: 5px 0 0 0;">Automatically anchor the next checkpoint to Bitcoin</p>
+                    </div>
+                </div>
+                
+                <div id="autoAnchorStatus" style="background: rgba(26, 26, 26, 0.6); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.9rem; color: #999;">Next Checkpoint to Anchor</div>
+                            <div id="nextCheckpointInfo" style="font-family: monospace; color: #d4af37; margin-top: 5px;">Loading...</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.9rem; color: #999;">Estimated Fee</div>
+                            <div id="estimatedFee" style="color: #4cd964; font-weight: 700; margin-top: 5px;">~150 sats</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="anchorInProgress" style="display: none; background: rgba(212, 175, 55, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner" style="width: 20px; height: 20px; border: 2px solid rgba(212, 175, 55, 0.3); border-top-color: #d4af37; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                        <div>
+                            <div style="color: #d4af37; font-weight: 600;" id="anchorProgressText">Broadcasting transaction...</div>
+                            <div class="muted" style="font-size: 0.85rem;" id="anchorProgressDetail">Please wait...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="autoAnchorBtn" class="btn" style="width: 100%; padding: 18px; font-size: 1.1rem; font-weight: 700;" onclick="startAutoAnchor()">
+                    ⚓ ANCHOR NEXT CHECKPOINT (~150 SATS)
+                </button>
+                
+                <p class="muted" style="margin-top: 15px; font-size: 0.85rem; text-align: center;">
+                    Clicking this button will create a Bitcoin transaction with the checkpoint hash and broadcast it automatically.
+                    You'll pay the mining fee from your operator wallet.
+                </p>
+            </div>
+            
+            <style>
+                @keyframes spin { to { transform: rotate(360deg); } }
+            </style>
+
+            <!-- Manual Anchor (Advanced) - Collapsed by default -->
+            <details style="margin-bottom: 25px;">
+                <summary style="cursor: pointer; padding: 15px; background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); border-radius: 12px; color: #999;">
+                    🔧 Advanced: Manual Anchor (for operators who prefer to create their own transaction)
+                </summary>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                    <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                        <h3 style="margin-bottom: 15px; color: #d4af37;">📋 Unanchored Checkpoints</h3>
+                        <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                            <button class="btn btn-secondary" onclick="loadUnanchoredCheckpoints()">Refresh</button>
+                        </div>
+                        <div id="unanchoredList" class="empty-state">Loading...</div>
+                    </div>
+
+                    <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                        <h3 style="margin-bottom: 15px; color: #d4af37;">⚓ Commit Bitcoin Anchor</h3>
+                        <form id="anchorForm" onsubmit="submitAnchor(event)">
+                            <div class="form-group">
+                                <label>Checkpoint</label>
+                                <select id="checkpointSelect" required style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                                    <option value="">Select checkpoint...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Bitcoin Transaction ID</label>
+                                <input type="text" id="txidInput" required placeholder="Enter Bitcoin txid" />
+                            </div>
+                            <div class="form-group">
+                                <label>Block Height</label>
+                                <input type="number" id="blockHeightInput" required placeholder="Enter block height" />
+                            </div>
+                            <button type="submit" class="btn" style="width: 100%;">Commit Anchor</button>
+                        </form>
+                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                            💡 <strong>How to anchor manually:</strong><br>
+                            1. Select a checkpoint<br>
+                            2. Create Bitcoin tx with OP_RETURN containing checkpoint hash<br>
+                            3. Wait for confirmation<br>
+                            4. Enter txid and block height above
+                        </p>
+                    </div>
+                </div>
+            </details>
+
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📊 Operator Anchor Statistics</h3>
+                <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" onclick="loadAnchorStats()">Refresh Stats</button>
+                </div>
+                <div id="anchorStatsList" class="empty-state">Loading...</div>
+            </div>
+
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-top: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📜 Your Anchor History</h3>
+                <div style="display:flex; gap:10px; margin-bottom: 15px;">
+                    <button class="btn btn-secondary" onclick="loadAnchorHistory()">Refresh History</button>
+                </div>
+                <div id="anchorHistoryList" class="empty-state">Loading...</div>
+            </div>
+        </div>
+
+        <div class="section" id="reputation-section">
+            <h2 class="section-title">⭐ Reputation Moderation</h2>
+            <div class="error-message" id="repModError"></div>
+            <div class="success-message" id="repModSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="btn" type="button" onclick="loadReputationModeration(true)">Refresh</button>
+                <button class="btn btn-secondary" type="button" onclick="loadMoreRepRatings()">Load More Ratings</button>
+                <button class="btn btn-secondary" type="button" onclick="loadMoreRepReports()">Load More Reports</button>
+            </div>
+            <div style="margin-top: 14px; display:grid; grid-template-columns: 1fr; gap: 14px;">
+                <div>
+                    <div style="font-weight:700; margin-bottom:6px;">Recent Ratings</div>
+                    <div id="repRatingsList" class="empty-state">Open this tab to load ratings.</div>
+                </div>
+                <div>
+                    <div style="font-weight:700; margin-bottom:6px;">Recent Reports</div>
+                    <div id="repReportsList" class="empty-state">Open this tab to load reports.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="security-section">
+            <h2 class="section-title">🔐 Account Security</h2>
+            <div class="error-message" id="secError"></div>
+            <div class="success-message" id="secSuccess"></div>
+
+            <div style="display:grid; grid-template-columns: 1fr; gap: 14px;">
+                <div style="background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 14px; padding: 14px;">
+                    <div style="font-weight:800; margin-bottom: 10px;">Email</div>
+                    <div class="muted" id="secEmailCurrent">Loading...</div>
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>Set / Update Email</label>
+                        <input id="secEmail" type="email" placeholder="operator@email.com" />
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="setMyEmail()">Save Email</button>
+                    </div>
+                </div>
+
+                <div style="background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 14px; padding: 14px;">
+                    <div style="font-weight:800; margin-bottom: 10px;">Password</div>
+                    <div class="form-group">
+                        <label>Set / Update Password</label>
+                        <input id="secPassword" type="password" placeholder="••••••••" />
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="setMyPassword()">Save Password</button>
+                    </div>
+                </div>
+
+                <div style="background: rgba(26,26,26,0.6); border: 1px solid rgba(212,175,55,0.25); border-radius: 14px; padding: 14px;">
+                    <div style="font-weight:800; margin-bottom: 10px;">Two-Factor Authentication (2FA)</div>
+                    <div class="muted" id="sec2faStatus">Loading...</div>
+
+                    <div id="sec2faSetupPanel" style="display:none; margin-top: 12px;">
+                        <div class="muted" style="margin-bottom: 10px;">Scan the QR code in your authenticator app, then enter a code to confirm.</div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+                            <img id="sec2faQr" alt="2FA QR" style="width: 180px; height: 180px; border-radius: 12px; border: 1px solid rgba(212,175,55,0.25);" />
+                            <div style="flex: 1; min-width: 240px;">
+                                <div class="form-group">
+                                    <label>Verification Code</label>
+                                    <input id="sec2faCode" type="text" placeholder="123456" />
+                                </div>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button class="btn" type="button" onclick="verify2FASetup()">Verify & Enable</button>
+                                    <button class="btn btn-secondary" type="button" onclick="cancel2FASetup()">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="sec2faActions" style="margin-top: 12px; display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" onclick="start2FASetup()">Enable 2FA</button>
+                        <button class="btn btn-secondary" type="button" onclick="disable2FA()">Disable 2FA</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="wallet-section">
+            <h2 class="section-title">💰 Wallet & Earnings</h2>
+            <div class="error-message" id="walletError"></div>
+            <div class="success-message" id="walletSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 20px;">
+                <button class="btn" type="button" onclick="loadWalletEarnings()">Refresh</button>
+            </div>
+            
+            <!-- Balance Card -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 24px;">
+                <div style="background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%); padding: 20px; border-radius: 16px; color: #1a1a1a;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; margin-bottom: 8px;">BTC Balance</div>
+                    <div style="font-size: 1.8rem; font-weight: 700;" id="operatorBtcBalance">Loading...</div>
+                    <div style="font-size: 0.9rem; opacity: 0.8; margin-top: 4px;" id="operatorUsdBalance"></div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 16px;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px;">Confirmed</div>
+                    <div style="font-size: 1.4rem; font-weight: 600; color: #4cd964;" id="operatorConfirmed">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 16px;">
+                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px;">Unconfirmed</div>
+                    <div style="font-size: 1.4rem; font-weight: 600; color: #f5a623;" id="operatorUnconfirmed">-</div>
+                </div>
+            </div>
+
+            <!-- Receive Section -->
+            <div style="background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.2); padding: 20px; border-radius: 16px; margin-bottom: 24px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📥 Receive BTC</h3>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <div style="font-size: 0.8rem; color: #999; margin-bottom: 8px;">Your Operator Address</div>
+                        <div style="font-family: monospace; font-size: 0.85rem; word-break: break-all; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; color: #d4af37;" id="operatorReceiveAddress">Loading...</div>
+                        <button class="btn btn-secondary" style="margin-top: 10px; width: 100%;" onclick="copyOperatorAddress()">📋 Copy Address</button>
+                    </div>
+                    <div style="text-align: center;">
+                        <img id="operatorQrCode" alt="QR Code" style="width: 150px; height: 150px; border-radius: 12px; background: #fff; display: none;" />
+                        <div id="operatorQrLoading" style="width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 12px; color: #999;">Loading QR...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Send Section -->
+            <div style="background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.2); padding: 20px; border-radius: 16px; margin-bottom: 24px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📤 Send BTC</h3>
+                <div class="form-group">
+                    <label>Recipient Address</label>
+                    <input id="operatorSendTo" type="text" placeholder="bc1q... or 1... or 3..." />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Amount (sats)</label>
+                        <input id="operatorSendSats" type="number" placeholder="e.g. 50000" oninput="updateOperatorSendUsd()" />
+                    </div>
+                    <div class="form-group">
+                        <label>Amount (USD)</label>
+                        <input id="operatorSendUsd" type="number" step="0.01" placeholder="e.g. 25.00" oninput="updateOperatorSendSats()" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Fee Priority</label>
+                    <select id="operatorFeePriority" style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                        <option value="low">Low (~1 sat/vB)</option>
+                        <option value="medium" selected>Medium (~5 sat/vB)</option>
+                        <option value="high">High (~10 sat/vB)</option>
+                    </select>
+                </div>
+                <div id="operatorSendFeeEstimate" style="font-size: 0.85rem; color: #999; margin-bottom: 15px;"></div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="sendOperatorBtc()">Send BTC</button>
+                    <button class="btn btn-secondary" onclick="fillOperatorMax()">Send Max</button>
+                </div>
+                <div id="operatorSendStatus" style="margin-top: 15px; font-size: 0.9rem;"></div>
+            </div>
+
+            <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
+        </div>
+
+        <div class="section" id="network-section">
+            <h2 class="section-title">🛰️ Network Health</h2>
+            <div class="error-message" id="networkError"></div>
+            <div class="success-message" id="networkSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadNetworkHealth()">Refresh</button>
+            </div>
+            <div id="networkPanel" class="empty-state">Open this tab to load network health.</div>
+        </div>
+
+        <div class="section" id="status-section">
+            <h2 class="section-title">🛰️ Node Status</h2>
+            <div class="error-message" id="statusError"></div>
+            <div class="success-message" id="statusSuccess"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="loadNodeStatus()">Refresh</button>
+            </div>
+            <div id="statusPanel" class="empty-state">Open this tab to load status.</div>
+            
+            <!-- Ledger Health Section -->
+            <div style="margin-top: 25px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📊 Ledger Health</h3>
+                <div id="ledgerHealthPanel" class="empty-state">Loading ledger health...</div>
+            </div>
+        </div>
+
+        <div class="section" id="mempool-section">
+            <h2 class="section-title">📦 Mempool Visualizer</h2>
+            <p class="muted" style="margin-bottom: 15px;">Real-time view of pending events in the consensus mempool. Events are validated and ordered before being included in checkpoints.</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Mempool Size</div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #d4af37;" id="mempoolSize">0</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Valid Events</div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #4cd964;" id="mempoolValid">0</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Current Leader</div>
+                    <div style="font-size: 0.9rem; font-weight: 600; color: #d4af37; word-break: break-all;" id="mempoolLeader">-</div>
+                </div>
+                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.8rem; color: #999; margin-bottom: 4px;">Checkpoint #</div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #d4af37;" id="mempoolCheckpoint">0</div>
+                </div>
+            </div>
+
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 0.85rem; color: #999;">Next Checkpoint Progress</span>
+                    <span style="font-size: 0.85rem; color: #4cd964;" id="mempoolTimer">30s</span>
+                </div>
+                <div style="height: 8px; background: rgba(212, 175, 55, 0.15); border-radius: 4px; overflow: hidden;">
+                    <div id="mempoolProgress" style="height: 100%; width: 0%; background: linear-gradient(90deg, #d4af37, #f4d03f); border-radius: 4px; transition: width 0.3s;"></div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px;">
+                    <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1rem;">📊 Pending Events</h3>
+                    <div id="mempoolTreemap" style="min-height: 250px; background: rgba(10, 10, 10, 0.5); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 4px; padding: 8px; align-content: flex-start;">
+                        <div class="empty-state" style="width: 100%; text-align: center;">Waiting for events...</div>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: 0.75rem;">
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #3b82f6; border-radius: 3px;"></span> Account</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #22c55e; border-radius: 3px;"></span> Item Mint</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #f59e0b; border-radius: 3px;"></span> Title</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #8b5cf6; border-radius: 3px;"></span> Settlement</span>
+                        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: #f97316; border-radius: 3px;"></span> Operator</span>
+                    </div>
+                </div>
+
+                <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 12px;">
+                    <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1rem;">📋 Recent Events</h3>
+                    <div id="mempoolRecentEvents" style="max-height: 300px; overflow-y: auto;">
+                        <div class="empty-state">No recent events</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: center;">
+                <a href="/mempool.html" target="_blank" class="btn btn-secondary" style="text-decoration: none;">Open Full Mempool Visualizer ↗</a>
+            </div>
+        </div>
+
+        <!-- DNS Seeds Section -->
+        <div class="section" id="dnsseed-section">
+            <h2 class="section-title">🌐 DNS Seed Configuration</h2>
+            <p class="muted" style="margin-bottom: 20px;">
+                DNS seeds help new nodes discover the network without hardcoded URLs. 
+                Add a TXT record to your domain so others can find your operator through DNS lookups.
+            </p>
+
+            <div class="error-message" id="dnsError"></div>
+            <div class="success-message" id="dnsSuccess"></div>
+
+            <!-- Step 1: Enter your operator URL -->
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px;">Step 1: Your Operator URL</h3>
+                <div class="form-group">
+                    <label>Operator Public URL</label>
+                    <input type="text" id="dnsOperatorUrl" placeholder="https://autho.yourdomain.com" />
+                    <p class="muted" style="margin-top: 8px; font-size: 0.85rem;">Enter the public URL where your operator node is accessible</p>
+                </div>
+                <button class="btn" onclick="generateDnsRecord()">Generate DNS Record</button>
+            </div>
+
+            <!-- Step 2: Copy DNS Record -->
+            <div id="dnsRecordOutput" style="display: none; background: rgba(52, 199, 89, 0.08); border: 1px solid rgba(52, 199, 89, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="color: #4cd964; margin-bottom: 15px;">Step 2: Add This DNS TXT Record</h3>
+                <p class="muted" style="margin-bottom: 15px;">Add this TXT record to your domain's DNS settings:</p>
+                
+                <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                    <div style="display: grid; gap: 10px;">
+                        <div>
+                            <span style="color: #999; font-size: 0.85rem;">Host/Name:</span>
+                            <div style="font-family: monospace; color: #4cd964; font-size: 1.1rem; margin-top: 4px;" id="dnsHost">seed</div>
+                        </div>
+                        <div>
+                            <span style="color: #999; font-size: 0.85rem;">Type:</span>
+                            <div style="font-family: monospace; color: #d4af37; font-size: 1.1rem; margin-top: 4px;">TXT</div>
+                        </div>
+                        <div>
+                            <span style="color: #999; font-size: 0.85rem;">Value:</span>
+                            <div style="font-family: monospace; color: #fff; font-size: 0.95rem; margin-top: 4px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;" id="dnsTxtValue">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" onclick="copyDnsRecord()">📋 Copy TXT Value</button>
+            </div>
+
+            <!-- Step 3: Verify -->
+            <div id="dnsVerifySection" style="display: none; background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px;">Step 3: Verify DNS Configuration</h3>
+                <p class="muted" style="margin-bottom: 15px;">After adding the DNS record (may take up to 24 hours to propagate), click verify:</p>
+                
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="dnsVerifyDomain" placeholder="seed.yourdomain.com" style="flex: 1; min-width: 200px;" />
+                    <button class="btn" onclick="verifyDnsRecord()">🔍 Verify DNS</button>
+                </div>
+
+                <div id="dnsVerifyResult" style="margin-top: 15px; display: none;">
+                    <div id="dnsVerifyStatus" style="padding: 15px; border-radius: 8px;"></div>
+                </div>
+            </div>
+
+            <!-- Known DNS Seeds -->
+            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
+                <h3 style="color: #d4af37; margin-bottom: 15px;">📡 Network DNS Seeds</h3>
+                <p class="muted" style="margin-bottom: 15px;">These DNS seeds are used by gateways and operators to discover the network:</p>
+                <div id="knownDnsSeeds">
+                    <div style="font-family: monospace; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">seed.pinkmahi.com</div>
+                    <div style="font-family: monospace; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">seed.cartpathcleaning.com</div>
+                </div>
+                <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                    Once your DNS seed is verified, it can be added to the network's seed list via a PR to the 
+                    <a href="https://github.com/Pink-Mahi/autho_node/blob/main/seeds.txt" target="_blank" style="color: #d4af37;">seeds.txt</a> file.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bitcoin signing library for client-side transaction signing -->
+    <script src="/js/btc.bundle.js"></script>
+    <script>
+        // === Wallet Vault Decryption Functions ===
+        function bytesFromB64(b64) {
+            const binaryStr = atob(b64);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+            return bytes;
+        }
+
+        function b64FromBytes(bytes) {
+            let binary = '';
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+            return btoa(binary);
+        }
+
+        async function deriveVaultKey(password, salt, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(String(password)),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptWalletVault(walletVault, password) {
+            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+                throw new Error('Unsupported wallet vault format');
+            }
+            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+            const iterations = Number(walletVault.kdf?.iterations || 100000);
+            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            return JSON.parse(new TextDecoder().decode(pt));
+        }
+
+        function opReturnScriptHexFromText(text) {
+            const bytes = new TextEncoder().encode(text);
+            const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            const byteLen = bytes.length;
+            if (byteLen > 80) throw new Error('OP_RETURN data exceeds 80 bytes');
+            // OP_RETURN (0x6a) + PUSHDATA length + data
+            return '6a' + byteLen.toString(16).padStart(2, '0') + hex;
+        }
+
+        function showEl(id, show, msg) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (msg !== undefined) el.textContent = msg;
+            el.style.display = show ? 'block' : 'none';
+        }
+
+        function getSessionId() {
+            return localStorage.getItem('autho_session_id');
+        }
+
+        function getAuthHeaders() {
+            const sessionId = getSessionId();
+            return sessionId ? { 'Authorization': `Bearer ${sessionId}` } : {};
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            // Find the nav tab for this section and activate it
+            const navTab = document.querySelector(`.nav-tab[onclick*="'${tab}'"]`);
+            if (navTab) navTab.classList.add('active');
+            document.getElementById(`${tab}-section`).classList.add('active');
+
+            if (tab === 'applications') {
+                loadApplications();
+            } else if (tab === 'verifiers') {
+                loadVerifiers();
+            } else if (tab === 'actions') {
+                loadVerifierActions();
+            } else if (tab === 'reputation') {
+                loadReputationModeration(true);
+            } else if (tab === 'wallet') {
+                loadWalletEarnings();
+            } else if (tab === 'network') {
+                loadNetworkHealth();
+            } else if (tab === 'status') {
+                loadNodeStatus();
+            } else if (tab === 'security') {
+                loadSecurity();
+            } else if (tab === 'mempool') {
+                loadMempool();
+            } else if (tab === 'anchoring') {
+                loadUnanchoredCheckpoints();
+                loadAnchorStats();
+                loadAnchorHistory();
+            }
+        }
+
+        let __me = null;
+
+        async function loadMe() {
+            const sessionId = getSessionId();
+            if (!sessionId) return null;
+            const r = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${sessionId}` }, cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true || !data.account) return null;
+            __me = data;
+            return data;
+        }
+
+        async function loadSecurity() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            document.getElementById('sec2faSetupPanel').style.display = 'none';
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+
+            const account = me.account || {};
+            const email = String(account.email || '');
+            document.getElementById('secEmailCurrent').textContent = email ? `Current: ${email}` : 'No email set yet.';
+            const totpEnabled = !!(account.totp && account.totp.enabled);
+            document.getElementById('sec2faStatus').textContent = totpEnabled ? '2FA is enabled.' : '2FA is disabled.';
+        }
+
+        async function setMyEmail() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const email = String(document.getElementById('secEmail').value || '').trim();
+            if (!email) {
+                showEl('secError', true, 'Missing email');
+                return;
+            }
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/email/set`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ email })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to set email');
+                return;
+            }
+
+            showEl('secSuccess', true, 'Email saved.');
+            await loadSecurity();
+        }
+
+        async function setMyPassword() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const password = String(document.getElementById('secPassword').value || '').trim();
+            if (!password) {
+                showEl('secError', true, 'Missing password');
+                return;
+            }
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/password/set`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ password })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to set password');
+                return;
+            }
+
+            showEl('secSuccess', true, 'Password saved. You can now sign in with email + password.');
+        }
+
+        async function start2FASetup() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/totp/setup`, {
+                method: 'POST',
+                headers: { ...getAuthHeaders() }
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true || !data.qrCodeUrl) {
+                showEl('secError', true, data?.error || 'Failed to start 2FA setup');
+                return;
+            }
+
+            document.getElementById('sec2faQr').src = String(data.qrCodeUrl);
+            document.getElementById('sec2faSetupPanel').style.display = 'block';
+            showEl('secSuccess', true, '2FA setup started. Scan the QR code and verify.');
+        }
+
+        async function cancel2FASetup() {
+            document.getElementById('sec2faSetupPanel').style.display = 'none';
+        }
+
+        async function verify2FASetup() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const totpCode = String(document.getElementById('sec2faCode').value || '').trim();
+            if (!totpCode) {
+                showEl('secError', true, 'Missing verification code');
+                return;
+            }
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/totp/verify-setup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ totpCode })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to verify 2FA');
+                return;
+            }
+
+            document.getElementById('sec2faSetupPanel').style.display = 'none';
+            showEl('secSuccess', true, '2FA enabled. Next sign-in will require a code.');
+            await loadSecurity();
+        }
+
+        async function disable2FA() {
+            showEl('secError', false);
+            showEl('secSuccess', false);
+            const me = await loadMe();
+            if (!me) {
+                showEl('secError', true, 'Not signed in.');
+                return;
+            }
+            const accountId = String(me.account.accountId || '');
+            const totpCode = prompt('Enter your current 2FA code to disable 2FA:');
+            if (!totpCode) return;
+
+            const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/totp/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ totpCode })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('secError', true, data?.error || 'Failed to disable 2FA');
+                return;
+            }
+
+            showEl('secSuccess', true, '2FA disabled.');
+            await loadSecurity();
+        }
+
+        let __operatorStatusCache = null;
+
+        function fmtTs(ts) {
+            const n = Number(ts || 0);
+            if (!n) return '';
+            try { return new Date(n).toLocaleString(); } catch { return String(ts); }
+        }
+
+        let __repRatingsCursor = '';
+        let __repReportsCursor = '';
+        let __repRatingsHasMore = false;
+        let __repReportsHasMore = false;
+
+        function repName(t) {
+            const name = (t && (t.displayName || t.companyName)) ? String(t.displayName || t.companyName) : '';
+            const role = t && t.role ? String(t.role) : '';
+            return name ? `${name}${role ? ` (${role})` : ''}` : (role ? role : '(unknown)');
+        }
+
+        async function proposeVerifierActionFromRep(accountId, action, reasonPreset) {
+            showEl('repModError', false);
+            showEl('repModSuccess', false);
+
+            const reason = reasonPreset !== undefined
+                ? reasonPreset
+                : (prompt(`Reason for ${action} (optional):`) || undefined);
+
+            const r = await fetch('/api/verifiers/actions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ targetAccountId: String(accountId), action: String(action), reason })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('repModError', true, data?.error || 'Failed to create verifier action');
+                return;
+            }
+
+            showEl('repModSuccess', true, `Created action ${String(data.actionId || '')}.`);
+        }
+
+        async function loadReputationModeration(reset) {
+            showEl('repModError', false);
+            showEl('repModSuccess', false);
+            if (reset) {
+                __repRatingsCursor = '';
+                __repReportsCursor = '';
+            }
+            await Promise.all([loadMoreRepRatings(), loadMoreRepReports()]);
+        }
+
+        async function loadMoreRepRatings() {
+            showEl('repModError', false);
+            const el = document.getElementById('repRatingsList');
+            if (!el) return;
+            if (__repRatingsCursor && !__repRatingsHasMore) return;
+            if (!__repRatingsCursor) el.innerHTML = '<div class="empty-state">Loading ratings...</div>';
+
+            const url = `/api/operator/reputation/ratings?limit=50${__repRatingsCursor ? `&cursor=${encodeURIComponent(__repRatingsCursor)}` : ''}`;
+            const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('repModError', true, data?.error || 'Failed to load ratings');
+                if (!__repRatingsCursor) el.innerHTML = '<div class="empty-state">Failed to load ratings.</div>';
+                return;
+            }
+
+            const entries = Array.isArray(data.entries) ? data.entries : [];
+            __repRatingsHasMore = !!data.hasMore;
+            if (data.nextCursor) __repRatingsCursor = String(data.nextCursor);
+
+            const rows = entries.map(e => {
+                const targetId = String(e.targetAccountId || '');
+                const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(targetId)}`;
+                const t = e.target || {};
+                const website = t.website ? String(t.website) : '';
+                const websiteHref = website ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`) : '';
+                const rating = Number(e.rating || 0);
+                const fee = e.feeTxid ? String(e.feeTxid).substring(0, 12) + '...' : '';
+                return `
+                    <tr>
+                        <td>${fmtTs(e.createdAt)}</td>
+                        <td style="font-family: monospace;">${targetId.substring(0, 18)}...</td>
+                        <td>
+                            <div style="font-weight:700;">${repName(t)}</div>
+                            <div style="color:#999; font-size:0.82rem; margin-top:4px;">
+                                ${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}
+                            </div>
+                            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                            </div>
+                        </td>
+                        <td>${rating}</td>
+                        <td style="font-family: monospace;">${String(e.raterAccountId || '').substring(0, 18)}...</td>
+                        <td style="font-family: monospace;">${String(e.contextType || '')}:${String(e.contextId || '').substring(0, 10)}...</td>
+                        <td style="font-family: monospace;">${fee}</td>
+                        <td>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'revoke')">Propose Revoke</button>
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'reactivate')">Propose Reactivate</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Target</th>
+                            <th>Verifier</th>
+                            <th>Rating</th>
+                            <th>Rater</th>
+                            <th>Context</th>
+                            <th>Fee Tx</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || ''}
+                    </tbody>
+                </table>
+            `;
+
+            if (!__repRatingsCursor || el.innerHTML.includes('Loading ratings') || el.classList.contains('empty-state')) {
+                el.innerHTML = tableHtml;
+                el.classList.remove('empty-state');
+            } else {
+                const tbody = el.querySelector('tbody');
+                if (tbody) tbody.insertAdjacentHTML('beforeend', rows);
+            }
+
+            showEl('repModSuccess', true, 'Reputation feed loaded.');
+        }
+
+        async function loadMoreRepReports() {
+            showEl('repModError', false);
+            const el = document.getElementById('repReportsList');
+            if (!el) return;
+            if (__repReportsCursor && !__repReportsHasMore) return;
+            if (!__repReportsCursor) el.innerHTML = '<div class="empty-state">Loading reports...</div>';
+
+            const url = `/api/operator/reputation/reports?limit=50${__repReportsCursor ? `&cursor=${encodeURIComponent(__repReportsCursor)}` : ''}`;
+            const r = await fetch(url, { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('repModError', true, data?.error || 'Failed to load reports');
+                if (!__repReportsCursor) el.innerHTML = '<div class="empty-state">Failed to load reports.</div>';
+                return;
+            }
+
+            const entries = Array.isArray(data.entries) ? data.entries : [];
+            __repReportsHasMore = !!data.hasMore;
+            if (data.nextCursor) __repReportsCursor = String(data.nextCursor);
+
+            const rows = entries.map(e => {
+                const targetId = String(e.targetAccountId || '');
+                const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(targetId)}`;
+                const t = e.target || {};
+                const website = t.website ? String(t.website) : '';
+                const websiteHref = website ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`) : '';
+                const reason = e.reasonCode ? String(e.reasonCode) : '';
+                const details = e.details ? String(e.details) : '';
+                return `
+                    <tr>
+                        <td>${fmtTs(e.createdAt)}</td>
+                        <td style="font-family: monospace;">${targetId.substring(0, 18)}...</td>
+                        <td>
+                            <div style="font-weight:700;">${repName(t)}</div>
+                            <div style="color:#999; font-size:0.82rem; margin-top:4px;">
+                                ${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}
+                            </div>
+                            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                            </div>
+                        </td>
+                        <td>${reason}</td>
+                        <td>${details}</td>
+                        <td style="font-family: monospace;">${String(e.reporterAccountId || '').substring(0, 18)}...</td>
+                        <td style="font-family: monospace;">${String(e.contextType || '')}:${String(e.contextId || '').substring(0, 10)}...</td>
+                        <td>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'revoke')">Propose Revoke</button>
+                                <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierActionFromRep('${targetId}', 'reactivate')">Propose Reactivate</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const tableHtml = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>When</th>
+                            <th>Target</th>
+                            <th>Verifier</th>
+                            <th>Reason</th>
+                            <th>Details</th>
+                            <th>Reporter</th>
+                            <th>Context</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || ''}
+                    </tbody>
+                </table>
+            `;
+
+            if (!__repReportsCursor || el.innerHTML.includes('Loading reports') || el.classList.contains('empty-state')) {
+                el.innerHTML = tableHtml;
+                el.classList.remove('empty-state');
+            } else {
+                const tbody = el.querySelector('tbody');
+                if (tbody) tbody.insertAdjacentHTML('beforeend', rows);
+            }
+
+            showEl('repModSuccess', true, 'Reputation feed loaded.');
+        }
+
+        async function requireOperatorAuth() {
+            const sessionId = getSessionId();
+            if (!sessionId) {
+                document.getElementById('authModal').style.display = 'flex';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${sessionId}` } });
+                const data = await r.json();
+                if (!r.ok || !data || !data.account) {
+                    localStorage.removeItem('autho_session_id');
+                    document.getElementById('authModal').style.display = 'flex';
+                    return;
+                }
+                const isOperator = String(data.account.role || '') === 'operator' || data.isOperator === true;
+                if (!isOperator) {
+                    localStorage.removeItem('autho_session_id');
+                    showEl('authError', true, 'Operator role required for this dashboard.');
+                    document.getElementById('authModal').style.display = 'flex';
+                    return;
+                }
+
+                document.getElementById('authModal').style.display = 'none';
+                switchTab('applications'); // Show default tab after auth
+                await loadApplications();
+                try { await loadNodeStatus(true); } catch {}
+            } catch (e) {
+                localStorage.removeItem('autho_session_id');
+                showEl('authError', true, 'Auth check failed: ' + (e?.message || String(e)));
+                document.getElementById('authModal').style.display = 'flex';
+            }
+        }
+
+        async function loadNodeStatus(silent) {
+            if (!silent) {
+                showEl('statusError', false);
+                showEl('statusSuccess', false);
+            }
+            const el = document.getElementById('statusPanel');
+            if (el && !silent) el.innerHTML = '<div class="empty-state">Loading status...</div>';
+
+            const r = await fetch('/api/operator/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                if (!silent) {
+                    showEl('statusError', true, data?.error || 'Failed to load status');
+                    if (el) el.innerHTML = '<div class="empty-state">Failed to load status.</div>';
+                }
+                return;
+            }
+
+            const cr = await fetch('/api/consensus/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const consensusResp = await cr.json().catch(() => ({}));
+            const consensus = (cr.ok && consensusResp && consensusResp.success === true)
+                ? consensusResp
+                : { enabled: false };
+
+            __operatorStatusCache = data;
+            if (silent) return;
+
+            const op = data.operator || {};
+            const ch = data.chain || {};
+            const reg = data.registry || {};
+            const status = String(op.canonicalStatus || '').toUpperCase();
+            const statusStyle = status === 'ACTIVE'
+                ? 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;'
+                : 'background: rgba(255,159,10,0.12); border-color: rgba(255,159,10,0.35); color:#ff9f0a;';
+
+            function fmtAgo(ts) {
+                const t = Number(ts || 0);
+                if (!t) return '';
+                const diff = Date.now() - t;
+                const s = Math.floor(diff / 1000);
+                if (s < 60) return `${s}s ago`;
+                const m = Math.floor(s / 60);
+                if (m < 60) return `${m}m ago`;
+                const h = Math.floor(m / 60);
+                if (h < 24) return `${h}h ago`;
+                const d = Math.floor(h / 24);
+                return `${d}d ago`;
+            }
+
+            if (el) {
+                el.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Operator ID</td><td style="font-family: monospace;">${String(op.operatorId || '')}</td></tr>
+                            <tr><td>Session Account</td><td style="font-family: monospace;">${String(op.sessionAccountId || '').substring(0, 24)}...</td></tr>
+                            <tr><td>Node Public Key</td><td style="font-family: monospace;">${String(op.nodePublicKey || '').substring(0, 24)}...</td></tr>
+                            <tr><td>Main Node</td><td>${op.isMainNode ? 'YES' : 'NO'}</td></tr>
+                            <tr><td>Canonical Status</td><td><span class="status-badge" style="${statusStyle}">${status || 'UNKNOWN'}</span></td></tr>
+                            <tr><td>Admitted At</td><td>${fmtTs(op.admittedAt)}</td></tr>
+                            <tr><td>Active Operators</td><td>${Number(op.activeOperatorCount || 0)}</td></tr>
+                            <tr><td>Chain</td><td>${String(ch.network || '')} (tip ${Number(ch.tipHeight || 0)})</td></tr>
+                            <tr><td>Registry Head</td><td style="font-family: monospace;">#${Number(reg.lastEventSequence || 0)} ${String(reg.lastEventHash || '').substring(0, 18)}...</td></tr>
+                        </tbody>
+                    </table>
+
+                    <div style="margin-top: 18px;">
+                        <div style="font-weight: 800; margin-bottom: 10px;">🔐 Consensus Verification</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Status</td>
+                                    <td>
+                                        ${consensus.enabled ?
+                                            (consensus.consensusAchieved ?
+                                                '<span style="color: #4cd964; font-weight: 700;">✅ CONSENSUS</span>' :
+                                                '<span style="color: #ff9f0a; font-weight: 700;">⚠️ OUT OF SYNC</span>') :
+                                            '<span style="color: #999; font-weight: 700;">⏸️ DISABLED</span>'}
+                                    </td>
+                                </tr>
+                                ${consensus.enabled ? `
+                                <tr><td>Agreement</td><td style="font-weight: 700; color: ${Number(consensus.agreementPercentage || 0) >= 66.67 ? '#4cd964' : '#ff9f0a'};">${Number(consensus.agreementPercentage || 0).toFixed(1)}%</td></tr>
+                                <tr><td>Participating Nodes</td><td>${Number(consensus.totalNodes || 0)}</td></tr>
+                                <tr><td>Last Verification</td><td>${fmtAgo(consensus.lastVerification || 0)}</td></tr>
+                                <tr><td>Main Node</td><td>${consensus.mainNodeAlive ? '<span style="color: #4cd964; font-weight: 700;">🟢 ALIVE</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DOWN</span>'}</td></tr>
+                                <tr><td>Leader Mode</td><td>${consensus.isActingAsLeader ? '<span style="color: #d4af37; font-weight: 700;">🎖️ YES</span>' : 'NO'}</td></tr>
+                                ` : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            showEl('statusSuccess', true, 'Status loaded.');
+            
+            // Also load ledger health
+            loadLedgerHealth();
+        }
+
+        async function loadLedgerHealth() {
+            const el = document.getElementById('ledgerHealthPanel');
+            if (!el) return;
+            
+            try {
+                const r = await fetch('/api/operator/ledger-health', { headers: getAuthHeaders(), cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+                
+                if (!r.ok || !data || data.success !== true) {
+                    el.innerHTML = '<div class="empty-state">Failed to load ledger health.</div>';
+                    return;
+                }
+                
+                const ledger = data.ledger || {};
+                const checkpoints = data.checkpoints || {};
+                const anchoring = data.anchoring || {};
+                const sync = data.sync || {};
+                
+                // Sync status styling
+                let syncStatusStyle = 'color: #999;';
+                let syncIcon = '⏸️';
+                if (sync.status === 'IN_SYNC') {
+                    syncStatusStyle = 'color: #4cd964; font-weight: 700;';
+                    syncIcon = '✅';
+                } else if (sync.status === 'SLIGHTLY_BEHIND') {
+                    syncStatusStyle = 'color: #ff9f0a; font-weight: 700;';
+                    syncIcon = '⚠️';
+                } else if (sync.status === 'SYNCING') {
+                    syncStatusStyle = 'color: #ff9f0a; font-weight: 700;';
+                    syncIcon = '🔄';
+                } else if (sync.status === 'DISCONNECTED') {
+                    syncStatusStyle = 'color: #ff3b30; font-weight: 700;';
+                    syncIcon = '❌';
+                }
+                
+                // Anchor coverage color
+                const coveragePercent = Number(checkpoints.anchorCoveragePercent || 0);
+                let coverageStyle = 'color: #ff3b30;';
+                if (coveragePercent >= 50) coverageStyle = 'color: #4cd964;';
+                else if (coveragePercent >= 10) coverageStyle = 'color: #ff9f0a;';
+                
+                // Format age
+                function fmtAge(seconds) {
+                    const s = Number(seconds || 0);
+                    if (s < 60) return `${s}s`;
+                    const m = Math.floor(s / 60);
+                    if (m < 60) return `${m}m`;
+                    const h = Math.floor(m / 60);
+                    if (h < 24) return `${h}h`;
+                    const d = Math.floor(h / 24);
+                    return `${d}d`;
+                }
+                
+                el.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Total Events</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; color: #d4af37;">${Number(ledger.totalEvents || 0).toLocaleString()}</div>
+                        </div>
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Sync Status</div>
+                            <div style="font-size: 1rem; font-weight: 700; ${syncStatusStyle}">${syncIcon} ${sync.status || 'UNKNOWN'}</div>
+                        </div>
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Anchor Coverage</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; ${coverageStyle}">${coveragePercent.toFixed(1)}%</div>
+                        </div>
+                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Latest Event Age</div>
+                            <div style="font-size: 1.4rem; font-weight: 700; color: #d4af37;">${fmtAge(ledger.latestEventAge)}</div>
+                        </div>
+                    </div>
+                    
+                    <table style="font-size: 0.9rem;">
+                        <tbody>
+                            <tr>
+                                <td style="color: #999; width: 180px;">Latest Event Hash</td>
+                                <td style="font-family: monospace; color: #d4af37;">${ledger.latestEventHash || '-'}...</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Latest Checkpoint</td>
+                                <td style="font-family: monospace;">${checkpoints.latestCheckpointRoot || '-'}... <span style="color: #999;">(Seq #${checkpoints.latestCheckpointSeq || 0})</span></td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Checkpoints</td>
+                                <td><span style="color: #4cd964; font-weight: 700;">${checkpoints.anchored || 0}</span> anchored / <span style="color: #ff6b6b;">${checkpoints.unanchored || 0}</span> unanchored</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Latest Anchor TX</td>
+                                <td style="font-family: monospace;">${anchoring.latestAnchorTxid ? `<a href="https://mempool.space/tx/${anchoring.latestAnchorTxid}" target="_blank" style="color: #4cd964;">${anchoring.latestAnchorTxid}...</a>` : '-'} ${anchoring.latestAnchorBlock ? `<span style="color: #999;">(Block ${anchoring.latestAnchorBlock})</span>` : ''}</td>
+                            </tr>
+                            <tr>
+                                <td style="color: #999;">Events Since Anchor</td>
+                                <td style="font-weight: 700; color: ${anchoring.eventsSinceLastAnchor > 100 ? '#ff9f0a' : '#d4af37'};">${anchoring.eventsSinceLastAnchor || 0}</td>
+                            </tr>
+                            ${sync.behind > 0 ? `
+                            <tr>
+                                <td style="color: #999;">Events Behind</td>
+                                <td style="font-weight: 700; color: #ff9f0a;">${sync.behind} events</td>
+                            </tr>
+                            ` : ''}
+                        </tbody>
+                    </table>
+                `;
+            } catch (err) {
+                el.innerHTML = '<div class="empty-state">Error loading ledger health.</div>';
+            }
+        }
+
+        async function loadVerifierActions() {
+            showEl('actionsError', false);
+            showEl('actionsSuccess', false);
+            const el = document.getElementById('actionsList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading actions...</div>';
+
+            const filterEl = document.getElementById('actionsStatusFilter');
+            const status = filterEl ? String(filterEl.value || 'open') : 'open';
+
+            if (!__operatorStatusCache) {
+                try { await loadNodeStatus(true); } catch {}
+            }
+            const myOperatorId = String(__operatorStatusCache?.operator?.operatorId || '');
+
+            const r = await fetch(`/api/verifiers/actions?status=${encodeURIComponent(status)}`, { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('actionsError', true, data?.error || 'Failed to load actions');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load actions.</div>';
+                return;
+            }
+
+            const actions = Array.isArray(data.actions) ? data.actions : [];
+            if (!actions.length) {
+                if (el) el.innerHTML = '<div class="empty-state">No actions found.</div>';
+                showEl('actionsSuccess', true, 'Loaded 0 actions.');
+                return;
+            }
+
+            if (el) {
+                el.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Action</th>
+                                <th>Target</th>
+                                <th>Type</th>
+                                <th>Votes</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${actions.map(a => {
+                                const finalized = !!a.finalized;
+                                const approveVotes = Number(a.voteCount?.approve || 0);
+                                const rejectVotes = Number(a.voteCount?.reject || 0);
+                                const quorum = finalized ? Number(a.finalized?.quorumThreshold || 0) : Number(a.quorumThreshold || 0);
+                                const activeOps = finalized ? Number(a.finalized?.activeOperatorCount || 0) : Number(a.activeOperatorCount || 0);
+                                const decision = a.finalized?.decision ? String(a.finalized.decision).toUpperCase() : '';
+                                const myVoteObj = Array.isArray(a.votes) && myOperatorId
+                                    ? a.votes.find(v => String(v.voterOperatorId) === myOperatorId)
+                                    : null;
+                                const hasVoted = !!myVoteObj;
+                                const myVote = myVoteObj ? String(myVoteObj.vote || '').toUpperCase() : '';
+                                const canFinalize = !finalized && quorum > 0 && (approveVotes >= quorum || rejectVotes >= quorum);
+                                const stLabel = finalized ? `FINALIZED (${decision || 'N/A'})` : 'OPEN';
+                                const stStyle = finalized
+                                    ? 'background: rgba(212,175,55,0.10); border-color: rgba(212,175,55,0.25); color:#d4af37;'
+                                    : 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;';
+
+                                const target = a.target || {};
+                                const targetName = String(target.name || '') || '(unknown)';
+                                const targetRole = String(target.role || '');
+                                const targetStatus = String(target.verifierStatus || '');
+                                const targetWebsite = target.website ? String(target.website) : '';
+                                const websiteHref = targetWebsite
+                                    ? (targetWebsite.startsWith('http://') || targetWebsite.startsWith('https://') ? targetWebsite : `https://${targetWebsite}`)
+                                    : '';
+                                const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(String(a.targetAccountId || ''))}`;
+
+                                return `
+                                    <tr>
+                                        <td style="font-family: monospace;">${String(a.actionId || '').substring(0, 18)}...</td>
+                                        <td>
+                                            <div style="font-weight:700;">${targetName}</div>
+                                            <div style="color:#999; font-size:0.82rem; margin-top:4px;">
+                                                ${targetRole ? `${targetRole}` : ''}${targetStatus ? ` · ${targetStatus}` : ''}
+                                                ${targetWebsite ? ` · <a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${targetWebsite}</a>` : ''}
+                                            </div>
+                                            <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                                                <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                                            </div>
+                                        </td>
+                                        <td>${String(a.action || '')}</td>
+                                        <td>
+                                            ${approveVotes} approve / ${rejectVotes} reject
+                                            ${quorum ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Quorum: ${approveVotes}/${quorum} approve (active ops: ${activeOps || '?'})</div>` : ''}
+                                            ${myVote ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Your vote: <span style="color:#d4af37; font-weight:700;">${myVote}</span></div>` : ''}
+                                        </td>
+                                        <td>${fmtTs(a.createdAt)}</td>
+                                        <td><span class="status-badge" style="${stStyle}">${stLabel}</span></td>
+                                        <td>
+                                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                                ${finalized ? '' : `
+                                                    <button class="btn btn-success" type="button" ${hasVoted ? 'disabled' : ''} onclick="voteVerifierAction('${String(a.actionId)}','approve')">Vote Approve</button>
+                                                    <button class="btn btn-danger" type="button" ${hasVoted ? 'disabled' : ''} onclick="voteVerifierAction('${String(a.actionId)}','reject')">Vote Reject</button>
+                                                    <button class="btn btn-secondary" type="button" ${canFinalize ? '' : 'disabled'} onclick="finalizeVerifierAction('${String(a.actionId)}')">Finalize</button>
+                                                `}
+                                            </div>
+                                            ${finalized ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Finalized at ${fmtTs(a.finalized?.finalizedAt)} by ${String(a.finalized?.finalizedByOperatorId || '')}</div>` : ''}
+                                            ${(!finalized && !canFinalize && quorum) ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Finalize is enabled once approve OR reject votes reach quorum.</div>` : ''}
+                                            ${a.reason ? `<div style="color:#999; font-size:0.82rem; margin-top:6px;">Reason: ${String(a.reason)}</div>` : ''}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            showEl('actionsSuccess', true, `Loaded ${actions.length} action(s).`);
+        }
+
+        async function voteVerifierAction(actionId, vote) {
+            showEl('actionsError', false);
+            showEl('actionsSuccess', false);
+            const reason = prompt(`Reason for ${vote} (optional):`) || undefined;
+
+            const r = await fetch(`/api/verifiers/actions/${encodeURIComponent(String(actionId))}/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ vote: String(vote), reason })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('actionsError', true, data?.error || 'Vote failed');
+                return;
+            }
+            showEl('actionsSuccess', true, 'Vote submitted.');
+            await loadVerifierActions();
+        }
+
+        async function finalizeVerifierAction(actionId) {
+            showEl('actionsError', false);
+            showEl('actionsSuccess', false);
+
+            const r = await fetch(`/api/verifiers/actions/${encodeURIComponent(String(actionId))}/finalize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({})
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('actionsError', true, data?.error || 'Finalize failed');
+                return;
+            }
+            showEl('actionsSuccess', true, `Finalized: ${String(data.decision || '')}`);
+            await loadVerifierActions();
+        }
+
+        async function loginWithPassword() {
+            showEl('authError', false);
+            showEl('authSuccess', false);
+
+            const email = String(document.getElementById('loginEmail').value || '').trim();
+            const password = String(document.getElementById('loginPassword').value || '').trim();
+            const totpCode = String(document.getElementById('loginTotp').value || '').trim();
+            if (!email || !password) {
+                showEl('authError', true, 'Missing email or password');
+                return;
+            }
+
+            const r = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, totpCode: totpCode || undefined })
+            });
+            const data = await r.json();
+
+            if (!r.ok || !data || !data.sessionId) {
+                if (data && data.requires2FA) {
+                    document.getElementById('login2faGroup').style.display = 'block';
+                }
+                showEl('authError', true, data?.error || 'Login failed.');
+                return;
+            }
+
+            localStorage.setItem('autho_session_id', data.sessionId);
+            showEl('authSuccess', true, 'Signed in. Loading...');
+            await requireOperatorAuth();
+        }
+
+        async function startOperatorLogin() {
+            showEl('authError', false);
+            showEl('authSuccess', false);
+
+            const accountId = String(document.getElementById('authAccountId').value || '').trim();
+            if (!accountId) {
+                showEl('authError', true, 'Missing accountId');
+                return;
+            }
+
+            const r = await fetch('/api/auth/challenge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accountId })
+            });
+            const data = await r.json();
+            if (!r.ok || !data || !data.challengeId || !data.nonce) {
+                showEl('authError', true, data?.error || 'Failed to create challenge');
+                return;
+            }
+
+            document.getElementById('challengeGroup').style.display = 'block';
+            document.getElementById('signatureGroup').style.display = 'block';
+            document.getElementById('totpGroup').style.display = 'block';
+            document.getElementById('authNonce').value = String(data.nonce);
+            document.getElementById('authChallengeId').value = String(data.challengeId);
+            showEl('authSuccess', true, 'Challenge created. Sign the nonce and paste signature.');
+        }
+
+        async function verifyOperatorLogin() {
+            showEl('authError', false);
+            showEl('authSuccess', false);
+
+            const challengeId = String(document.getElementById('authChallengeId').value || '').trim();
+            const accountId = String(document.getElementById('authAccountId').value || '').trim();
+            const signature = String(document.getElementById('authSignature').value || '').trim();
+            const totpCode = String(document.getElementById('authTotp').value || '').trim();
+
+            if (!challengeId || !accountId || !signature) {
+                showEl('authError', true, 'Missing challengeId, accountId, or signature');
+                return;
+            }
+
+            const r = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challengeId, accountId, signature, totpCode: totpCode || undefined })
+            });
+            const data = await r.json();
+            if (!r.ok || !data || !data.sessionId) {
+                if (data && data.requires2FA) {
+                    document.getElementById('totpGroup').style.display = 'block';
+                }
+                showEl('authError', true, data?.error || 'Login failed.');
+                return;
+            }
+
+            localStorage.setItem('autho_session_id', data.sessionId);
+            showEl('authSuccess', true, 'Signed in. Loading...');
+            await requireOperatorAuth();
+        }
+
+        async function loadApplications() {
+            showEl('appsError', false);
+            showEl('appsSuccess', false);
+            const el = document.getElementById('appsList');
+            el.innerHTML = '<div class="empty-state">Loading applications...</div>';
+
+            const r = await fetch('/api/roles/applications', { headers: getAuthHeaders() });
+            const data = await r.json();
+            if (!r.ok || !data || data.success !== true) {
+                showEl('appsError', true, data?.error || 'Failed to load applications');
+                el.innerHTML = '<div class="empty-state">Failed to load applications.</div>';
+                return;
+            }
+
+            const applications = Array.isArray(data.applications) ? data.applications : [];
+            if (!applications.length) {
+                el.innerHTML = '<div class="empty-state">No pending applications.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Application</th>
+                            <th>Account</th>
+                            <th>Role</th>
+                            <th>Company</th>
+                            <th>Contact</th>
+                            <th>Submitted</th>
+                            <th>Voting</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${applications.map(a => {
+                            const submitted = a.submittedAt ? new Date(a.submittedAt).toLocaleString() : '';
+                            const eligible = a.eligibleForVotingAt ? new Date(a.eligibleForVotingAt).toLocaleString() : '';
+                            const canVote = !!a.canVote;
+                            const alreadyVoted = !!a.alreadyVoted;
+                            const hint = !canVote
+                                ? `Voting opens at ${eligible}`
+                                : (alreadyVoted ? 'Already voted' : 'Ready');
+
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;">${String(a.applicationId)}</td>
+                                    <td style="font-family: monospace;">${String(a.accountId).substring(0, 18)}...</td>
+                                    <td>${String(a.requestedRole || '')}</td>
+                                    <td>${a.companyName || ''}</td>
+                                    <td>${a.contactEmail || ''}</td>
+                                    <td>${submitted}</td>
+                                    <td>
+                                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                            <button class="btn btn-success" type="button" ${(!canVote || alreadyVoted) ? 'disabled' : ''} onclick="voteRoleApplication('${String(a.applicationId)}','approve')">Approve</button>
+                                            <button class="btn btn-danger" type="button" ${(!canVote || alreadyVoted) ? 'disabled' : ''} onclick="voteRoleApplication('${String(a.applicationId)}','reject')">Reject</button>
+                                            <span style="color:#999; font-size: 0.82rem;">${hint}</span>
+                                        </div>
+                                        <div style="color:#999; font-size: 0.82rem; margin-top: 6px;">Votes: ${Number(a.voteCount?.approve || 0)} approve / ${Number(a.voteCount?.reject || 0)} reject</div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            showEl('appsSuccess', true, `Loaded ${applications.length} application(s).`);
+        }
+
+        async function voteRoleApplication(applicationId, vote) {
+            showEl('appsError', false);
+            showEl('appsSuccess', false);
+
+            const r = await fetch(`/api/roles/applications/${encodeURIComponent(String(applicationId))}/vote`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify({ vote })
+            });
+
+            const data = await r.json();
+            if (!r.ok || !data || data.success !== true) {
+                showEl('appsError', true, data?.error || 'Vote failed');
+                return;
+            }
+
+            showEl('appsSuccess', true, 'Vote submitted.');
+            await loadApplications();
+        }
+
+        async function loadVerifiers() {
+            showEl('verifiersError', false);
+            showEl('verifiersSuccess', false);
+            const el = document.getElementById('verifiersList');
+            el.innerHTML = '<div class="empty-state">Loading verifiers...</div>';
+
+            const r = await fetch('/api/operator/verifiers', { headers: getAuthHeaders() });
+            const data = await r.json();
+            if (!r.ok || !data || data.success !== true) {
+                showEl('verifiersError', true, data?.error || 'Failed to load verifiers');
+                el.innerHTML = '<div class="empty-state">Failed to load verifiers.</div>';
+                return;
+            }
+
+            const verifiers = Array.isArray(data.verifiers) ? data.verifiers : [];
+            if (!verifiers.length) {
+                el.innerHTML = '<div class="empty-state">No verifiers found.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Role</th>
+                            <th>Name</th>
+                            <th>Website</th>
+                            <th>Rating</th>
+                            <th>Reports</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${verifiers.map(v => {
+                            const status = String(v.verifierStatus || 'active').toUpperCase();
+                            const style = status === 'REVOKED'
+                                ? 'background: rgba(255,59,48,0.15); border-color: rgba(255,59,48,0.35); color:#ff6b6b;'
+                                : 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;';
+                            const name = (v.displayName || v.companyName || v.username || '');
+                            const website = v.website ? String(v.website) : '';
+                            const websiteHref = website
+                                ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`)
+                                : '';
+                            const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(String(v.accountId || ''))}`;
+                            const isRevoked = status === 'REVOKED';
+                            const ratingAvg = (typeof v.ratingAvg === 'number') ? Number(v.ratingAvg) : null;
+                            const ratingCount = (typeof v.ratingCount === 'number') ? Number(v.ratingCount) : null;
+                            const reportCount = (typeof v.reportCount === 'number') ? Number(v.reportCount) : null;
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;">${String(v.accountId || '').substring(0, 18)}...</td>
+                                    <td>${String(v.role || '')}</td>
+                                    <td>${String(name)}</td>
+                                    <td>${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}</td>
+                                    <td>${(ratingAvg !== null && ratingCount !== null) ? `${ratingAvg.toFixed(2)} (${ratingCount})` : ''}</td>
+                                    <td>${(reportCount !== null) ? String(reportCount) : ''}</td>
+                                    <td><span class="status-badge" style="${style}">${status}</span></td>
+                                    <td>
+                                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            <a class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" href="${viewHref}">View Profile</a>
+                                            <button class="btn btn-secondary" style="padding:8px 10px; font-size:0.75rem;" type="button" onclick="proposeVerifierAction('${String(v.accountId)}', '${isRevoked ? 'reactivate' : 'revoke'}')">${isRevoked ? 'Propose Reactivate' : 'Propose Revoke'}</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+
+            showEl('verifiersSuccess', true, `Loaded ${verifiers.length} verifier(s).`);
+        }
+
+        async function proposeVerifierAction(accountId, action) {
+            showEl('verifiersError', false);
+            showEl('verifiersSuccess', false);
+
+            const reason = prompt(`Reason for ${action} (optional):`) || undefined;
+            const r = await fetch('/api/verifiers/actions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+                body: JSON.stringify({ targetAccountId: String(accountId), action: String(action), reason })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('verifiersError', true, data?.error || 'Failed to create verifier action');
+                return;
+            }
+
+            showEl('verifiersSuccess', true, `Created action ${String(data.actionId || '')}. Next: vote/finalize in Verifier Actions (coming next).`);
+            await loadVerifiers();
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('autho_session_id');
+                window.location.href = '/operator/dashboard';
+            }
+        }
+
+        async function loadNetworkHealth() {
+            showEl('networkError', false);
+            showEl('networkSuccess', false);
+            const el = document.getElementById('networkPanel');
+            if (el) el.innerHTML = '<div class="empty-state">Loading network health...</div>';
+
+            const r = await fetch('/api/network/connections', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('networkError', true, data?.error || 'Failed to load network health');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load network health.</div>';
+                return;
+            }
+
+            // Fetch consensus status
+            const consensusR = await fetch('/api/consensus/status', { headers: getAuthHeaders(), cache: 'no-store' });
+            const consensus = await consensusR.json().catch(() => ({ enabled: false }));
+
+            const network = data.network || {};
+            const operators = data.operators || {};
+            const gateways = data.gateways || {};
+            const connectedOps = Array.isArray(operators.connected) ? operators.connected : [];
+            const connectedGws = Array.isArray(gateways.connected) ? gateways.connected : [];
+            const mainSeedConnected = (typeof data.mainSeedConnected === 'boolean') ? data.mainSeedConnected : null;
+
+            function formatUptime(ms) {
+                const seconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(seconds / 60);
+                const hours = Math.floor(minutes / 60);
+                const days = Math.floor(hours / 24);
+                if (days > 0) return `${days}d ${hours % 24}h`;
+                if (hours > 0) return `${hours}h ${minutes % 60}m`;
+                if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+                return `${seconds}s`;
+            }
+
+            function formatTimeSince(ms) {
+                const seconds = Math.floor(ms / 1000);
+                if (seconds < 60) return `${seconds}s ago`;
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return `${minutes}m ago`;
+                const hours = Math.floor(minutes / 60);
+                return `${hours}h ago`;
+            }
+
+            if (el) {
+                el.innerHTML = `
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">📊 Network Overview</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Current Sequence</td><td style="font-family: monospace; font-weight: 700;">#${Number(network.currentSequence || 0)}</td></tr>
+                                <tr><td>Current Hash</td><td style="font-family: monospace; font-size: 0.85rem;">${String(network.currentHash || 'N/A')}</td></tr>
+                                <tr><td>Main Node Connection</td><td>${mainSeedConnected === null ? 'N/A' : (mainSeedConnected ? '<span style="color: #4cd964; font-weight: 700;">🟢 CONNECTED</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DISCONNECTED</span>')}</td></tr>
+                                <tr><td>Active Operators</td><td><span style="color: #4cd964; font-weight: 700;">${Number(operators.online || 0)}</span> / ${Number(operators.total || 0)}</td></tr>
+                                <tr><td>Offline Operators</td><td><span style="color: #ff9f0a; font-weight: 700;">${Number(operators.offline || 0)}</span></td></tr>
+                                <tr><td>Connected Gateways</td><td style="font-weight: 700;">${Number(gateways.total || 0)}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">🔐 Consensus Verification</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Status</td>
+                                    <td>
+                                        ${consensus.enabled ? 
+                                            (consensus.consensusAchieved ? 
+                                                '<span style="color: #4cd964; font-weight: 700;">✅ CONSENSUS</span>' : 
+                                                '<span style="color: #ff9f0a; font-weight: 700;">⚠️ OUT OF SYNC</span>') :
+                                            '<span style="color: #999; font-weight: 700;">⏸️ DISABLED</span>'}
+                                    </td>
+                                </tr>
+                                ${consensus.enabled ? `
+                                <tr><td>Agreement</td><td style="font-weight: 700; color: ${consensus.agreementPercentage >= 66.67 ? '#4cd964' : '#ff9f0a'};">${Number(consensus.agreementPercentage || 0).toFixed(1)}%</td></tr>
+                                <tr><td>Participating Nodes</td><td>${Number(consensus.totalNodes || 0)}</td></tr>
+                                <tr><td>Last Verification</td><td>${formatTimeSince(Date.now() - (consensus.lastVerification || Date.now()))}</td></tr>
+                                <tr><td>Main Node</td><td>${consensus.mainNodeAlive ? '<span style="color: #4cd964; font-weight: 700;">🟢 ALIVE</span>' : '<span style="color: #ff3b30; font-weight: 700;">🔴 DOWN</span>'}</td></tr>
+                                ` : ''}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">🖥️ Connected Operators (${connectedOps.length})</h3>
+                        ${connectedOps.length === 0 ? '<div class="empty-state">No operators currently connected.</div>' : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Operator ID</th>
+                                    <th>Status</th>
+                                    <th>Uptime</th>
+                                    <th>Last Seen</th>
+                                    <th>BTC Address</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${connectedOps.map((op) => {
+                                    const healthy = op.healthy;
+                                    const statusColor = healthy ? '#4cd964' : '#ff9f0a';
+                                    const statusText = healthy ? 'HEALTHY' : 'STALE';
+                                    const opData = op.operator || {};
+                                    return `
+                                        <tr>
+                                            <td style="font-family: monospace; font-size: 0.85rem;">${String(op.operatorId || 'Unknown')}</td>
+                                            <td><span style="color: ${statusColor}; font-weight: 700;">${statusText}</span></td>
+                                            <td>${formatUptime(op.uptimeMs || 0)}</td>
+                                            <td>${formatTimeSince(op.timeSinceLastSeenMs || 0)}</td>
+                                            <td style="font-family: monospace; font-size: 0.85rem;">${String(opData.btcAddress || 'N/A').substring(0, 16)}...</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        `}
+                    </div>
+
+                    <div>
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">🏪 Connected Gateways (${connectedGws.length})</h3>
+                        ${connectedGws.length === 0 ? '<div class="empty-state">No gateways currently connected.</div>' : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Gateway ID</th>
+                                    <th>Status</th>
+                                    <th>Uptime</th>
+                                    <th>Last Seen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${connectedGws.map((gw) => {
+                                    const healthy = gw.healthy;
+                                    const statusColor = healthy ? '#4cd964' : '#ff9f0a';
+                                    const statusText = healthy ? 'HEALTHY' : 'STALE';
+                                    return `
+                                        <tr>
+                                            <td style="font-family: monospace;">${String(gw.id || 'Unknown')}</td>
+                                            <td><span style="color: ${statusColor}; font-weight: 700;">${statusText}</span></td>
+                                            <td>${formatUptime(gw.uptimeMs || 0)}</td>
+                                            <td>${formatTimeSince(gw.timeSinceLastSeenMs || 0)}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        `}
+                    </div>
+                `;
+            }
+
+            showEl('networkSuccess', true, 'Network health loaded.');
+        }
+
+        // Operator wallet state
+        let operatorWalletAddress = '';
+        let operatorBalanceSats = 0;
+        let operatorBtcPrice = 0;
+
+        async function loadWalletEarnings() {
+            showEl('walletError', false);
+            showEl('walletSuccess', false);
+            const el = document.getElementById('walletPanel');
+            if (el) el.innerHTML = '<div class="empty-state">Loading wallet info...</div>';
+
+            const r = await fetch('/api/operator/earnings', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('walletError', true, data?.error || 'Failed to load wallet info');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load wallet info.</div>';
+                return;
+            }
+
+            const wallet = data.wallet || {};
+            const earnings = data.earnings || {};
+            const transactions = Array.isArray(earnings.transactions) ? earnings.transactions : [];
+
+            // Store address for other functions
+            operatorWalletAddress = String(wallet.btcAddress || '');
+            
+            // Update receive section
+            const addrEl = document.getElementById('operatorReceiveAddress');
+            if (addrEl) addrEl.textContent = operatorWalletAddress || 'N/A';
+
+            // Load balance and QR code
+            loadOperatorBalance(operatorWalletAddress);
+            loadOperatorQrCode(operatorWalletAddress);
+
+            if (el) {
+                el.innerHTML = `
+                    <div style="margin-bottom: 24px;">
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">💳 Operator Wallet</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Field</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>BTC Address</td><td style="font-family: monospace; word-break: break-all;">${String(wallet.btcAddress || 'N/A')}</td></tr>
+                                <tr><td>Operator ID</td><td style="font-family: monospace;">${String(wallet.operatorId || 'N/A')}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div>
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">💰 Fee Earnings Summary</h3>
+                        <table style="margin-bottom: 20px;">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Total Fees Earned</td><td style="font-weight: 700; color: #4cd964;">${Number(earnings.totalSats || 0).toLocaleString()} sats</td></tr>
+                                <tr><td>Total Transactions</td><td>${Number(earnings.transactionCount || 0)}</td></tr>
+                            </tbody>
+                        </table>
+
+                        <h3 style="color: #d4af37; margin-bottom: 12px; font-size: 1.2rem;">📋 Recent Fee Transactions</h3>
+                        ${transactions.length === 0 ? '<div class="empty-state">No fee transactions yet.</div>' : `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Amount (sats)</th>
+                                    <th>Settlement ID</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${transactions.map((tx) => `
+                                    <tr>
+                                        <td>${fmtTs(tx.timestamp)}</td>
+                                        <td>${String(tx.type || 'Fee')}</td>
+                                        <td style="font-weight: 700; color: #4cd964;">${Number(tx.amountSats || 0).toLocaleString()}</td>
+                                        <td style="font-family: monospace; font-size: 0.85rem;">${String(tx.settlementId || '').substring(0, 16)}...</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        `}
+                    </div>
+                `;
+            }
+
+            showEl('walletSuccess', true, 'Wallet info loaded.');
+        }
+
+        async function loadOperatorBalance(address) {
+            if (!address) {
+                document.getElementById('operatorBtcBalance').textContent = 'No address';
+                return;
+            }
+            try {
+                // Fetch balance from mempool.space API
+                const r = await fetch(`https://mempool.space/api/address/${address}`);
+                if (!r.ok) throw new Error('Failed to fetch balance');
+                const data = await r.json();
+                
+                const confirmed = Number(data.chain_stats?.funded_txo_sum || 0) - Number(data.chain_stats?.spent_txo_sum || 0);
+                const unconfirmed = Number(data.mempool_stats?.funded_txo_sum || 0) - Number(data.mempool_stats?.spent_txo_sum || 0);
+                const total = confirmed + unconfirmed;
+                operatorBalanceSats = total;
+
+                // Update UI
+                const btcAmount = (total / 100000000).toFixed(8);
+                document.getElementById('operatorBtcBalance').textContent = `${btcAmount} BTC`;
+                document.getElementById('operatorConfirmed').textContent = `${confirmed.toLocaleString()} sats`;
+                document.getElementById('operatorUnconfirmed').textContent = `${unconfirmed.toLocaleString()} sats`;
+
+                // Fetch BTC price for USD conversion
+                try {
+                    const priceR = await fetch('https://mempool.space/api/v1/prices');
+                    const priceData = await priceR.json();
+                    operatorBtcPrice = Number(priceData.USD || 0);
+                    if (operatorBtcPrice > 0) {
+                        const usdValue = (total / 100000000) * operatorBtcPrice;
+                        document.getElementById('operatorUsdBalance').textContent = `≈ $${usdValue.toFixed(2)} USD`;
+                    }
+                } catch {}
+            } catch (e) {
+                document.getElementById('operatorBtcBalance').textContent = 'Error loading';
+                console.error('Balance fetch error:', e);
+            }
+        }
+
+        async function loadOperatorQrCode(address) {
+            const qrImg = document.getElementById('operatorQrCode');
+            const qrLoading = document.getElementById('operatorQrLoading');
+            if (!address || !qrImg) return;
+
+            try {
+                // Use QR code API
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin:${encodeURIComponent(address)}`;
+                qrImg.src = qrUrl;
+                qrImg.style.display = 'block';
+                if (qrLoading) qrLoading.style.display = 'none';
+            } catch (e) {
+                console.error('QR code error:', e);
+            }
+        }
+
+        function copyOperatorAddress() {
+            if (!operatorWalletAddress) {
+                showEl('walletError', true, 'No address to copy');
+                return;
+            }
+            navigator.clipboard.writeText(operatorWalletAddress).then(() => {
+                showEl('walletSuccess', true, 'Address copied to clipboard!');
+            }).catch(() => {
+                showEl('walletError', true, 'Failed to copy address');
+            });
+        }
+
+        function updateOperatorSendUsd() {
+            const sats = Number(document.getElementById('operatorSendSats')?.value || 0);
+            if (sats > 0 && operatorBtcPrice > 0) {
+                const usd = (sats / 100000000) * operatorBtcPrice;
+                document.getElementById('operatorSendUsd').value = usd.toFixed(2);
+            }
+        }
+
+        function updateOperatorSendSats() {
+            const usd = Number(document.getElementById('operatorSendUsd')?.value || 0);
+            if (usd > 0 && operatorBtcPrice > 0) {
+                const sats = Math.round((usd / operatorBtcPrice) * 100000000);
+                document.getElementById('operatorSendSats').value = sats;
+            }
+        }
+
+        function fillOperatorMax() {
+            // Estimate fee (assume ~200 vbytes for typical tx)
+            const priority = document.getElementById('operatorFeePriority')?.value || 'medium';
+            const feeRates = { low: 1, medium: 5, high: 10 };
+            const feeRate = feeRates[priority] || 5;
+            const estimatedFee = 200 * feeRate;
+            
+            const maxSats = Math.max(0, operatorBalanceSats - estimatedFee);
+            document.getElementById('operatorSendSats').value = maxSats;
+            updateOperatorSendUsd();
+        }
+
+        async function sendOperatorBtc() {
+            const statusEl = document.getElementById('operatorSendStatus');
+            const toAddress = document.getElementById('operatorSendTo')?.value?.trim();
+            const amountSats = Number(document.getElementById('operatorSendSats')?.value || 0);
+            const priority = document.getElementById('operatorFeePriority')?.value || 'medium';
+
+            if (!toAddress) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter a recipient address</span>';
+                return;
+            }
+            if (amountSats <= 0) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter an amount</span>';
+                return;
+            }
+            if (amountSats > operatorBalanceSats) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Insufficient balance</span>';
+                return;
+            }
+
+            statusEl.innerHTML = '<span style="color: #d4af37;">Creating transaction...</span>';
+
+            try {
+                const r = await fetch('/api/operator/wallet/send', {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        toAddress,
+                        amountSats,
+                        feePriority: priority
+                    })
+                });
+                const data = await r.json().catch(() => ({}));
+                
+                if (!r.ok || !data || data.success !== true) {
+                    throw new Error(data?.error || 'Failed to send transaction');
+                }
+
+                statusEl.innerHTML = `<span style="color: #4cd964;">✅ Transaction sent! TXID: <a href="https://mempool.space/tx/${data.txid}" target="_blank" style="color: #d4af37;">${String(data.txid || '').substring(0, 16)}...</a></span>`;
+                
+                // Refresh balance after a short delay
+                setTimeout(() => loadOperatorBalance(operatorWalletAddress), 3000);
+            } catch (e) {
+                statusEl.innerHTML = `<span style="color: #ff6b6b;">Error: ${e?.message || String(e)}</span>`;
+            }
+        }
+
+        // Store next checkpoint for auto-anchor
+        let nextCheckpointToAnchor = null;
+
+        async function loadUnanchoredCheckpoints() {
+            showEl('anchoringError', false);
+            showEl('anchoringSuccess', false);
+            const el = document.getElementById('unanchoredList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
+
+            const r = await fetch('/api/operator/anchors/unanchored', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('anchoringError', true, data?.error || 'Failed to load checkpoints');
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load checkpoints.</div>';
+                updateAutoAnchorUI(null);
+                return;
+            }
+
+            const unanchored = Array.isArray(data.unanchored) ? data.unanchored : [];
+            
+            // Update stats
+            document.getElementById('totalCheckpoints').textContent = Number(data.total || 0);
+            document.getElementById('anchoredCount').textContent = Number(data.anchored || 0);
+            document.getElementById('unanchoredCount').textContent = unanchored.length;
+
+            // Update one-click auto-anchor UI with oldest unanchored checkpoint
+            nextCheckpointToAnchor = unanchored.length > 0 ? unanchored[0] : null;
+            updateAutoAnchorUI(nextCheckpointToAnchor);
+
+            // Populate checkpoint dropdown
+            const select = document.getElementById('checkpointSelect');
+            if (select) {
+                select.innerHTML = '<option value="">Select checkpoint...</option>' + 
+                    unanchored.map(cp => {
+                        const root = String(cp.checkpointRoot || '');
+                        const date = new Date(cp.hourStartMs || cp.createdAt).toLocaleString();
+                        return `<option value="${root}" data-hour="${cp.hourStartMs}">${root.substring(0, 16)}... (${date})</option>`;
+                    }).join('');
+            }
+
+            // Display list
+            if (el) {
+                if (unanchored.length === 0) {
+                    el.innerHTML = '<div class="empty-state">✅ All checkpoints are anchored!</div>';
+                } else {
+                    el.innerHTML = `
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            ${unanchored.map(cp => {
+                                const root = String(cp.checkpointRoot || '');
+                                const date = new Date(cp.hourStartMs || cp.createdAt).toLocaleString();
+                                return `
+                                    <div style="padding: 10px; margin-bottom: 8px; background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.15); border-radius: 8px;">
+                                        <div style="font-family: monospace; font-size: 0.85rem; color: #d4af37; margin-bottom: 4px;">${root.substring(0, 32)}...</div>
+                                        <div style="font-size: 0.8rem; color: #999;">${date} • Seq: ${Number(cp.headSequence || 0)}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        async function submitAnchor(event) {
+            event.preventDefault();
+            showEl('anchoringError', false);
+            showEl('anchoringSuccess', false);
+
+            const checkpointRoot = document.getElementById('checkpointSelect').value;
+            const txid = document.getElementById('txidInput').value.trim();
+            const blockHeight = parseInt(document.getElementById('blockHeightInput').value);
+
+            if (!checkpointRoot || !txid || !blockHeight) {
+                showEl('anchoringError', true, 'All fields are required');
+                return;
+            }
+
+            const r = await fetch('/api/operator/anchors/commit', {
+                method: 'POST',
+                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ checkpointRoot, txid, blockHeight })
+            });
+
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                showEl('anchoringError', true, data?.error || 'Failed to commit anchor');
+                return;
+            }
+
+            showEl('anchoringSuccess', true, '✅ Bitcoin anchor committed successfully!');
+            
+            // Clear form
+            document.getElementById('anchorForm').reset();
+            
+            // Reload data
+            await loadUnanchoredCheckpoints();
+            await loadAnchorStats();
+        }
+
+        function updateAutoAnchorUI(checkpoint) {
+            const infoEl = document.getElementById('nextCheckpointInfo');
+            const btn = document.getElementById('autoAnchorBtn');
+            
+            if (!checkpoint) {
+                if (infoEl) infoEl.innerHTML = '<span style="color: #4cd964;">✅ All checkpoints are anchored!</span>';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '✅ All Anchored';
+                    btn.style.opacity = '0.5';
+                }
+                return;
+            }
+            
+            const root = String(checkpoint.checkpointRoot || '');
+            const date = new Date(checkpoint.hourStartMs || checkpoint.createdAt).toLocaleString();
+            const seq = Number(checkpoint.headSequence || 0);
+            
+            if (infoEl) {
+                infoEl.innerHTML = `
+                    <div style="margin-bottom: 5px;">${root.substring(0, 24)}...</div>
+                    <div style="font-size: 0.85rem; color: #999;">${date} • Seq: ${seq}</div>
+                `;
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '⚓ ANCHOR NEXT CHECKPOINT (~150 SATS)';
+                btn.style.opacity = '1';
+            }
+        }
+
+        async function startAutoAnchor() {
+            if (!nextCheckpointToAnchor) {
+                showEl('anchoringError', true, 'No unanchored checkpoints available');
+                return;
+            }
+            
+            const btn = document.getElementById('autoAnchorBtn');
+            const progressEl = document.getElementById('anchorInProgress');
+            const progressText = document.getElementById('anchorProgressText');
+            const progressDetail = document.getElementById('anchorProgressDetail');
+            
+            // Disable button and show progress
+            if (btn) {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+            }
+            if (progressEl) progressEl.style.display = 'block';
+            
+            showEl('anchoringError', false);
+            showEl('anchoringSuccess', false);
+            
+            try {
+                const checkpointRoot = nextCheckpointToAnchor.checkpointRoot;
+                
+                // Step 1: Check for wallet vault (non-custodial - keys never leave browser)
+                if (progressText) progressText.textContent = 'Preparing wallet...';
+                if (progressDetail) progressDetail.textContent = 'Checking wallet credentials...';
+                
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (!vaultStr) {
+                    throw new Error('No wallet vault found. Please sign in again to restore your wallet.');
+                }
+                
+                let vault;
+                try {
+                    vault = JSON.parse(vaultStr);
+                } catch {
+                    throw new Error('Wallet vault is corrupted. Please sign in again.');
+                }
+                
+                // Step 2: Prompt for wallet password to unlock
+                const getSecret = (attempt) => {
+                    const label = attempt > 1
+                        ? 'Unlock failed. Enter your wallet passcode again:'
+                        : 'Enter your wallet passcode to sign the anchor transaction:';
+                    return prompt(label);
+                };
+                
+                const secret1 = getSecret(1);
+                if (!secret1) throw new Error('Wallet unlock cancelled');
+                
+                let walletPayload;
+                try {
+                    walletPayload = await decryptWalletVault(vault, secret1);
+                } catch {
+                    const secret2 = getSecret(2);
+                    if (!secret2) throw new Error('Wallet unlock cancelled');
+                    walletPayload = await decryptWalletVault(vault, secret2);
+                }
+                
+                const mnemonic = String(walletPayload?.mnemonic || '').trim();
+                if (!mnemonic) throw new Error('Mnemonic missing in vault');
+                
+                // Step 3: Get wallet address and UTXOs
+                if (progressText) progressText.textContent = 'Fetching UTXOs...';
+                
+                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+                    throw new Error('Bitcoin signing library not loaded. Please refresh the page.');
+                }
+                
+                const network = 'mainnet';
+                const walletAddress = window.AuthoBTC.getAddressFromMnemonic(mnemonic, network, 0, 0);
+                
+                const utxosRaw = await fetch(`/api/chain/address/${encodeURIComponent(walletAddress)}/utxo`, { cache: 'no-store' }).then(r => r.json());
+                const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+                const spendable = utxos
+                    .filter((u) => u && u.txid && (u.status?.confirmed === true))
+                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+                
+                if (spendable.length === 0) {
+                    throw new Error(`No confirmed UTXOs available at ${walletAddress}. Please fund your wallet first.`);
+                }
+                
+                // Step 4: Build and sign OP_RETURN transaction CLIENT-SIDE
+                if (progressText) progressText.textContent = 'Signing transaction locally...';
+                if (progressDetail) progressDetail.textContent = `Checkpoint: ${checkpointRoot.substring(0, 16)}...`;
+                
+                // Build OP_RETURN data: "AUTHO:" + first 32 bytes of checkpoint root
+                const opReturnText = 'AUTHO:' + checkpointRoot.substring(0, 64);
+                const opReturnScriptHex = opReturnScriptHexFromText(opReturnText);
+                
+                // Get fee rate (use low priority for anchoring)
+                let feeRate = 1; // Default 1 sat/vB
+                try {
+                    const feesRes = await fetch('https://mempool.space/api/v1/fees/recommended');
+                    const fees = await feesRes.json();
+                    feeRate = fees.minimumFee || fees.economyFee || 1;
+                } catch {}
+                
+                // Build outputs: just OP_RETURN (no payment needed)
+                const outputs = [
+                    { scriptHex: opReturnScriptHex, amountSats: 0 }
+                ];
+                
+                const signed = window.AuthoBTC.buildAndSignP2WPKH({
+                    mnemonic,
+                    outputs,
+                    utxos: spendable,
+                    feeRateSatPerVb: feeRate,
+                    network
+                });
+                
+                if (!signed || !signed.txHex) {
+                    throw new Error('Failed to sign transaction');
+                }
+                
+                // Step 5: Send signed transaction to server for broadcast and recording
+                if (progressText) progressText.textContent = 'Broadcasting transaction...';
+                
+                const r = await fetch('/api/operator/anchors/broadcast-anchor', {
+                    method: 'POST',
+                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        checkpointRoot,
+                        signedTxHex: signed.txHex,
+                        txid: signed.txId
+                    })
+                });
+                
+                const data = await r.json().catch(() => ({}));
+                
+                if (!r.ok || !data || data.success !== true) {
+                    throw new Error(data?.error || 'Failed to broadcast anchor transaction');
+                }
+                
+                // Step 6: Show success
+                if (progressText) progressText.textContent = 'Transaction broadcast!';
+                if (progressDetail) progressDetail.textContent = `TXID: ${String(data.txid || signed.txId || '').substring(0, 16)}...`;
+                
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                if (progressEl) progressEl.style.display = 'none';
+                
+                showEl('anchoringSuccess', true, `
+                    ✅ Bitcoin anchor created successfully!<br>
+                    <span style="font-family: monospace; font-size: 0.9rem;">
+                        TXID: ${data.txid || signed.txId || 'pending'}<br>
+                        Fee: ${signed.fee || 'unknown'} sats
+                    </span>
+                `);
+                
+                // Reload data
+                await loadUnanchoredCheckpoints();
+                await loadAnchorStats();
+                
+            } catch (err) {
+                if (progressEl) progressEl.style.display = 'none';
+                showEl('anchoringError', true, err.message || 'Failed to create anchor');
+            } finally {
+                // Re-enable button
+                if (btn) {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }
+            }
+        }
+
+        async function loadAnchorStats() {
+            const el = document.getElementById('anchorStatsList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
+
+            const r = await fetch('/api/operator/anchors/stats', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load stats.</div>';
+                return;
+            }
+
+            const operators = Array.isArray(data.operators) ? data.operators : [];
+            const myOperatorId = String(data.myOperatorId || '');
+            const myAnchorCount = Number(data.myAnchorCount || 0);
+            const totalAnchors = Number(data.totalAnchors || 0);
+
+            // Update my stats
+            document.getElementById('myAnchorCount').textContent = myAnchorCount;
+            
+            // Calculate my weight
+            const myOp = operators.find(op => op.operatorId === myOperatorId);
+            const myWeight = myOp ? (myOp.weight * 100).toFixed(1) : '0.0';
+            document.getElementById('myWeight').textContent = myWeight + '%';
+
+            // Display operator stats
+            if (el) {
+                if (operators.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No anchor statistics yet.</div>';
+                } else {
+                    // Sort by anchor count descending
+                    operators.sort((a, b) => (b.anchorCount || 0) - (a.anchorCount || 0));
+                    
+                    el.innerHTML = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Operator</th>
+                                    <th>Anchors</th>
+                                    <th>Weight</th>
+                                    <th>Fee Share</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${operators.map(op => {
+                                    const isMe = op.operatorId === myOperatorId;
+                                    const weight = (op.weight * 100).toFixed(1);
+                                    const feeShare = (op.weight * 100).toFixed(1); // percentage of operator pool
+                                    return `
+                                        <tr style="${isMe ? 'background: rgba(212, 175, 55, 0.1);' : ''}">
+                                            <td style="font-family: monospace; font-size: 0.85rem;">
+                                                ${String(op.operatorId || '').substring(0, 16)}...
+                                                ${isMe ? ' <span style="color: #4cd964; font-weight: 700;">(YOU)</span>' : ''}
+                                            </td>
+                                            <td style="font-weight: 700; color: #d4af37;">${Number(op.anchorCount || 0)}</td>
+                                            <td style="font-weight: 700; color: #4cd964;">${weight}%</td>
+                                            <td style="font-weight: 700; color: #4cd964;">${feeShare}% of total</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                            💡 <strong>How it works:</strong> Your share is weighted by your anchor contributions. More anchors = more fees!
+                        </p>
+                    `;
+                }
+            }
+        }
+
+        async function loadAnchorHistory() {
+            const el = document.getElementById('anchorHistoryList');
+            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
+
+            const r = await fetch('/api/operator/anchors/history', { headers: getAuthHeaders(), cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                if (el) el.innerHTML = '<div class="empty-state">Failed to load history.</div>';
+                return;
+            }
+
+            const anchors = Array.isArray(data.anchors) ? data.anchors : [];
+
+            if (el) {
+                if (anchors.length === 0) {
+                    el.innerHTML = '<div class="empty-state">No anchor transactions yet. Anchor some checkpoints to see your history!</div>';
+                } else {
+                    el.innerHTML = `
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Checkpoint</th>
+                                        <th>TX ID</th>
+                                        <th>Block</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${anchors.map(a => {
+                                        const date = new Date(a.timestamp).toLocaleString();
+                                        const cpRoot = String(a.checkpointRoot || '').substring(0, 16);
+                                        const txid = String(a.txid || '').substring(0, 16);
+                                        const fullTxid = String(a.txid || '');
+                                        return `
+                                            <tr>
+                                                <td style="font-size: 0.85rem;">${date}</td>
+                                                <td style="font-family: monospace; font-size: 0.8rem; color: #d4af37;">${cpRoot}...</td>
+                                                <td>
+                                                    <a href="https://mempool.space/tx/${fullTxid}" target="_blank" style="font-family: monospace; font-size: 0.8rem; color: #4cd964;">
+                                                        ${txid}...
+                                                    </a>
+                                                </td>
+                                                <td style="font-weight: 700; color: #d4af37;">${Number(a.blockHeight || 0).toLocaleString()}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
+                            🔗 Click TX ID to view on mempool.space | OP_RETURN data: AUTHO:[checkpoint_hash]
+                        </p>
+                    `;
+                }
+            }
+        }
+
+        // Mempool visualization
+        let mempoolWs = null;
+        let mempoolEvents = [];
+        let mempoolRecentEvents = [];
+        let mempoolCheckpointStart = Date.now();
+        const CHECKPOINT_INTERVAL = 30000;
+
+        async function loadMempool() {
+            // Fetch consensus status
+            try {
+                const r = await fetch('/api/consensus/status');
+                const data = await r.json();
+                if (data.success) {
+                    document.getElementById('mempoolSize').textContent = data.mempool?.totalEvents || 0;
+                    document.getElementById('mempoolValid').textContent = data.mempool?.validEvents || 0;
+                    document.getElementById('mempoolLeader').textContent = data.consensus?.currentLeaderId || '-';
+                    document.getElementById('mempoolCheckpoint').textContent = (data.consensus?.currentCheckpointNumber || 0) + 1;
+                }
+            } catch (e) {
+                console.error('Failed to load mempool status:', e);
+            }
+
+            // Connect WebSocket for live updates
+            connectMempoolWs();
+        }
+
+        function connectMempoolWs() {
+            if (mempoolWs && mempoolWs.readyState === WebSocket.OPEN) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            mempoolWs = new WebSocket(wsUrl);
+            
+            mempoolWs.onopen = () => {
+                mempoolWs.send(JSON.stringify({ type: 'subscribe_consensus' }));
+            };
+            
+            mempoolWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMempoolMessage(data);
+                } catch (e) {}
+            };
+            
+            mempoolWs.onclose = () => {
+                setTimeout(connectMempoolWs, 3000);
+            };
+        }
+
+        function handleMempoolMessage(data) {
+            if (data.type === 'consensus_state') {
+                document.getElementById('mempoolSize').textContent = data.state?.mempoolStats?.totalEvents || 0;
+                document.getElementById('mempoolValid').textContent = data.state?.mempoolStats?.validEvents || 0;
+                document.getElementById('mempoolLeader').textContent = data.state?.currentLeaderId || '-';
+                document.getElementById('mempoolCheckpoint').textContent = (data.state?.currentCheckpointNumber || 0) + 1;
+            } else if (data.type === 'mempool_snapshot') {
+                mempoolEvents = data.events || [];
+                renderMempoolTreemap();
+            } else if (data.type === 'mempool_event') {
+                const event = data.payload;
+                if (event && !mempoolEvents.find(e => e.eventId === event.eventId)) {
+                    mempoolEvents.push(event);
+                    addMempoolRecentEvent(event);
+                    renderMempoolTreemap();
+                    document.getElementById('mempoolSize').textContent = mempoolEvents.length;
+                }
+            } else if (data.type === 'checkpoint_finalized') {
+                const cp = data.payload;
+                const finalizedIds = new Set((cp.events || []).map(e => e.eventId));
+                mempoolEvents = mempoolEvents.filter(e => !finalizedIds.has(e.eventId));
+                mempoolCheckpointStart = Date.now();
+                renderMempoolTreemap();
+                document.getElementById('mempoolSize').textContent = mempoolEvents.length;
+                document.getElementById('mempoolCheckpoint').textContent = (cp.checkpointNumber || 0) + 1;
+            }
+        }
+
+        function addMempoolRecentEvent(event) {
+            mempoolRecentEvents.unshift(event);
+            if (mempoolRecentEvents.length > 10) mempoolRecentEvents = mempoolRecentEvents.slice(0, 10);
+            renderMempoolRecentEvents();
+        }
+
+        function renderMempoolTreemap() {
+            const container = document.getElementById('mempoolTreemap');
+            if (mempoolEvents.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="width: 100%; text-align: center;">Waiting for events...</div>';
+                return;
+            }
+
+            container.innerHTML = mempoolEvents.map(event => {
+                const type = event.type || 'UNKNOWN';
+                let bg = '#6b7280';
+                if (type.includes('ACCOUNT')) bg = '#3b82f6';
+                else if (type.includes('ITEM_MINTED')) bg = '#22c55e';
+                else if (type.includes('TITLE')) bg = '#f59e0b';
+                else if (type.includes('SETTLEMENT')) bg = '#8b5cf6';
+                else if (type.includes('OPERATOR')) bg = '#f97316';
+                else if (type.includes('CONSIGNMENT')) bg = '#06b6d4';
+
+                const abbrev = getTypeAbbrev(type);
+                return `<div style="width: 45px; height: 45px; background: ${bg}; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: white; cursor: pointer;" title="${type}\n${event.eventId?.substring(0, 16)}...">${abbrev}</div>`;
+            }).join('');
+        }
+
+        function renderMempoolRecentEvents() {
+            const container = document.getElementById('mempoolRecentEvents');
+            if (mempoolRecentEvents.length === 0) {
+                container.innerHTML = '<div class="empty-state">No recent events</div>';
+                return;
+            }
+
+            container.innerHTML = mempoolRecentEvents.map(event => {
+                const type = event.type || 'UNKNOWN';
+                const abbrev = getTypeAbbrev(type);
+                const age = formatAge(event.timestamp || event.receivedAt);
+                return `<div style="display: flex; align-items: center; gap: 8px; padding: 8px; background: rgba(10,10,10,0.5); border-radius: 6px; margin-bottom: 6px;">
+                    <span style="background: #d4af37; color: #0a0a0a; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700;">${abbrev}</span>
+                    <span style="flex: 1; font-size: 11px; color: #999; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${event.eventId?.substring(0, 16)}...</span>
+                    <span style="font-size: 10px; color: #666;">${age}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function getTypeAbbrev(type) {
+            const abbrevs = {
+                'ACCOUNT_CREATED': 'ACC',
+                'ITEM_MINTED': 'MINT',
+                'TITLE_UPDATED': 'TITLE',
+                'SETTLEMENT_CREATED': 'SETL',
+                'SETTLEMENT_COMPLETED': 'DONE',
+                'CONSIGNMENT_CREATED': 'CONS',
+                'OPERATOR_CANDIDATE_REQUESTED': 'OP+',
+                'OPERATOR_ADMITTED': 'OP✓',
+                'OPERATOR_HEARTBEAT': '♥',
+            };
+            return abbrevs[type] || type.substring(0, 4);
+        }
+
+        function formatAge(timestamp) {
+            if (!timestamp) return '?';
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+            return `${Math.floor(seconds / 3600)}h`;
+        }
+
+        function updateMempoolProgress() {
+            const elapsed = Date.now() - mempoolCheckpointStart;
+            const progress = Math.min(100, (elapsed / CHECKPOINT_INTERVAL) * 100);
+            const remaining = Math.max(0, Math.ceil((CHECKPOINT_INTERVAL - elapsed) / 1000));
+            
+            const progressEl = document.getElementById('mempoolProgress');
+            const timerEl = document.getElementById('mempoolTimer');
+            if (progressEl) progressEl.style.width = `${progress}%`;
+            if (timerEl) timerEl.textContent = `${remaining}s`;
+        }
+
+        setInterval(updateMempoolProgress, 100);
+
+        // === DNS Seed Functions ===
+        function generateDnsRecord() {
+            const urlInput = document.getElementById('dnsOperatorUrl');
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                showEl('dnsError', true, 'Please enter your operator URL');
+                return;
+            }
+
+            try {
+                const parsed = new URL(url);
+                const httpUrl = parsed.origin;
+                const wsUrl = httpUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+                const domain = parsed.hostname;
+                
+                // Generate TXT record value
+                const txtValue = `autho-peer=${wsUrl},${httpUrl},operator`;
+                
+                // Show the output section
+                document.getElementById('dnsRecordOutput').style.display = 'block';
+                document.getElementById('dnsVerifySection').style.display = 'block';
+                
+                // Set the values
+                document.getElementById('dnsHost').textContent = 'seed';
+                document.getElementById('dnsTxtValue').textContent = txtValue;
+                
+                // Pre-fill verify domain
+                const baseDomain = domain.split('.').slice(-2).join('.');
+                document.getElementById('dnsVerifyDomain').value = `seed.${baseDomain}`;
+                
+                showEl('dnsError', false);
+                showEl('dnsSuccess', true, 'DNS record generated! Add this to your domain\'s DNS settings.');
+            } catch (e) {
+                showEl('dnsError', true, 'Invalid URL format. Please enter a valid URL like https://autho.yourdomain.com');
+            }
+        }
+
+        function copyDnsRecord() {
+            const txtValue = document.getElementById('dnsTxtValue').textContent;
+            navigator.clipboard.writeText(txtValue).then(() => {
+                showEl('dnsSuccess', true, 'TXT value copied to clipboard!');
+            }).catch(() => {
+                showEl('dnsError', true, 'Failed to copy. Please select and copy manually.');
+            });
+        }
+
+        async function verifyDnsRecord() {
+            const domain = document.getElementById('dnsVerifyDomain').value.trim();
+            
+            if (!domain) {
+                showEl('dnsError', true, 'Please enter a domain to verify');
+                return;
+            }
+
+            const resultDiv = document.getElementById('dnsVerifyResult');
+            const statusDiv = document.getElementById('dnsVerifyStatus');
+            resultDiv.style.display = 'block';
+            statusDiv.innerHTML = '<span style="color: #999;">🔄 Checking DNS...</span>';
+
+            try {
+                // Call our API to verify the DNS record
+                const response = await fetch(`/api/network/dns-verify?domain=${encodeURIComponent(domain)}`);
+                const data = await response.json();
+
+                if (data.success && data.found) {
+                    statusDiv.innerHTML = `
+                        <div style="background: rgba(52, 199, 89, 0.15); border: 1px solid rgba(52, 199, 89, 0.4); padding: 15px; border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                                <span style="font-size: 1.5rem;">✅</span>
+                                <span style="color: #4cd964; font-weight: 700; font-size: 1.1rem;">DNS Seed Verified!</span>
+                            </div>
+                            <div style="font-family: monospace; color: #ccc; font-size: 0.9rem; word-break: break-all;">
+                                ${data.txtRecord || 'Record found'}
+                            </div>
+                        </div>
+                    `;
+                    showEl('dnsSuccess', true, 'Your DNS seed is correctly configured! 🎉');
+                } else {
+                    statusDiv.innerHTML = `
+                        <div style="background: rgba(255, 59, 48, 0.15); border: 1px solid rgba(255, 59, 48, 0.4); padding: 15px; border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                                <span style="font-size: 1.5rem;">❌</span>
+                                <span style="color: #ff6b6b; font-weight: 700; font-size: 1.1rem;">DNS Seed Not Found</span>
+                            </div>
+                            <div style="color: #999; font-size: 0.9rem;">
+                                ${data.error || 'No autho-peer TXT record found. DNS changes can take up to 24 hours to propagate.'}
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                statusDiv.innerHTML = `
+                    <div style="background: rgba(255, 159, 64, 0.15); border: 1px solid rgba(255, 159, 64, 0.4); padding: 15px; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 1.5rem;">⚠️</span>
+                            <span style="color: #ffa500; font-weight: 600;">Could not verify DNS</span>
+                        </div>
+                        <div style="color: #999; font-size: 0.9rem; margin-top: 8px;">
+                            Verification service unavailable. Try again later or verify manually using: <code>dig TXT ${domain}</code>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        window.addEventListener('load', async () => {
+            await requireOperatorAuth();
+        });
+    </script>
+</body>
+</html>

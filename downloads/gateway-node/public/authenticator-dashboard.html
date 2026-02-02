@@ -1,0 +1,2088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenticator Dashboard - Bitcoin Ownership Protocol</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #d4af37;
+        }
+
+        .dashboard-container { max-width: 1200px; margin: 0 auto; }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.15);
+        }
+
+        .header h1 { font-size: 2rem; margin-bottom: 8px; }
+        .header p { color: #999; }
+
+        .top-nav {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 15px 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.2);
+        }
+
+        .nav-left { display: flex; align-items: center; gap: 20px; }
+        .nav-right { display: flex; align-items: center; gap: 15px; }
+        .user-info { color: #d4af37; font-size: 0.9rem; }
+
+        .btn {
+            background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+            color: #0a0a0a;
+            border: 1px solid #f4d03f;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .btn-secondary {
+            background: rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            border: 1px solid #d4af37;
+        }
+
+        .btn-logout {
+            background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-logout:hover {
+            transform: translateY(-1px);
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 640px;
+            width: 100%;
+            color: #d4af37;
+        }
+
+        .modal-header { margin-bottom: 15px; }
+
+        .form-group { margin-bottom: 15px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            color: #fff;
+        }
+
+        .action-section {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .action-section h2 { margin-bottom: 10px; }
+
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .job-card {
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            background: rgba(15, 15, 15, 0.35);
+            border-radius: 14px;
+            padding: 16px;
+            margin-top: 12px;
+        }
+
+        .job-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .job-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            background: rgba(212, 175, 55, 0.12);
+            color: #f1d28a;
+        }
+
+        .job-pill.open { background: rgba(255, 206, 84, 0.10); border-color: rgba(255, 206, 84, 0.45); color: #ffd56a; }
+        .job-pill.accepted { background: rgba(76, 217, 100, 0.10); border-color: rgba(76, 217, 100, 0.45); color: #c9f7d5; }
+        .job-pill.completed { background: rgba(142, 142, 147, 0.12); border-color: rgba(142, 142, 147, 0.35); color: #d1d1d6; }
+        .job-pill.cancelled { background: rgba(255, 59, 48, 0.10); border-color: rgba(255, 59, 48, 0.35); color: #ff6b6b; }
+
+        .small-muted {
+            color: #999;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #d1d1d6;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="modal" id="authModal" style="display: flex;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🧪 Authenticator Sign In</h2>
+            </div>
+
+            <div class="form-group" style="display:none;">
+                <label>Account ID (Wallet Public Key Hex)</label>
+                <input id="authAccountId" type="text" placeholder="02ab..." />
+            </div>
+
+            <div class="form-group" style="display: none;" id="challengeGroup">
+                <label>Challenge Nonce</label>
+                <input id="authNonce" type="text" readonly />
+                <input id="authChallengeId" type="hidden" />
+            </div>
+
+            <div class="form-group" style="display: none;" id="signatureGroup">
+                <label>Signature (hex) of the nonce</label>
+                <input id="authSignature" type="text" placeholder="3044..." />
+            </div>
+
+            <div class="form-group" style="display: none;" id="totpGroup">
+                <label>2FA Code (if enabled)</label>
+                <input id="authTotp" type="text" placeholder="123456" />
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="startAuthenticatorLogin()" style="display:none;">Get Challenge</button>
+                <button class="btn btn-secondary" type="button" onclick="verifyAuthenticatorLogin()" id="verifyBtn" style="display:none;">Verify & Enter</button>
+                <a class="btn btn-secondary" href="/" style="text-decoration:none;">Back</a>
+            </div>
+
+            <div class="error-message" id="authError"></div>
+
+            <div id="emailPasswordLogin" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color:#d4af37; margin-bottom: 10px; font-size: 1.1rem;">🔑 Sign In with Email & Password</h3>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input id="loginEmail" type="email" placeholder="your@email.com" />
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input id="loginPassword" type="password" placeholder="••••••••" />
+                </div>
+                <div class="form-group" style="display:none;" id="login2faGroup">
+                    <label>2FA Code (if enabled)</label>
+                    <input id="loginTotp" type="text" placeholder="123456" />
+                </div>
+                <button class="btn" type="button" onclick="loginWithPassword()">Sign In</button>
+                <p id="loginError" style="margin-top: 10px; color: #ff6b6b; display:none;"></p>
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color:#d4af37; margin-bottom: 10px; font-size: 1.1rem;">📝 New User? Register First</h3>
+                <p style="color:#999; margin-bottom: 15px; font-size: 0.9rem; line-height: 1.5;">
+                    Don't have an account yet? Create a buyer account first, then you can apply for authenticator approval.
+                </p>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input id="regUsername" type="text" placeholder="Your name or company" />
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input id="regEmail" type="email" placeholder="contact@company.com" />
+                </div>
+                <div class="form-group">
+                    <label>Password (min 8 characters)</label>
+                    <input id="regPassword" type="password" placeholder="••••••••" />
+                </div>
+                <button class="btn" type="button" onclick="registerNewUser()">Create Account</button>
+                <p id="regError" style="margin-top: 10px; color: #ff6b6b; display:none;"></p>
+                <p id="regSuccess" style="margin-top: 10px; color: #4cd964; display:none;"></p>
+            </div>
+
+            <div id="authenticatorOnboarding" style="margin-top: 18px; display:none; padding-top: 15px; border-top: 1px solid rgba(212, 175, 55, 0.25);">
+                <h3 style="color:#d4af37; margin-bottom: 10px;">Authenticator Onboarding</h3>
+                <p style="color:#999; margin-bottom: 15px; line-height: 1.5;">
+                    Your account is logged in, but it is not approved as an authenticator yet.
+                    Use a one-time invite code from the main node to activate instantly, or submit an application.
+                </p>
+
+                <div class="form-group">
+                    <label>One-Time Invite Code (hex)</label>
+                    <input id="authenticatorInviteCode" type="text" placeholder="a1b2c3..." />
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="redeemAuthenticatorInvite()">Redeem Invite</button>
+                </div>
+
+                <div style="margin-top: 18px; padding-top: 15px; border-top: 1px solid rgba(212, 175, 55, 0.15);"></div>
+
+                <div class="form-group">
+                    <label>Company Name</label>
+                    <input id="authenticatorCompanyName" type="text" placeholder="Acme Authentication Labs" />
+                </div>
+                <div class="form-group">
+                    <label>Contact Email</label>
+                    <input id="authenticatorContactEmail" type="text" placeholder="lab@acme.com" />
+                </div>
+                <div class="form-group">
+                    <label>Website</label>
+                    <input id="authenticatorWebsite" type="text" placeholder="https://acme.com" />
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <input id="authenticatorNotes" type="text" placeholder="Your authentication capabilities, equipment, etc." />
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" id="authenticatorSubmitApplicationBtn" type="button" onclick="submitAuthenticatorApplication()">Submit Application</button>
+                    <button class="btn btn-secondary" type="button" onclick="recheckAuthenticatorRole()">Re-check Approval</button>
+                </div>
+                <div id="authenticatorApplicationBanner" style="display:none; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(76, 217, 100, 0.55); background: rgba(76, 217, 100, 0.10); color: #c9f7d5; line-height: 1.4;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        <div class="top-nav">
+            <div class="nav-left">
+                <span style="font-size: 1.5rem;">🧪</span>
+                <span style="color: #d4af37; font-weight: 600;">Authenticator Dashboard</span>
+            </div>
+            <div class="nav-right">
+                <div class="user-info"><span id="navUsername">Authenticator</span></div>
+                <button class="btn btn-secondary" onclick="window.location.href='/m/search'">🔎 Search Ledger</button>
+                <button class="btn-logout" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <div class="header">
+            <h1>🧪 Authenticator Dashboard</h1>
+            <p id="authenticatorName">Welcome!</p>
+        </div>
+
+        <div class="action-section">
+            <h2>🔍 Quick Actions</h2>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px;">
+                <button class="btn" onclick="window.location.href='/scan'">Scan Item</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/m/search'">Search Ledger</button>
+                <button class="btn btn-secondary" onclick="viewWallet()">💳 View Wallet</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/'">Back to Home</button>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>📌 Status</h2>
+            <div style="color:#999; line-height: 1.6;">
+                This portal is gated by the ledger-backed role <span style="color:#d4af37;">authenticator</span>.
+                Once approved, you can use this portal to perform and record authentication attestations.
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>🏢 Edit Public Profile</h2>
+            <div style="color:#999; line-height: 1.6; margin-bottom: 12px;">
+                This information will be shown to owners when they view your authenticator profile.
+            </div>
+            <div id="profileError" class="error-message"></div>
+            <div id="profileSuccess" style="display:none; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(76, 217, 100, 0.55); background: rgba(76, 217, 100, 0.10); color: #c9f7d5; line-height: 1.4;"></div>
+
+            <div class="form-group">
+                <label>Display Name</label>
+                <input id="profileDisplayName" type="text" placeholder="e.g., Acme Authentication Labs" />
+            </div>
+            <div class="form-group">
+                <label>Company Name</label>
+                <input id="profileCompanyName" type="text" placeholder="Legal entity name" />
+            </div>
+            <div class="form-group">
+                <label>Website</label>
+                <input id="profileWebsite" type="text" placeholder="example.com" />
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input id="profilePhone" type="text" placeholder="+1 555 123 4567" />
+            </div>
+            <div class="form-group">
+                <label>Address</label>
+                <input id="profileAddress" type="text" placeholder="Street, City, State/Province, Country" />
+            </div>
+            <div class="form-group">
+                <label>Public Contact Email</label>
+                <input id="profileContactEmail" type="email" placeholder="support@example.com" />
+            </div>
+            <div class="form-group">
+                <label>Notes</label>
+                <input id="profileNotes" type="text" placeholder="Optional public notes" />
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" type="button" onclick="loadMyVerifierProfile()">Reload</button>
+                <button class="btn" type="button" onclick="saveMyVerifierProfile()">Save Profile</button>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>🔒 Bond Proof (Non-Custodial)</h2>
+            <div style="color:#999; line-height: 1.6; margin-bottom: 12px;">
+                Autho never holds your funds. This check proves your wallet has enough confirmed sats to meet the platform bond requirement.
+            </div>
+            <div class="error-message" id="bondError"></div>
+            <div id="bondSuccess" style="display:none; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(76, 217, 100, 0.55); background: rgba(76, 217, 100, 0.10); color: #c9f7d5; line-height: 1.4;"></div>
+
+            <div class="form-group">
+                <label>Bond Status</label>
+                <input id="bondStatus" type="text" readonly placeholder="Unknown" />
+            </div>
+            <div class="form-group">
+                <label>Last Checked</label>
+                <input id="bondLastChecked" type="text" readonly placeholder="" />
+            </div>
+            <div class="form-group">
+                <label>Confirmed Sats</label>
+                <input id="bondConfirmedSats" type="text" readonly placeholder="" />
+            </div>
+            <div class="form-group">
+                <label>Minimum Required</label>
+                <input id="bondMinSats" type="text" readonly placeholder="" />
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" type="button" onclick="loadMyVerifierProfile()">Refresh Status</button>
+                <button class="btn" type="button" onclick="runBondCheck()" id="bondCheckBtn">Run Bond Check</button>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <div style="display:flex; justify-content: space-between; align-items:center; gap: 10px; flex-wrap:wrap;">
+                <h2>✅ Verification Jobs</h2>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary" type="button" onclick="loadVerificationJobs()" id="refreshJobsBtn">Refresh</button>
+                </div>
+            </div>
+            <div class="small-muted" style="margin-top: 10px;">
+                Owners can request verification for unverified items. Once they pay (authenticator fee + title update fee + OP_RETURN), paste the owner-provided <span style="color:#d4af37;">payment TXID</span> below and complete the job.
+            </div>
+
+            <div id="verificationJobsError" class="error-message"></div>
+
+            <div id="verificationJobsList" style="margin-top: 10px;"></div>
+
+            <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(212, 175, 55, 0.15);">
+                <h3 style="margin-bottom: 10px;">🧾 Complete Verification</h3>
+                <div class="small-muted" style="margin-bottom: 12px;">
+                    Select a job from the list above to prefill these fields.
+                </div>
+
+                <div class="form-group">
+                    <label>Verification Request ID</label>
+                    <input id="verifyRequestId" type="text" placeholder="VREQ_..." />
+                </div>
+                <div class="form-group">
+                    <label>Item ID</label>
+                    <input id="verifyItemId" type="text" placeholder="ITEM_..." />
+                </div>
+                <div class="form-group">
+                    <label>Owner Payment TXID</label>
+                    <input id="verifyPaymentTxid" type="text" placeholder="txid..." />
+                </div>
+                <div class="form-group">
+                    <label>Serial Number (as seen on the physical item)</label>
+                    <input id="verifySerialNumber" type="text" placeholder="SN123..." />
+                </div>
+                <div class="form-group">
+                    <label>Verdict</label>
+                    <select id="verifyIsAuthentic" style="width:100%; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                        <option value="true" selected>Authentic</option>
+                        <option value="false">Not Authentic</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Confidence</label>
+                    <select id="verifyConfidence" style="width:100%; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                        <option value="high" selected>High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notes (optional)</label>
+                    <input id="verifyNotes" type="text" placeholder="e.g. Verified stitching pattern and serial tag" />
+                </div>
+                <div class="form-group">
+                    <label>Photos (optional, up to 3)</label>
+                    <input id="verifyImages" type="file" accept="image/*" multiple />
+                    <div id="verifyImagesPreview" style="margin-top: 10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="submitVerificationCompletion()" id="submitVerifyBtn">Complete Verification</button>
+                </div>
+                <div class="error-message" id="verifyCompleteError"></div>
+                <div id="verifyCompleteSuccess" style="display:none; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(76, 217, 100, 0.55); background: rgba(76, 217, 100, 0.10); color: #c9f7d5; line-height: 1.4;"></div>
+            </div>
+        </div>
+
+        <div class="action-section">
+            <h2>🧾 Authenticate Item</h2>
+            <div style="color:#999; line-height: 1.6; margin-bottom: 12px;">
+                Record an authentication attestation in the Autho canonical ledger. You can optionally attach up to 3 small reference images.
+            </div>
+            <div class="form-group">
+                <label>Item ID</label>
+                <input id="authItemId" type="text" placeholder="ITEM_..." />
+            </div>
+            <div class="form-group">
+                <label>Serial Number (as seen on the physical item)</label>
+                <input id="authSerialNumber" type="text" placeholder="SN123..." />
+            </div>
+            <div class="form-group">
+                <label>Verdict</label>
+                <select id="authIsAuthentic" style="width:100%; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                    <option value="true" selected>Authentic</option>
+                    <option value="false">Not Authentic</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Confidence</label>
+                <select id="authConfidence" style="width:100%; padding:12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
+                    <option value="high" selected>High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Notes (optional)</label>
+                <input id="authNotes" type="text" placeholder="e.g. Verified stitching pattern and serial tag" />
+            </div>
+            <div class="form-group">
+                <label>Photos (optional, up to 3)</label>
+                <input id="authImages" type="file" accept="image/*" multiple />
+                <div id="authImagesPreview" style="margin-top: 10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" onclick="submitAuthenticationAttestation()" id="submitAuthBtn">Submit Attestation</button>
+            </div>
+            <div class="error-message" id="authAttestationError"></div>
+            <div id="authAttestationSuccess" style="display:none; margin-top: 12px; padding: 12px; border-radius: 10px; border: 1px solid rgba(76, 217, 100, 0.55); background: rgba(76, 217, 100, 0.10); color: #c9f7d5; line-height: 1.4;"></div>
+        </div>
+    </div>
+
+    <!-- Wallet Modal -->
+    <div class="modal" id="walletModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>💳 Your Bitcoin Wallet</h2>
+                <button onclick="closeWalletModal()" style="background: none; border: none; color: #d4af37; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, 0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="color: #999; font-size: 0.9rem;">Balance</span>
+                    <button onclick="refreshAuthenticatorBalance()" style="background: none; border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 4px 12px; border-radius: 5px; cursor: pointer; font-size: 0.85rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div style="font-size: 2rem; font-weight: 600; color: #d4af37;" id="authenticatorBtcBalance">0.00000000</div>
+                <div style="color: #999; font-size: 0.9rem; margin-top: 5px;" id="authenticatorUsdBalance">$0.00 USD</div>
+                <div style="display:flex; justify-content: space-between; gap: 12px; margin-top: 10px; color:#999; font-size: 0.85rem;">
+                    <div>Confirmed: <span id="authenticatorBtcConfirmed" style="color:#d4af37;">0 sats</span></div>
+                    <div>Unconfirmed: <span id="authenticatorBtcUnconfirmed" style="color:#d4af37;">0 sats</span></div>
+                </div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color: #d4af37; margin-bottom: 10px; font-size: 1.1rem;">📥 Receive BTC</h3>
+                <p style="color: #999; font-size: 0.85rem; margin-bottom: 10px;">Your payment address for attestation fees:</p>
+                <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #d4af37; word-break: break-all; margin-bottom: 10px;" id="authenticatorWalletAddress"></div>
+                <button class="btn" onclick="copyAuthenticatorAddress()" style="width: 100%;">
+                    📋 Copy Address
+                </button>
+                <div style="margin-top: 12px; background: rgba(0,0,0,0.15); padding: 12px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.2); text-align: center;">
+                    <img id="authenticatorReceiveQr" alt="Receive BTC QR" style="width: 220px; height: 220px; max-width: 100%; background: #fff; padding: 10px; border-radius: 10px;" />
+                </div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.05); padding: 20px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.2);">
+                <h3 style="color: #d4af37; margin-bottom: 10px; font-size: 1.1rem;">📤 Send BTC</h3>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Recipient Address</label>
+                    <input id="authenticatorSendToAddress" type="text" placeholder="bc1q..." style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%; font-family: monospace; font-size: 0.85rem;" />
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group">
+                        <label style="color: #d4af37;">Amount (sats)</label>
+                        <input id="authenticatorSendAmountSats" type="number" placeholder="e.g. 50000" oninput="updateAuthenticatorSendUsd()" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;" />
+                    </div>
+                    <div class="form-group">
+                        <label style="color: #d4af37;">Amount (USD)</label>
+                        <input id="authenticatorSendAmountUsd" type="number" step="0.01" placeholder="e.g. 25.00" oninput="updateAuthenticatorSendSats()" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px; border-radius: 5px; width: 100%;" />
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label style="color: #d4af37;">Fee Priority</label>
+                    <select id="authenticatorFeePriority" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 5px; color: #d4af37;">
+                        <option value="low">Low (~1 sat/vB)</option>
+                        <option value="medium" selected>Medium (~5 sat/vB)</option>
+                        <option value="high">High (~10 sat/vB)</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="sendAuthenticatorBtc()" style="flex: 1;">💸 Send BTC</button>
+                    <button class="btn btn-secondary" onclick="fillAuthenticatorMax()">Send Max</button>
+                </div>
+                <div id="authenticatorSendStatus" style="margin-top: 10px; color: #d4af37; font-size: 0.9rem;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/btc.bundle.js"></script>
+    <script>
+        let userConfig = {};
+        let authenticatorWalletAddress = '';
+        let authenticatorBalanceSats = 0;
+        let authenticatorBtcPrice = 0;
+
+        function bytesToHex(bytes) {
+            const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+            let out = '';
+            for (let i = 0; i < b.length; i++) {
+                out += b[i].toString(16).padStart(2, '0');
+            }
+            return out;
+        }
+
+        function bytesToB64(bytes) {
+            const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+            let bin = '';
+            const chunk = 0x8000;
+            for (let i = 0; i < b.length; i += chunk) {
+                bin += String.fromCharCode.apply(null, Array.from(b.subarray(i, i + chunk)));
+            }
+            return btoa(bin);
+        }
+
+        async function sha256HexFromBytes(bytes) {
+            const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+            const digest = await crypto.subtle.digest('SHA-256', b);
+            return bytesToHex(new Uint8Array(digest));
+        }
+
+        function stableStringify(value) {
+            const seen = new WeakSet();
+            const helper = (v) => {
+                if (v === null || v === undefined) return v;
+                const t = typeof v;
+                if (t === 'number' || t === 'string' || t === 'boolean') return v;
+                if (t !== 'object') return String(v);
+                if (seen.has(v)) return '[Circular]';
+                seen.add(v);
+                if (Array.isArray(v)) return v.map(helper);
+                const out = {};
+                const keys = Object.keys(v).sort();
+                for (const k of keys) {
+                    const vv = v[k];
+                    if (vv === undefined) continue;
+                    out[k] = helper(vv);
+                }
+                return out;
+            };
+            return JSON.stringify(helper(value));
+        }
+
+        async function sha256HexFromUtf8(text) {
+            const enc = new TextEncoder();
+            return sha256HexFromBytes(enc.encode(String(text || '')));
+        }
+
+        function opReturnScriptHexFromDataHex(dataHex) {
+            const h = String(dataHex || '').trim().toLowerCase();
+            if (!/^[0-9a-f]+$/.test(h) || (h.length % 2 !== 0)) throw new Error('Invalid commitment hex');
+            const byteLen = h.length / 2;
+            if (byteLen > 75) throw new Error('Commitment too large for simple OP_RETURN');
+            return '6a' + byteLen.toString(16).padStart(2, '0') + h;
+        }
+
+        async function fetchChainTxStatus(txid) {
+            const r = await fetch(`/api/chain/tx/${encodeURIComponent(String(txid))}/status`, { cache: 'no-store' });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j || j.ok !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+            return j;
+        }
+
+        async function broadcastTxHexViaApi(txHex) {
+            const r = await fetch('/api/chain/tx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ txHex }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j || j.success !== true) throw new Error(String(j?.error || `HTTP ${r.status}`));
+            return String(j.txid || '').trim();
+        }
+
+        async function waitForConfirmations(txid, requiredConfirmations, onUpdate) {
+            const target = Number(requiredConfirmations || 6);
+            let delayMs = 15_000;
+            for (;;) {
+                const st = await fetchChainTxStatus(txid);
+                const conf = Number(st?.confirmations || 0);
+                const bh = st?.blockHeight;
+                try { if (typeof onUpdate === 'function') onUpdate({ confirmations: conf, blockHeight: bh, confirmed: !!st?.confirmed }); } catch {}
+                if (conf >= target) return st;
+                await new Promise(r => setTimeout(r, delayMs));
+                delayMs = Math.min(60_000, Math.floor(delayMs * 1.2));
+            }
+        }
+
+        async function updateVerifyImagesPreview() {
+            const preview = document.getElementById('verifyImagesPreview');
+            const input = document.getElementById('verifyImages');
+            if (!preview || !input) return;
+
+            preview.innerHTML = '';
+            const files = Array.from(input.files || []);
+            if (files.length === 0) return;
+            if (files.length > 3) {
+                preview.innerHTML = '<div style="color:#ff6b6b;">You can only attach up to 3 images.</div>';
+                return;
+            }
+
+            try {
+                for (const f of files) {
+                    const thumb = await fileToLedgerImage(f);
+                    const img = document.createElement('img');
+                    img.src = thumb._previewUrl;
+                    img.style.width = '96px';
+                    img.style.height = '96px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '10px';
+                    img.style.border = '1px solid rgba(212, 175, 55, 0.35)';
+                    preview.appendChild(img);
+                }
+            } catch (e) {
+                preview.innerHTML = `<div style="color:#ff6b6b;">${String(e?.message || e || 'Failed to process images')}</div>`;
+            }
+        }
+
+        function bytesFromB64(b64) {
+            return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        }
+
+        async function deriveVaultKey(password, saltBytes, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey(
+                'raw',
+                enc.encode(String(password)),
+                { name: 'PBKDF2' },
+                false,
+                ['deriveKey']
+            );
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptWalletVault(walletVault, password) {
+            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
+                throw new Error('Unsupported wallet vault format');
+            }
+            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
+            const iterations = Number(walletVault.kdf?.iterations || 0);
+            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
+            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
+            const key = await deriveVaultKey(password, salt, iterations);
+            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            const json = new TextDecoder().decode(pt);
+            return JSON.parse(json);
+        }
+
+        function getWalletNetworkName() {
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+            const net = String(wallet.network || 'mainnet').toLowerCase();
+            return net.includes('test') ? 'testnet' : 'mainnet';
+        }
+
+        async function getAuthFeeRateSatPerVb() {
+            try {
+                const r = await fetch('/api/chain/fee-estimates', { cache: 'no-store' });
+                const j = await r.json();
+                const picked = Number(j?.['2'] ?? j?.['1'] ?? j?.['6'] ?? j?.['3']);
+                if (Number.isFinite(picked) && picked > 0) return Math.max(0.1, Math.min(500, picked));
+            } catch {}
+            return 2;
+        }
+
+        function canvasToBlob(canvas, mime, quality) {
+            return new Promise((resolve) => {
+                try {
+                    canvas.toBlob((blob) => resolve(blob), mime, quality);
+                } catch {
+                    resolve(null);
+                }
+            });
+        }
+
+        async function fileToLedgerImage(file) {
+            const MAX_BYTES = 80_000;
+            const targetMimes = ['image/webp'];
+            const sizes = [360, 300, 240];
+            const qualities = [0.72, 0.62, 0.52, 0.42];
+
+            let bitmap;
+            try {
+                bitmap = await createImageBitmap(file);
+            } catch {
+                const url = URL.createObjectURL(file);
+                try {
+                    const img = new Image();
+                    img.decoding = 'async';
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = url;
+                    });
+                    bitmap = await createImageBitmap(img);
+                } finally {
+                    try { URL.revokeObjectURL(url); } catch {}
+                }
+            }
+
+            if (!bitmap) throw new Error('Failed to decode image');
+
+            for (const maxDim of sizes) {
+                const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+                const w = Math.max(1, Math.round(bitmap.width * scale));
+                const h = Math.max(1, Math.round(bitmap.height * scale));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) throw new Error('Canvas not supported');
+                ctx.drawImage(bitmap, 0, 0, w, h);
+
+                for (const mime of targetMimes) {
+                    for (const q of qualities) {
+                        const blob = await canvasToBlob(canvas, mime, q);
+                        if (!blob) continue;
+                        if (blob.size > MAX_BYTES) continue;
+                        const buf = new Uint8Array(await blob.arrayBuffer());
+                        const sha256Hex = await sha256HexFromBytes(buf);
+                        return {
+                            mime,
+                            dataB64: bytesToB64(buf),
+                            sha256Hex,
+                            w,
+                            h,
+                            _previewUrl: URL.createObjectURL(blob),
+                        };
+                    }
+                }
+            }
+
+            throw new Error('Image too large. Please choose a smaller photo.');
+        }
+
+        async function buildLedgerImagesFromFiles(files) {
+            const out = [];
+            const arr = Array.isArray(files) ? files : [];
+            for (let i = 0; i < arr.length; i++) {
+                const f = arr[i];
+                if (!f) continue;
+                const img = await fileToLedgerImage(f);
+                out.push({ mime: img.mime, dataB64: img.dataB64, sha256Hex: img.sha256Hex, w: img.w, h: img.h });
+            }
+            return out;
+        }
+
+        async function updateAuthImagesPreview() {
+            const preview = document.getElementById('authImagesPreview');
+            const input = document.getElementById('authImages');
+            if (!preview || !input) return;
+
+            preview.innerHTML = '';
+            const files = Array.from(input.files || []);
+            if (files.length === 0) return;
+            if (files.length > 3) {
+                preview.innerHTML = '<div style="color:#ff6b6b;">You can only attach up to 3 images.</div>';
+                return;
+            }
+
+            try {
+                for (const f of files) {
+                    const thumb = await fileToLedgerImage(f);
+                    const img = document.createElement('img');
+                    img.src = thumb._previewUrl;
+                    img.style.width = '96px';
+                    img.style.height = '96px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '10px';
+                    img.style.border = '1px solid rgba(212, 175, 55, 0.35)';
+                    preview.appendChild(img);
+                }
+            } catch (e) {
+                preview.innerHTML = `<div style="color:#ff6b6b;">${String(e?.message || e || 'Failed to process images')}</div>`;
+            }
+        }
+
+        try {
+            document.getElementById('authImages')?.addEventListener('change', () => {
+                try { updateAuthImagesPreview(); } catch {}
+            });
+        } catch {}
+
+        try {
+            document.getElementById('verifyImages')?.addEventListener('change', () => {
+                try { updateVerifyImagesPreview(); } catch {}
+            });
+        } catch {}
+
+        function shortId(s) {
+            const t = String(s || '').trim();
+            if (!t) return '';
+            return t.length > 18 ? `${t.substring(0, 10)}...${t.substring(t.length - 8)}` : t;
+        }
+
+        function jobPillClass(status) {
+            const st = String(status || '').toLowerCase();
+            if (st === 'open') return 'job-pill open';
+            if (st === 'accepted') return 'job-pill accepted';
+            if (st === 'completed') return 'job-pill completed';
+            if (st === 'cancelled') return 'job-pill cancelled';
+            return 'job-pill';
+        }
+
+        function setVerifyFormFromJob(job) {
+            if (!job) return;
+            document.getElementById('verifyRequestId').value = String(job.requestId || '').trim();
+            document.getElementById('verifyItemId').value = String(job.itemId || '').trim();
+            try {
+                document.getElementById('verifyPaymentTxid').value = String(job.paymentTxid || '').trim();
+            } catch {}
+            try {
+                document.getElementById('verifySerialNumber').value = '';
+            } catch {}
+            try {
+                document.getElementById('verifyNotes').value = '';
+            } catch {}
+
+            try {
+                const errEl = document.getElementById('verifyCompleteError');
+                const okEl = document.getElementById('verifyCompleteSuccess');
+                if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+                if (okEl) { okEl.style.display = 'none'; okEl.textContent = ''; }
+            } catch {}
+
+            try {
+                document.getElementById('verifyRequestId').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch {}
+        }
+
+        function renderVerificationJobs(jobs) {
+            const listEl = document.getElementById('verificationJobsList');
+            if (!listEl) return;
+
+            const arr = Array.isArray(jobs) ? jobs : [];
+            if (arr.length === 0) {
+                listEl.innerHTML = '<div class="small-muted">No verification jobs assigned yet.</div>';
+                return;
+            }
+
+            listEl.innerHTML = arr.map((job) => {
+                const status = String(job?.status || 'open');
+                const canAccept = String(status).toLowerCase() === 'open';
+                const canComplete = String(status).toLowerCase() === 'accepted' || String(status).toLowerCase() === 'open';
+                const feeTotal = Number(job?.serviceFeeSats || 0) + Number(job?.platformFeeSats || 0);
+                const maxFee = job?.maxServiceFeeSats !== null && job?.maxServiceFeeSats !== undefined
+                  ? Number(job?.maxServiceFeeSats)
+                  : undefined;
+                const feeInputId = `acceptFee_${String(job?.requestId || '').replace(/[^a-zA-Z0-9_\-]/g, '')}`;
+                return `
+                    <div class="job-card">
+                        <div class="job-row" style="justify-content: space-between;">
+                            <div class="job-row">
+                                <span class="${jobPillClass(status)}">${String(status).toUpperCase()}</span>
+                                <div style="color:#d4af37; font-weight: 700;">${shortId(job?.requestId)}</div>
+                            </div>
+                            <div class="job-row">
+                                ${canAccept ? `<button class="btn" type="button" onclick="acceptVerificationJob('${String(job?.requestId || '')}', '${feeInputId}')">Accept</button>` : ''}
+                                ${canComplete ? `<button class="btn btn-secondary" type="button" onclick='setVerifyFormFromJob(${JSON.stringify({
+                                    requestId: String(job?.requestId || ''),
+                                    itemId: String(job?.itemId || ''),
+                                    paymentTxid: String(job?.paymentTxid || ''),
+                                })})'>Complete…</button>` : ''}
+                            </div>
+                        </div>
+
+                        <div class="small-muted" style="margin-top: 10px;">
+                            Item: <span class="mono">${String(job?.itemId || '')}</span>
+                        </div>
+                        <div class="small-muted" style="margin-top: 6px;">
+                            Owner: <span class="mono">${String(job?.ownerWallet || '')}</span>
+                        </div>
+                        <div class="small-muted" style="margin-top: 6px;">
+                            Payment required: <span style="color:#d4af37; font-weight:700;">${feeTotal.toLocaleString()} sats</span>
+                            (${Number(job?.serviceFeeSats || 0).toLocaleString()} sats to you + ${Number(job?.platformFeeSats || 0).toLocaleString()} sats platform)
+                        </div>
+                        ${canAccept ? `
+                          <div class="small-muted" style="margin-top: 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <div>Accept service fee (min 1,000 sats):</div>
+                            <input id="${feeInputId}" type="number" min="1000" step="1" value="${Number(job?.serviceFeeSats || 0)}" style="max-width: 180px; padding:8px; border-radius:8px; border:1px solid rgba(212,175,55,0.25); background: rgba(0,0,0,0.25); color:#fff;" />
+                            ${maxFee !== undefined && Number.isFinite(maxFee) ? `<div style="color:#999;">Max allowed: ${maxFee.toLocaleString()} sats</div>` : ''}
+                          </div>
+                        ` : ''}
+                        <div class="small-muted" style="margin-top: 6px;">
+                            Commitment: <span class="mono">${String(job?.commitmentHex || '')}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadVerificationJobs() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const errEl = document.getElementById('verificationJobsError');
+            const btn = document.getElementById('refreshJobsBtn');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+            if (!sessionId) {
+                if (errEl) { errEl.textContent = 'Please sign in first.'; errEl.style.display = 'block'; }
+                return;
+            }
+
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+            } catch {}
+
+            try {
+                const r = await fetch('/api/verification/requests', {
+                    headers: { 'Authorization': `Bearer ${sessionId}` },
+                    cache: 'no-store'
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    throw new Error(String(data?.error || `HTTP ${r.status}`));
+                }
+                const requests = Array.isArray(data.requests) ? data.requests : [];
+                requests.sort((a, b) => Number(b?.requestedAt || 0) - Number(a?.requestedAt || 0));
+                renderVerificationJobs(requests);
+            } catch (e) {
+                if (errEl) {
+                    errEl.textContent = 'Failed to load jobs: ' + String(e?.message || e);
+                    errEl.style.display = 'block';
+                }
+            } finally {
+                try {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+                } catch {}
+            }
+        }
+
+        async function acceptVerificationJob(requestId, feeInputId) {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const errEl = document.getElementById('verificationJobsError');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            if (!sessionId) {
+                if (errEl) { errEl.textContent = 'Please sign in first.'; errEl.style.display = 'block'; }
+                return;
+            }
+            const rid = String(requestId || '').trim();
+            if (!rid) return;
+
+            let serviceFeeSats = undefined;
+            try {
+                const el = feeInputId ? document.getElementById(String(feeInputId)) : null;
+                const v = el ? Number(el.value || 0) : 0;
+                if (Number.isFinite(v) && v > 0) serviceFeeSats = v;
+            } catch {}
+            if (serviceFeeSats !== undefined && serviceFeeSats < 1000) {
+                if (errEl) { errEl.textContent = 'Service fee must be at least 1,000 sats.'; errEl.style.display = 'block'; }
+                return;
+            }
+
+            try {
+                const r = await fetch(`/api/verification/requests/${encodeURIComponent(rid)}/accept`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                    body: JSON.stringify(serviceFeeSats !== undefined ? { serviceFeeSats } : {}),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    throw new Error(String(data?.error || `HTTP ${r.status}`));
+                }
+                await loadVerificationJobs();
+            } catch (e) {
+                if (errEl) {
+                    errEl.textContent = 'Failed to accept job: ' + String(e?.message || e);
+                    errEl.style.display = 'block';
+                }
+            }
+        }
+
+        async function submitVerificationCompletion() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const errEl = document.getElementById('verifyCompleteError');
+            const okEl = document.getElementById('verifyCompleteSuccess');
+            const btn = document.getElementById('submitVerifyBtn');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            if (okEl) { okEl.style.display = 'none'; okEl.textContent = ''; }
+
+            if (!sessionId) {
+                if (errEl) { errEl.textContent = 'Please sign in first.'; errEl.style.display = 'block'; }
+                return;
+            }
+
+            const requestId = String(document.getElementById('verifyRequestId')?.value || '').trim();
+            const itemId = String(document.getElementById('verifyItemId')?.value || '').trim();
+            const paymentTxid = String(document.getElementById('verifyPaymentTxid')?.value || '').trim();
+            const serialNumber = String(document.getElementById('verifySerialNumber')?.value || '').trim();
+            const isAuthentic = String(document.getElementById('verifyIsAuthentic')?.value || 'true') === 'true';
+            const confidence = String(document.getElementById('verifyConfidence')?.value || 'high');
+            const notes = String(document.getElementById('verifyNotes')?.value || '').trim();
+
+            if (!requestId || !itemId || !paymentTxid || !serialNumber) {
+                if (errEl) { errEl.textContent = 'Request ID, Item ID, Payment TXID, and Serial Number are required.'; errEl.style.display = 'block'; }
+                return;
+            }
+
+            let images = undefined;
+            try {
+                const input = document.getElementById('verifyImages');
+                const files = Array.from(input?.files || []);
+                if (files.length > 3) throw new Error('You can only attach up to 3 images.');
+                if (files.length > 0) {
+                    images = await buildLedgerImagesFromFiles(files);
+                }
+            } catch (e) {
+                if (errEl) { errEl.textContent = String(e?.message || e || 'Failed to process images'); errEl.style.display = 'block'; }
+                return;
+            }
+
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+            } catch {}
+
+            const completeOnce = async () => {
+                const r = await fetch(`/api/verification/requests/${encodeURIComponent(requestId)}/complete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                    body: JSON.stringify({
+                        requestId,
+                        itemId,
+                        paymentTxid,
+                        serialNumber,
+                        isAuthentic,
+                        confidence,
+                        notes: notes || undefined,
+                        images: images && Array.isArray(images) && images.length > 0 ? images : undefined,
+                        authenticatorSignature: 'sig_' + Date.now(),
+                    }),
+                });
+                const data = await r.json().catch(() => ({}));
+                return { r, data };
+            };
+
+            try {
+                let result = await completeOnce();
+                if (result.r.status === 409) {
+                    const required = Number(result.data?.requiredConfirmations || 6);
+                    if (btn) btn.textContent = `⏳ Waiting confirmations (${Number(result.data?.confirmations || 0)}/${required})…`;
+                    await waitForConfirmations(paymentTxid, required, (st) => {
+                        if (btn) btn.textContent = `⏳ Waiting confirmations (${Number(st.confirmations || 0)}/${required})…`;
+                    });
+                    result = await completeOnce();
+                }
+
+                if (!result.r.ok || !result.data || result.data.success !== true) {
+                    throw new Error(String(result.data?.error || result.data?.message || `HTTP ${result.r.status}`));
+                }
+
+                if (okEl) {
+                    okEl.textContent = `✅ Verification completed. Payment TXID: ${shortId(paymentTxid)}.`;
+                    okEl.style.display = 'block';
+                }
+                await loadVerificationJobs();
+            } catch (e) {
+                if (errEl) {
+                    errEl.textContent = 'Failed to complete verification: ' + String(e?.message || e);
+                    errEl.style.display = 'block';
+                }
+            } finally {
+                try {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Complete Verification'; }
+                } catch {}
+            }
+        }
+
+        async function submitAuthenticationAttestation() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const errEl = document.getElementById('authAttestationError');
+            const okEl = document.getElementById('authAttestationSuccess');
+            const btn = document.getElementById('submitAuthBtn');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            if (okEl) { okEl.style.display = 'none'; okEl.textContent = ''; }
+
+            if (!sessionId) {
+                if (errEl) { errEl.textContent = 'Please sign in first.'; errEl.style.display = 'block'; }
+                return;
+            }
+
+            const itemId = String(document.getElementById('authItemId')?.value || '').trim();
+            const serialNumber = String(document.getElementById('authSerialNumber')?.value || '').trim();
+            const isAuthentic = String(document.getElementById('authIsAuthentic')?.value || 'true') === 'true';
+            const confidence = String(document.getElementById('authConfidence')?.value || 'high');
+            const notes = String(document.getElementById('authNotes')?.value || '').trim();
+
+            if (!itemId || !serialNumber) {
+                if (errEl) { errEl.textContent = 'Item ID and Serial Number are required.'; errEl.style.display = 'block'; }
+                return;
+            }
+
+            let images = undefined;
+            try {
+                const input = document.getElementById('authImages');
+                const files = Array.from(input?.files || []);
+                if (files.length > 3) {
+                    throw new Error('You can only attach up to 3 images.');
+                }
+                if (files.length > 0) {
+                    images = await buildLedgerImagesFromFiles(files);
+                }
+            } catch (e) {
+                if (errEl) { errEl.textContent = String(e?.message || e || 'Failed to process images'); errEl.style.display = 'block'; }
+                return;
+            }
+
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+            } catch {}
+
+            try {
+                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+                    throw new Error('Signing library not loaded');
+                }
+
+                let wallet = {};
+                try {
+                    wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                } catch {}
+
+                const payerAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+                if (!payerAddress) {
+                    throw new Error('Missing wallet address. Please sign in again and ensure your wallet is set up.');
+                }
+
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (!vaultStr) {
+                    throw new Error('No encrypted wallet vault found. Please sign in again.');
+                }
+
+                let vault;
+                try {
+                    vault = JSON.parse(vaultStr);
+                } catch {
+                    throw new Error('Wallet vault is corrupted. Please sign in again.');
+                }
+
+                const getSecret = (attempt) => {
+                    const label = attempt > 1
+                        ? 'Unlock failed. Enter your wallet passcode again:'
+                        : 'Enter your wallet passcode to pay the attestation fee:';
+                    return prompt(label);
+                };
+
+                const secret1 = getSecret(1);
+                if (!secret1) throw new Error('Wallet unlock cancelled');
+
+                let walletPayload;
+                try {
+                    walletPayload = await decryptWalletVault(vault, secret1);
+                } catch {
+                    const secret2 = getSecret(2);
+                    if (!secret2) throw new Error('Wallet unlock cancelled');
+                    walletPayload = await decryptWalletVault(vault, secret2);
+                }
+
+                const mnemonic = String(walletPayload?.mnemonic || '').trim();
+                if (!mnemonic) throw new Error('Mnemonic missing in vault');
+
+                const payloadBase = {
+                    itemId,
+                    authenticatorId: String(userConfig.accountId || '').trim(),
+                    serialNumber,
+                    isAuthentic,
+                    confidence,
+                    notes: notes || undefined,
+                    images: images && Array.isArray(images) && images.length > 0 ? images : undefined,
+                    authenticatorSignature: 'sig_' + Date.now(),
+                };
+
+                const commitmentPreimage = stableStringify({ type: 'AUTHENTICATION_RESULT_RECORDED', payload: payloadBase });
+                const feeCommitmentHex = await sha256HexFromUtf8(commitmentPreimage);
+
+                const feeAddress = '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U';
+                const feeAmountSats = 5000;
+
+                if (btn) btn.textContent = '⏳ Fetching UTXOs…';
+                const utxosRaw = await fetch(`/api/chain/address/${encodeURIComponent(payerAddress)}/utxo`, { cache: 'no-store' }).then(r => r.json());
+                const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+                const spendable = utxos
+                    .filter((u) => u && u.txid && (u.status?.confirmed === true))
+                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+
+                if (spendable.length === 0) {
+                    throw new Error('No confirmed funds available to pay the attestation fee yet.');
+                }
+
+                if (btn) btn.textContent = '⏳ Signing fee transaction…';
+                const feeRate = await getAuthFeeRateSatPerVb();
+                const opReturnScriptHex = opReturnScriptHexFromDataHex(feeCommitmentHex);
+                const signedFee = window.AuthoBTC.buildAndSignP2WPKH({
+                    mnemonic,
+                    outputs: [
+                        { address: feeAddress, amountSats: feeAmountSats },
+                        { scriptHex: opReturnScriptHex, amountSats: 0 },
+                    ],
+                    utxos: spendable,
+                    feeRateSatPerVb: feeRate,
+                    changeAddress: payerAddress,
+                    network: getWalletNetworkName(),
+                });
+
+                if (btn) btn.textContent = '⏳ Broadcasting fee transaction…';
+                const feeTxid = await broadcastTxHexViaApi(signedFee.txHex);
+
+                const submitOnce = async () => {
+                    const r = await fetch('/api/registry/authenticate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                        body: JSON.stringify({
+                            ...payloadBase,
+                            feeTxid,
+                            feeCommitmentHex,
+                        }),
+                    });
+                    const data = await r.json().catch(() => ({}));
+                    return { r, data };
+                };
+
+                let result = await submitOnce();
+                if (result.r.status === 409) {
+                    await waitForConfirmations(feeTxid, 6, (st) => {
+                        if (btn) btn.textContent = `⏳ Waiting confirmations (${Number(st.confirmations || 0)}/6)…`;
+                    });
+                    result = await submitOnce();
+                }
+
+                if (!result.r.ok) {
+                    throw new Error(String(result.data?.error || result.data?.message || `HTTP ${result.r.status}`));
+                }
+
+                if (okEl) {
+                    okEl.textContent = `✅ Attestation recorded. Fee TXID: ${String(feeTxid).substring(0, 16)}...`;
+                    okEl.style.display = 'block';
+                }
+            } catch (e) {
+                if (errEl) {
+                    errEl.textContent = 'Failed to submit attestation: ' + String(e?.message || e);
+                    errEl.style.display = 'block';
+                }
+            } finally {
+                try {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Submit Attestation'; }
+                } catch {}
+            }
+        }
+
+        function showAuthError(message) {
+            const el = document.getElementById('authError');
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = message;
+            el.style.display = 'block';
+        }
+
+        function showProfileError(message) {
+            const el = document.getElementById('profileError');
+            const ok = document.getElementById('profileSuccess');
+            if (ok) { ok.style.display = 'none'; ok.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function showBondError(message) {
+            const el = document.getElementById('bondError');
+            const ok = document.getElementById('bondSuccess');
+            if (ok) { ok.style.display = 'none'; ok.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function showBondSuccess(message) {
+            const el = document.getElementById('bondSuccess');
+            const err = document.getElementById('bondError');
+            if (err) { err.style.display = 'none'; err.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function fmtDateTime(ts) {
+            const n = Number(ts || 0);
+            if (!n) return '';
+            try {
+                return new Date(n).toLocaleString();
+            } catch {
+                return String(ts);
+            }
+        }
+
+        function setBondField(id, v) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = v ? String(v) : '';
+        }
+
+        function setBondUiFromProfile(p) {
+            const min = Number(p?.bondMinSats || 0);
+            const confirmed = Number(p?.bondConfirmedSats || 0);
+            const meets = (typeof p?.bondMeetsMin === 'boolean') ? Boolean(p?.bondMeetsMin) : null;
+            const last = Number(p?.bondLastCheckedAt || 0);
+            const maxAgeMs = 24 * 60 * 60 * 1000;
+            const isStale = !!min && (!last || (Date.now() - last) > maxAgeMs);
+
+            if (!min) {
+                setBondField('bondStatus', 'Not required');
+                setBondField('bondMinSats', '0');
+            } else {
+                const base = meets === true ? 'OK' : (meets === false ? 'NOT MET' : 'UNKNOWN');
+                setBondField('bondStatus', isStale ? `${base} (STALE)` : base);
+                setBondField('bondMinSats', String(min));
+            }
+            setBondField('bondConfirmedSats', confirmed ? String(confirmed) : '');
+            setBondField('bondLastChecked', fmtDateTime(last));
+        }
+
+        function showProfileSuccess(message) {
+            const el = document.getElementById('profileSuccess');
+            const err = document.getElementById('profileError');
+            if (err) { err.style.display = 'none'; err.textContent = ''; }
+            if (!el) return;
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.textContent = String(message);
+            el.style.display = 'block';
+        }
+
+        function getProfileInputValue(id) {
+            const el = document.getElementById(id);
+            return el ? String(el.value || '') : '';
+        }
+
+        function setProfileInputValue(id, v) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = v ? String(v) : '';
+        }
+
+        async function loadMyVerifierProfile() {
+            try {
+                showProfileError('');
+                showProfileSuccess('');
+                const accountId = String(userConfig?.accountId || '').trim();
+                if (!accountId) return;
+
+                const r = await fetch(`/api/verifiers/${encodeURIComponent(accountId)}/profile`, { cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    showProfileError(data?.error || 'Failed to load profile');
+                    return;
+                }
+                const p = data.profile || {};
+                setProfileInputValue('profileDisplayName', p.displayName);
+                setProfileInputValue('profileCompanyName', p.companyName);
+                setProfileInputValue('profileWebsite', p.website);
+                setProfileInputValue('profilePhone', p.phone);
+                setProfileInputValue('profileAddress', p.address);
+                setProfileInputValue('profileContactEmail', p.contactEmail);
+                setProfileInputValue('profileNotes', p.notes);
+                setBondUiFromProfile(p);
+            } catch (e) {
+                showProfileError(e?.message || String(e));
+            }
+        }
+
+        async function runBondCheck() {
+            showBondError('');
+            showBondSuccess('');
+            const sessionId = localStorage.getItem('autho_session_id');
+            if (!sessionId) {
+                showBondError('Please sign in again.');
+                return;
+            }
+
+            const btn = document.getElementById('bondCheckBtn');
+            try {
+                if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+            } catch {}
+
+            try {
+                const r = await fetch('/api/verifiers/me/bond/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                    body: JSON.stringify({})
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    showBondError(data?.error || 'Bond check failed');
+                    return;
+                }
+
+                showBondSuccess(`Checked. Confirmed: ${Number(data.confirmedSats || 0).toLocaleString()} sats. Meets min: ${data.meetsMin ? 'YES' : 'NO'}.`);
+                await loadMyVerifierProfile();
+            } catch (e) {
+                showBondError(e?.message || String(e));
+            } finally {
+                try {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Run Bond Check'; }
+                } catch {}
+            }
+        }
+
+        async function saveMyVerifierProfile() {
+            try {
+                showProfileError('');
+                showProfileSuccess('');
+                const sessionId = localStorage.getItem('autho_session_id');
+                if (!sessionId) {
+                    showProfileError('Please sign in again.');
+                    return;
+                }
+
+                const toOptional = (s) => {
+                    const t = String(s || '').trim();
+                    return t ? t : null;
+                };
+
+                const payload = {
+                    displayName: toOptional(getProfileInputValue('profileDisplayName')),
+                    companyName: toOptional(getProfileInputValue('profileCompanyName')),
+                    website: toOptional(getProfileInputValue('profileWebsite')),
+                    phone: toOptional(getProfileInputValue('profilePhone')),
+                    address: toOptional(getProfileInputValue('profileAddress')),
+                    contactEmail: toOptional(getProfileInputValue('profileContactEmail')),
+                    notes: toOptional(getProfileInputValue('profileNotes')),
+                };
+
+                const r = await fetch('/api/verifiers/me/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    showProfileError(data?.error || 'Failed to save profile');
+                    return;
+                }
+
+                showProfileSuccess('Saved. Your public profile is now updated.');
+                await loadMyVerifierProfile();
+            } catch (e) {
+                showProfileError(e?.message || String(e));
+            }
+        }
+
+        async function requireAuthenticatorAuth() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            if (!sessionId) {
+                document.getElementById('authModal').style.display = 'flex';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/me', {
+                    headers: { 'Authorization': `Bearer ${sessionId}` }
+                });
+                const data = await r.json();
+                if (!r.ok || !data || !data.account) {
+                    localStorage.removeItem('autho_session_id');
+                    document.getElementById('authModal').style.display = 'flex';
+                    return;
+                }
+
+                if (String(data.account.role) !== 'authenticator') {
+                    showAuthError('Signed in, but this account is not approved as an authenticator yet.');
+                    document.getElementById('authenticatorOnboarding').style.display = 'block';
+                    document.getElementById('authModal').style.display = 'flex';
+                    return;
+                }
+
+                userConfig = {
+                    name: data.account.username || 'Authenticator',
+                    email: data.account.email,
+                    accountId: data.account.accountId,
+                    role: data.account.role
+                };
+
+                try {
+                    if (data.account.walletVault) {
+                        localStorage.setItem('autho_wallet_vault', JSON.stringify(data.account.walletVault));
+                    }
+                    const existing = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                    const merged = {
+                        ...existing,
+                        publicKey: String(data.account.accountId || existing.publicKey || ''),
+                        paymentAddress: String(data.account.walletAddress || existing.paymentAddress || existing.address || ''),
+                        address: String(data.account.walletAddress || existing.address || existing.paymentAddress || ''),
+                    };
+                    localStorage.setItem('autho_wallet', JSON.stringify(merged));
+                } catch {}
+
+                document.getElementById('navUsername').textContent = userConfig.name;
+                document.getElementById('authenticatorName').textContent = `Welcome back, ${userConfig.name}!`;
+                document.getElementById('authenticatorOnboarding').style.display = 'none';
+                document.getElementById('authModal').style.display = 'none';
+
+                try {
+                    await loadVerificationJobs();
+                } catch {}
+
+                try {
+                    await loadMyVerifierProfile();
+                } catch {}
+
+                try {
+                    if (window.__authoBondAutoRefreshTimer) clearInterval(window.__authoBondAutoRefreshTimer);
+                    window.__authoBondAutoRefreshTimer = setInterval(async () => {
+                        try { await loadMyVerifierProfile(); } catch {}
+                    }, 60_000);
+                } catch {}
+            } catch (err) {
+                document.getElementById('authModal').style.display = 'flex';
+            }
+        }
+
+        async function loginWithPassword() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const totpCode = document.getElementById('loginTotp').value.trim();
+            const loginError = document.getElementById('loginError');
+            loginError.style.display = 'none';
+
+            if (!email || !password) {
+                loginError.textContent = 'Email and password are required';
+                loginError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, totpCode: totpCode || undefined })
+                });
+                const data = await r.json();
+                if (!r.ok) {
+                    if (data.requires2FA) {
+                        document.getElementById('login2faGroup').style.display = 'block';
+                        loginError.textContent = data.error || '2FA code required';
+                        loginError.style.display = 'block';
+                        return;
+                    }
+                    loginError.textContent = data?.error || 'Login failed';
+                    loginError.style.display = 'block';
+                    return;
+                }
+
+                localStorage.setItem('autho_session_id', data.sessionId);
+
+                try {
+                    if (data.walletVault) {
+                        localStorage.setItem('autho_wallet_vault', JSON.stringify(data.walletVault));
+                    }
+                    const existing = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                    const merged = {
+                        ...existing,
+                        publicKey: String(data.accountId || existing.publicKey || ''),
+                        paymentAddress: String(data.walletAddress || existing.paymentAddress || existing.address || ''),
+                        address: String(data.walletAddress || existing.address || existing.paymentAddress || ''),
+                    };
+                    localStorage.setItem('autho_wallet', JSON.stringify(merged));
+                } catch {}
+
+                await requireAuthenticatorAuth();
+            } catch (err) {
+                loginError.textContent = 'Network error: ' + err.message;
+                loginError.style.display = 'block';
+            }
+        }
+
+        async function startAuthenticatorLogin() {
+            const accountId = document.getElementById('authAccountId').value.trim();
+            showAuthError('');
+            if (!accountId) {
+                showAuthError('Please enter your Account ID (public key hex).');
+                return;
+            }
+
+            const r = await fetch('/api/auth/challenge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accountId })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                showAuthError(data?.error || 'Failed to create login challenge.');
+                return;
+            }
+
+            document.getElementById('authChallengeId').value = data.challengeId;
+            document.getElementById('authNonce').value = data.nonce;
+            document.getElementById('challengeGroup').style.display = 'block';
+            document.getElementById('signatureGroup').style.display = 'block';
+            document.getElementById('totpGroup').style.display = 'block';
+            document.getElementById('verifyBtn').style.display = 'inline-flex';
+        }
+
+        async function verifyAuthenticatorLogin() {
+            const accountId = document.getElementById('authAccountId').value.trim();
+            const challengeId = document.getElementById('authChallengeId').value;
+            const signature = document.getElementById('authSignature').value.trim();
+            const totpCode = document.getElementById('authTotp').value.trim();
+            showAuthError('');
+
+            if (!challengeId || !signature) {
+                showAuthError('Missing challenge or signature.');
+                return;
+            }
+
+            const r = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ challengeId, accountId, signature, totpCode: totpCode || undefined })
+            });
+            const data = await r.json();
+            if (!r.ok || !data.sessionId) {
+                showAuthError(data?.error || 'Login failed.');
+                return;
+            }
+
+            localStorage.setItem('autho_session_id', data.sessionId);
+            await requireAuthenticatorAuth();
+        }
+
+        async function redeemAuthenticatorInvite() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const codeHex = document.getElementById('authenticatorInviteCode').value.trim();
+            showAuthError('');
+
+            if (!sessionId) {
+                showAuthError('Please sign in first.');
+                return;
+            }
+            if (!codeHex) {
+                showAuthError('Please enter an invite code.');
+                return;
+            }
+
+            const r = await fetch('/api/roles/invites/redeem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                body: JSON.stringify({ codeHex, expectedRole: 'authenticator' })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                showAuthError(data?.error || 'Failed to redeem invite.');
+                return;
+            }
+
+            await requireAuthenticatorAuth();
+        }
+
+        async function submitAuthenticatorApplication() {
+            const sessionId = localStorage.getItem('autho_session_id');
+            const bannerEl = document.getElementById('authenticatorApplicationBanner');
+            const submitBtn = document.getElementById('authenticatorSubmitApplicationBtn');
+            showAuthError('');
+            if (bannerEl) bannerEl.style.display = 'none';
+
+            if (!sessionId) {
+                showAuthError('Please sign in first.');
+                return;
+            }
+
+            const companyName = document.getElementById('authenticatorCompanyName').value.trim();
+            const contactEmail = document.getElementById('authenticatorContactEmail').value.trim();
+            const website = document.getElementById('authenticatorWebsite').value.trim();
+            const notes = document.getElementById('authenticatorNotes').value.trim();
+
+            try {
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Submitting…';
+                }
+            } catch {}
+
+            const r = await fetch('/api/roles/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionId}` },
+                body: JSON.stringify({
+                    requestedRole: 'authenticator',
+                    companyName: companyName || undefined,
+                    contactEmail: contactEmail || undefined,
+                    website: website || undefined,
+                    notes: notes || undefined,
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                showAuthError(data?.error || 'Failed to submit application.');
+                try {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Submit Application';
+                    }
+                } catch {}
+                return;
+            }
+
+            try {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Application';
+                }
+            } catch {}
+
+            const msg = `✅ Application submitted.\n\nApplication ID: ${data.applicationId}\n\nStatus: Waiting for approval.`;
+            if (bannerEl) {
+                bannerEl.textContent = msg;
+                bannerEl.style.display = 'block';
+                try {
+                    bannerEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch {}
+            } else {
+                showAuthError(`Application submitted: ${data.applicationId}. Waiting for approval.`);
+            }
+        }
+
+        async function recheckAuthenticatorRole() {
+            await requireAuthenticatorAuth();
+        }
+
+        async function registerNewUser() {
+            const username = document.getElementById('regUsername').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const regError = document.getElementById('regError');
+            const regSuccess = document.getElementById('regSuccess');
+            
+            regError.style.display = 'none';
+            regSuccess.style.display = 'none';
+
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            const bitcoinAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+            const publicKey = String(wallet.publicKey || '').trim();
+
+            let walletVault;
+            try {
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (vaultStr) walletVault = JSON.parse(vaultStr);
+            } catch {}
+
+            if (!username || !email || !password) {
+                regError.textContent = 'Username, email, and password are required';
+                regError.style.display = 'block';
+                return;
+            }
+
+            if (!bitcoinAddress || !publicKey || !walletVault) {
+                regError.textContent = 'Please create or import your wallet first at /m/wallet, then come back here.';
+                regError.style.display = 'block';
+                return;
+            }
+
+            if (password.length < 8) {
+                regError.textContent = 'Password must be at least 8 characters';
+                regError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        email,
+                        bitcoinAddress,
+                        publicKey,
+                        password,
+                        role: 'buyer',
+                        walletVault,
+                    })
+                });
+                const data = await r.json();
+                if (!r.ok) {
+                    regError.textContent = data?.error || 'Registration failed';
+                    regError.style.display = 'block';
+                    return;
+                }
+
+                regSuccess.textContent = '✅ Account created! Now sign in above to apply for authenticator role.';
+                regSuccess.style.display = 'block';
+                
+                // Clear form
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regEmail').value = '';
+                document.getElementById('regPassword').value = '';
+                
+                document.getElementById('loginEmail').value = email;
+            } catch (err) {
+                regError.textContent = 'Network error: ' + err.message;
+                regError.style.display = 'block';
+            }
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('autho_session_id');
+                localStorage.removeItem('userConfig');
+                localStorage.removeItem('autho_wallet_vault');
+                localStorage.removeItem('autho_wallet');
+                localStorage.removeItem('autho_wallet_encrypted');
+                localStorage.removeItem('autho_wallet_pin');
+                sessionStorage.clear();
+                window.location.href = '/';
+            }
+        }
+
+        // Wallet functions
+        function viewWallet() {
+            document.getElementById('walletModal').style.display = 'flex';
+            loadAuthenticatorWalletInfo();
+        }
+
+        function closeWalletModal() {
+            document.getElementById('walletModal').style.display = 'none';
+        }
+
+        function loadAuthenticatorWalletInfo() {
+            let wallet = {};
+            try {
+                wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+            } catch {}
+
+            authenticatorWalletAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+            
+            const addrEl = document.getElementById('authenticatorWalletAddress');
+            if (addrEl) addrEl.textContent = authenticatorWalletAddress || 'No wallet address found';
+
+            // Load QR code
+            const qrImg = document.getElementById('authenticatorReceiveQr');
+            if (qrImg && authenticatorWalletAddress) {
+                qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=bitcoin:${encodeURIComponent(authenticatorWalletAddress)}`;
+            }
+
+            // Load balance
+            refreshAuthenticatorBalance();
+        }
+
+        async function refreshAuthenticatorBalance() {
+            if (!authenticatorWalletAddress) {
+                document.getElementById('authenticatorBtcBalance').textContent = 'No address';
+                return;
+            }
+            
+            try {
+                document.getElementById('authenticatorBtcBalance').textContent = 'Loading...';
+                
+                const r = await fetch(`https://mempool.space/api/address/${authenticatorWalletAddress}`);
+                if (!r.ok) throw new Error('Failed to fetch balance');
+                const data = await r.json();
+                
+                const confirmed = Number(data.chain_stats?.funded_txo_sum || 0) - Number(data.chain_stats?.spent_txo_sum || 0);
+                const unconfirmed = Number(data.mempool_stats?.funded_txo_sum || 0) - Number(data.mempool_stats?.spent_txo_sum || 0);
+                const total = confirmed + unconfirmed;
+                authenticatorBalanceSats = total;
+
+                const btcAmount = (total / 100000000).toFixed(8);
+                document.getElementById('authenticatorBtcBalance').textContent = `${btcAmount} BTC`;
+                document.getElementById('authenticatorBtcConfirmed').textContent = `${confirmed.toLocaleString()} sats`;
+                document.getElementById('authenticatorBtcUnconfirmed').textContent = `${unconfirmed.toLocaleString()} sats`;
+
+                // Fetch BTC price
+                try {
+                    const priceR = await fetch('https://mempool.space/api/v1/prices');
+                    const priceData = await priceR.json();
+                    authenticatorBtcPrice = Number(priceData.USD || 0);
+                    if (authenticatorBtcPrice > 0) {
+                        const usdValue = (total / 100000000) * authenticatorBtcPrice;
+                        document.getElementById('authenticatorUsdBalance').textContent = `≈ $${usdValue.toFixed(2)} USD`;
+                    }
+                } catch {}
+            } catch (e) {
+                document.getElementById('authenticatorBtcBalance').textContent = 'Error loading';
+                console.error('Balance fetch error:', e);
+            }
+        }
+
+        function copyAuthenticatorAddress() {
+            if (!authenticatorWalletAddress) {
+                alert('No address to copy');
+                return;
+            }
+            navigator.clipboard.writeText(authenticatorWalletAddress).then(() => {
+                alert('Address copied to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy address');
+            });
+        }
+
+        function updateAuthenticatorSendUsd() {
+            const sats = Number(document.getElementById('authenticatorSendAmountSats')?.value || 0);
+            if (sats > 0 && authenticatorBtcPrice > 0) {
+                const usd = (sats / 100000000) * authenticatorBtcPrice;
+                document.getElementById('authenticatorSendAmountUsd').value = usd.toFixed(2);
+            }
+        }
+
+        function updateAuthenticatorSendSats() {
+            const usd = Number(document.getElementById('authenticatorSendAmountUsd')?.value || 0);
+            if (usd > 0 && authenticatorBtcPrice > 0) {
+                const sats = Math.round((usd / authenticatorBtcPrice) * 100000000);
+                document.getElementById('authenticatorSendAmountSats').value = sats;
+            }
+        }
+
+        function fillAuthenticatorMax() {
+            const priority = document.getElementById('authenticatorFeePriority')?.value || 'medium';
+            const feeRates = { low: 1, medium: 5, high: 10 };
+            const feeRate = feeRates[priority] || 5;
+            const estimatedFee = 200 * feeRate;
+            
+            const maxSats = Math.max(0, authenticatorBalanceSats - estimatedFee);
+            document.getElementById('authenticatorSendAmountSats').value = maxSats;
+            updateAuthenticatorSendUsd();
+        }
+
+        async function sendAuthenticatorBtc() {
+            const statusEl = document.getElementById('authenticatorSendStatus');
+            const toAddress = document.getElementById('authenticatorSendToAddress')?.value?.trim();
+            const amountSats = Number(document.getElementById('authenticatorSendAmountSats')?.value || 0);
+
+            if (!toAddress) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter a recipient address</span>';
+                return;
+            }
+            if (amountSats <= 0) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter an amount</span>';
+                return;
+            }
+            if (amountSats > authenticatorBalanceSats) {
+                statusEl.innerHTML = '<span style="color: #ff6b6b;">Insufficient balance</span>';
+                return;
+            }
+
+            // For now, show instructions since full tx building requires wallet unlock
+            statusEl.innerHTML = '<span style="color: #d4af37;">⚠️ To send BTC, please use an external wallet (BlueWallet, Sparrow, Electrum) with your seed phrase. Your address: ' + authenticatorWalletAddress + '</span>';
+        }
+
+        requireAuthenticatorAuth();
+    </script>
+</body>
+</html>

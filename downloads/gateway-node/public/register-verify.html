@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Register Verification - Bitcoin Ownership Protocol</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      color: #ffffff;
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+      padding: 15px 20px;
+      border-bottom: 2px solid #d4af37;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: #d4af37;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px;
+    }
+    .header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #d4af37;
+      flex: 1;
+    }
+    .container { padding: 20px; max-width: 700px; margin: 0 auto; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .scan-container {
+      background: rgba(212, 175, 55, 0.1);
+      border: 2px dashed #d4af37;
+      border-radius: 15px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #reader { border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .input-group { margin: 15px 0; }
+    .input-label { display: block; font-size: 13px; color: #d4af37; margin-bottom: 8px; font-weight: 600; }
+    .input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.3);
+      color: white;
+      font-size: 15px;
+      outline: none;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px 20px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #d4af37 0%, #b8941f 100%);
+      color: #1a1a1a;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn.secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #d4af37;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      font-weight: 600;
+    }
+    .loading { text-align: center; padding: 40px 0; }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(212, 175, 55, 0.3);
+      border-top: 3px solid #d4af37;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .row:last-child { border-bottom: none; }
+    .label { color: #999; font-size: 13px; }
+    .value { font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; word-break: break-all; text-align: right; }
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+    .badge.ok { background: rgba(76, 217, 100, 0.15); color: #4cd964; border: 1px solid rgba(76, 217, 100, 0.25); }
+    .badge.warn { background: rgba(255, 204, 0, 0.15); color: #ffcc00; border: 1px solid rgba(255, 204, 0, 0.25); }
+    .badge.bad { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border: 1px solid rgba(255, 59, 48, 0.25); }
+    .title { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: #d4af37; margin-bottom: 8px; }
+    .sub { color: #aaa; font-size: 13px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <h1>Register Verification</h1>
+  </div>
+
+  <div class="container">
+    <div id="scanScreen" class="screen active">
+      <div class="scan-container">
+        <div id="reader"></div>
+        <p style="color: #999; font-size: 13px;">Scan the item QR code</p>
+      </div>
+
+      <div style="text-align: center; color: #999; margin: 20px 0;">
+        <p>— OR —</p>
+      </div>
+
+      <div class="input-group">
+        <label class="input-label">Enter Item ID</label>
+        <input type="text" id="itemIdInput" class="input" placeholder="e.g., ITEM-12345">
+      </div>
+
+      <button class="btn" onclick="verifyManual()">Verify</button>
+      <button class="btn secondary" onclick="toggleScanner()"><span id="scannerToggleText">Stop Scanner</span></button>
+    </div>
+
+    <div id="loadingScreen" class="screen">
+      <div class="loading">
+        <div class="spinner"></div>
+        <div id="loadingText">Checking item…</div>
+        <p style="color: #999; font-size: 13px; margin-top: 10px;">Verifying paid + ownership transferred</p>
+      </div>
+    </div>
+
+    <div id="resultScreen" class="screen">
+      <div class="card">
+        <div class="title" id="itemName">Item</div>
+        <div class="sub" id="itemIdText">ID: -</div>
+        <div style="margin-top: 10px;">
+          <span class="badge" id="paidBadge">—</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="label">Current Owner</div>
+          <div class="value" id="currentOwner">-</div>
+        </div>
+        <div class="row">
+          <div class="label">Latest Offer</div>
+          <div class="value" id="latestOfferId">-</div>
+        </div>
+        <div class="row">
+          <div class="label">Latest Offer Status</div>
+          <div class="value" id="latestOfferStatus">-</div>
+        </div>
+        <div class="row">
+          <div class="label">Buyer</div>
+          <div class="value" id="latestBuyer">-</div>
+        </div>
+        <div class="row">
+          <div class="label">Seller</div>
+          <div class="value" id="latestSeller">-</div>
+        </div>
+        <div class="row">
+          <div class="label">Price (sats)</div>
+          <div class="value" id="latestSats">-</div>
+        </div>
+        <div class="row">
+          <div class="label">Payment Txid</div>
+          <div class="value" id="latestTxid">-</div>
+        </div>
+      </div>
+
+      <button class="btn" onclick="scanAnother()">Scan Another</button>
+      <button class="btn secondary" onclick="goBack()">Back</button>
+    </div>
+
+    <div id="errorScreen" class="screen">
+      <div class="card">
+        <div class="title" style="color:#ff3b30;">Verification Failed</div>
+        <div class="sub" id="errorMessage">-</div>
+      </div>
+      <button class="btn secondary" onclick="scanAnother()">Try Another</button>
+      <button class="btn secondary" onclick="goBack()">Back</button>
+    </div>
+  </div>
+
+  <script>
+    let html5QrCode = null;
+    let scannerActive = false;
+
+    window.goBack = () => {
+      window.location.href = '/m';
+    };
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      const el = document.getElementById(id);
+      if (el) el.classList.add('active');
+    }
+
+    function startScanner() {
+      if (scannerActive) return;
+      html5QrCode = new Html5Qrcode('reader');
+      html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          try {
+            stopScanner();
+            verifyItem(decodedText);
+          } catch {}
+        },
+        () => {}
+      ).then(() => {
+        scannerActive = true;
+        const t = document.getElementById('scannerToggleText');
+        if (t) t.textContent = 'Stop Scanner';
+      }).catch(() => {
+        scannerActive = false;
+      });
+    }
+
+    function stopScanner() {
+      if (!scannerActive || !html5QrCode) return;
+      html5QrCode.stop().then(() => {
+        scannerActive = false;
+        const t = document.getElementById('scannerToggleText');
+        if (t) t.textContent = 'Start Scanner';
+      }).catch(() => {});
+    }
+
+    window.toggleScanner = () => {
+      if (scannerActive) stopScanner();
+      else startScanner();
+    };
+
+    window.scanAnother = () => {
+      try { document.getElementById('itemIdInput').value = ''; } catch {}
+      showScreen('scanScreen');
+      if (!scannerActive) startScanner();
+    };
+
+    window.verifyManual = () => {
+      const itemId = String(document.getElementById('itemIdInput')?.value || '').trim();
+      if (!itemId) {
+        alert('Please enter an item ID');
+        return;
+      }
+      stopScanner();
+      verifyItem(itemId);
+    };
+
+    function shortAddr(a) {
+      const s = String(a || '').trim();
+      if (!s) return '-';
+      return s.length > 22 ? (s.slice(0, 10) + '...' + s.slice(-10)) : s;
+    }
+
+    function setBadge(ok, statusText) {
+      const el = document.getElementById('paidBadge');
+      if (!el) return;
+      el.classList.remove('ok', 'warn', 'bad');
+
+      const st = String(statusText || '').toUpperCase();
+      if (ok) {
+        el.classList.add('ok');
+        el.textContent = 'PAID + TRANSFERRED';
+        return;
+      }
+
+      if (st === 'PAID') {
+        el.classList.add('warn');
+        el.textContent = 'PAID (TRANSFER PENDING)';
+        return;
+      }
+
+      if (st === 'ACCEPTED') {
+        el.classList.add('warn');
+        el.textContent = 'ACCEPTED (UNPAID)';
+        return;
+      }
+
+      if (st === 'OPEN') {
+        el.classList.add('warn');
+        el.textContent = 'OPEN (UNCLAIMED)';
+        return;
+      }
+
+      if (st === 'EXPIRED') {
+        el.classList.add('bad');
+        el.textContent = 'EXPIRED';
+        return;
+      }
+
+      if (st === 'FAILED') {
+        el.classList.add('bad');
+        el.textContent = 'FAILED';
+        return;
+      }
+
+      if (st === 'NONE') {
+        el.classList.add('warn');
+        el.textContent = 'NO OFFERS FOUND';
+        return;
+      }
+
+      el.classList.add('warn');
+      el.textContent = st || 'UNKNOWN';
+    }
+
+    async function verifyItem(raw) {
+      const itemId = String(raw || '').trim();
+      if (!itemId) return;
+      showScreen('loadingScreen');
+
+      try {
+        const res = await fetch(`/api/register/verify/${encodeURIComponent(itemId)}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || 'Verification failed');
+        }
+
+        const itemName = String(data?.itemName || 'Item');
+        const owner = String(data?.currentOwner || '').trim();
+        const latest = data?.latestSettlement || null;
+        const status = String(latest?.status || data?.latestSettlement?.status || data?.status || 'NONE');
+        const ok = Boolean(data?.paidAndTransferred);
+
+        document.getElementById('itemName').textContent = itemName || 'Item';
+        document.getElementById('itemIdText').textContent = `ID: ${String(data?.itemId || itemId)}`;
+
+        document.getElementById('currentOwner').textContent = owner || '-';
+
+        document.getElementById('latestOfferId').textContent = String(latest?.offerId || '-');
+        document.getElementById('latestOfferStatus').textContent = String(latest?.status || 'NONE');
+        document.getElementById('latestBuyer').textContent = String(latest?.buyerAddress || '-') || '-';
+        document.getElementById('latestSeller').textContent = String(latest?.sellerAddress || '-') || '-';
+        document.getElementById('latestSats').textContent = Number.isFinite(Number(latest?.sats)) ? Number(latest?.sats).toLocaleString() : '-';
+        document.getElementById('latestTxid').textContent = String(latest?.txid || '-') || '-';
+
+        setBadge(ok, status);
+        showScreen('resultScreen');
+      } catch (e) {
+        document.getElementById('errorMessage').textContent = e?.message || String(e);
+        showScreen('errorScreen');
+      }
+    }
+
+    window.addEventListener('load', () => {
+      startScanner();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      try { stopScanner(); } catch {}
+    });
+  </script>
+</body>
+</html>

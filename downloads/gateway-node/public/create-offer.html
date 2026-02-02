@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Offer - Bitcoin Ownership Protocol</title>
+    
+    <!-- QR Code Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #d4af37;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            text-align: center;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #999;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        .item-preview {
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .item-preview h3 {
+            color: #d4af37;
+            margin-bottom: 10px;
+        }
+
+        .item-detail {
+            color: #999;
+            margin: 5px 0;
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #d4af37;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            border-radius: 10px;
+            color: #0a0a0a;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            border: 1px solid #d4af37;
+        }
+
+        .qr-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 30px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .qr-code-container {
+            display: inline-block;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .offer-url {
+            background: rgba(42, 42, 42, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: monospace;
+            color: #d4af37;
+            font-size: 0.85rem;
+        }
+
+        .instruction {
+            background: rgba(76, 217, 100, 0.1);
+            border: 1px solid #4cd964;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #4cd964;
+        }
+
+        .instruction strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .price-preview {
+            background: rgba(212, 175, 55, 0.1);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .price-preview .amount {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #d4af37;
+            margin: 10px 0;
+        }
+
+        .price-preview .sats {
+            color: #999;
+            font-size: 1.2rem;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .qr-section, .qr-section * {
+                visibility: visible;
+            }
+            .qr-section {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background: white;
+            }
+            .btn {
+                display: none;
+            }
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #d4af37;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .back-link:hover {
+            color: #f4d03f;
+            transform: translateX(-5px);
+        }
+
+        .scanner-overlay {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 9999;
+        }
+
+        .scanner-card {
+            width: 100%;
+            max-width: 520px;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .scanner-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #d4af37;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .scanner-subtitle {
+            color: #999;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        #buyerQrReader {
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            padding: 8px;
+        }
+
+        .inline-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/manufacturer" class="back-link">← Back to Dashboard</a>
+        <!-- Step 1: Enter Price -->
+        <div class="step active" id="step1">
+            <h1>💰 Sell This Item</h1>
+            <p class="subtitle">Create an offer for in-person sale</p>
+
+            <div class="item-preview" id="itemPreview">
+                <h3 id="itemName">Loading...</h3>
+                <div class="item-detail">Serial: <span id="itemSerial">-</span></div>
+                <div class="item-detail">Type: <span id="itemType">-</span></div>
+                <div class="item-detail">Owner: <span id="itemOwner">-</span></div>
+            </div>
+
+            <div class="form-group">
+                <label>Sale Price (USD) *</label>
+                <input type="number" id="priceUSD" placeholder="50.00" step="0.01" min="0.01" required oninput="updatePricePreview()">
+            </div>
+
+            <div class="price-preview" id="pricePreview" style="display: none;">
+                <div>Buyer will pay (estimate):</div>
+                <div class="amount">$<span id="previewUSD">0.00</span></div>
+                <div class="sats">≈ <span id="previewSats">0</span> sats</div>
+                <div style="margin-top: 10px; color: #999; font-size: 0.85rem; line-height: 1.5;">
+                    This offer is paid in sats on Bitcoin. The USD amount is an estimate and may vary slightly at the time of payment.
+                    The title update fee is deducted from the seller’s proceeds.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Offer Expires In</label>
+                <select id="expiryTime">
+                    <option value="3600">1 hour</option>
+                    <option value="7200">2 hours</option>
+                    <option value="14400">4 hours</option>
+                    <option value="28800">8 hours</option>
+                    <option value="86400" selected>24 hours</option>
+                    <option value="259200">3 days</option>
+                    <option value="604800">7 days</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Buyer Bitcoin Address (optional)</label>
+                <input type="text" id="buyerAddress" placeholder="Scan buyer QR code or paste address">
+                <div class="inline-actions">
+                    <button class="btn btn-secondary" type="button" onclick="openBuyerScanner()">📷 Scan Buyer QR</button>
+                    <button class="btn btn-secondary" type="button" onclick="clearBuyerAddress()">🧹 Clear</button>
+                </div>
+            </div>
+
+            <button class="btn" onclick="createOffer()">🎯 Create Offer & Generate QR Code</button>
+            <button class="btn btn-secondary" onclick="window.history.back()">← Cancel</button>
+        </div>
+
+        <!-- Step 2: Show QR Code -->
+        <div class="step" id="step2">
+            <h1>📱 Offer Created!</h1>
+            <p class="subtitle">Show this QR code to the buyer</p>
+
+            <div class="instruction">
+                <strong>📱 How to use:</strong>
+                1. Show this QR code to the buyer<br>
+                2. Buyer scans with their phone camera<br>
+                3. Buyer follows link to purchase<br>
+                4. You'll be notified when paid ✅
+            </div>
+
+            <div class="qr-section">
+                <h3 style="color: #0a0a0a; margin-bottom: 10px;">Scan to Buy</h3>
+                <div class="price-preview">
+                    <div class="amount">$<span id="finalUSD">0.00</span></div>
+                    <div class="sats"><span id="finalSats">0</span> sats</div>
+                </div>
+                <div style="margin-top: 10px; color: #444; font-size: 0.9rem; line-height: 1.5;">
+                    Paid in sats on Bitcoin. USD is an estimate and may vary slightly.
+                    The title update fee is deducted from the seller’s proceeds.
+                </div>
+                <div class="qr-code-container" id="qrCodeContainer"></div>
+                <div class="offer-url" id="offerUrl"></div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn" onclick="window.print()">🖨️ Print</button>
+                <button class="btn" onclick="downloadQR()">💾 Download</button>
+            </div>
+
+            <button class="btn" onclick="copyOfferLink()">📋 Copy Link</button>
+            <button class="btn btn-secondary" onclick="window.location.reload()">✨ Create Another Offer</button>
+        </div>
+    </div>
+
+    <div class="scanner-overlay" id="buyerScannerOverlay">
+        <div class="scanner-card">
+            <div class="scanner-title">Scan Buyer Address</div>
+            <div class="scanner-subtitle">Point camera at the buyer’s Bitcoin address QR code.</div>
+            <div id="buyerQrReader"></div>
+            <div style="margin-top: 12px;">
+                <button class="btn btn-secondary" type="button" onclick="closeBuyerScanner()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let itemData = null;
+        let offerData = null;
+        let btcPrice = 0;
+        let buyerQr = null;
+
+        // Get item ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const itemId = urlParams.get('itemId');
+
+        // Load item data
+        async function loadItem() {
+            if (!itemId) {
+                alert('No item specified');
+                window.history.back();
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/registry/item/${encodeURIComponent(itemId)}`);
+                if (!response.ok) throw new Error('Item not found');
+
+                const raw = await response.json();
+                itemData = raw && raw.itemRecord ? raw.itemRecord : raw;
+
+                const itemType = itemData?.metadata?.itemType || itemData?.metadata?.name || itemData?.itemType || 'Unknown Item';
+                document.getElementById('itemName').textContent = itemType;
+                document.getElementById('itemSerial').textContent = itemData?.itemId || '-';
+                document.getElementById('itemType').textContent = itemType;
+                document.getElementById('itemOwner').textContent = itemData?.currentOwner || '-';
+            } catch (error) {
+                console.error('Error loading item:', error);
+                alert('Error loading item: ' + error.message);
+            }
+        }
+
+        // Get BTC price
+        async function getBTCPrice() {
+            try {
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+                const data = await response.json();
+                btcPrice = data.bitcoin.usd;
+                return btcPrice;
+            } catch (error) {
+                console.error('Error fetching BTC price:', error);
+                btcPrice = 50000; // Fallback
+                return btcPrice;
+            }
+        }
+
+        // Update price preview
+        async function updatePricePreview() {
+            const usd = parseFloat(document.getElementById('priceUSD').value);
+            
+            if (!usd || usd <= 0) {
+                document.getElementById('pricePreview').style.display = 'none';
+                return;
+            }
+
+            if (!btcPrice) {
+                await getBTCPrice();
+            }
+
+            const btc = usd / btcPrice;
+            const sats = Math.floor(btc * 100000000);
+
+            document.getElementById('previewUSD').textContent = usd.toFixed(2);
+            document.getElementById('previewSats').textContent = sats.toLocaleString();
+            document.getElementById('pricePreview').style.display = 'block';
+        }
+
+        // Create offer
+        async function createOffer() {
+            const usd = parseFloat(document.getElementById('priceUSD').value);
+            const expiryTime = parseInt(document.getElementById('expiryTime').value);
+            const buyerAddress = String(document.getElementById('buyerAddress')?.value || '').trim();
+
+            if (!usd || usd <= 0) {
+                alert('Please enter a valid price');
+                return;
+            }
+
+            if (buyerAddress) {
+                const { address } = parseBitcoinQrPayload(buyerAddress);
+                if (!isLikelyBitcoinAddress(address)) {
+                    alert('Buyer address does not look like a valid Bitcoin address. Please re-scan the QR code or paste the correct address.');
+                    return;
+                }
+            }
+
+            if (!btcPrice) {
+                await getBTCPrice();
+            }
+
+            const btc = usd / btcPrice;
+            const sats = Math.floor(btc * 100000000);
+
+            try {
+                const response = await fetch('/api/offers/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        itemId: itemId,
+                        itemName: (itemData?.metadata?.itemType || itemData?.metadata?.name || itemData?.itemType || 'Unknown Item'),
+                        buyerAddress: buyerAddress,
+                        amount: usd,
+                        sats: sats,
+                        expiresIn: expiryTime * 1000,
+                        sellerInitiated: true
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    offerData = data.offer;
+
+                    if (buyerAddress) {
+                        const sessionId = localStorage.getItem('autho_session_id');
+                        if (sessionId) {
+                            try {
+                                const acceptRes = await fetch(`/api/offers/${encodeURIComponent(offerData.offerId)}/accept`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${sessionId}`
+                                    }
+                                });
+                                if (acceptRes.ok) {
+                                    offerData.status = 'ACCEPTED';
+                                }
+                            } catch {}
+                        }
+                    }
+                    
+                    // Update final price display
+                    document.getElementById('finalUSD').textContent = usd.toFixed(2);
+                    document.getElementById('finalSats').textContent = sats.toLocaleString();
+
+                    // Generate offer URL
+                    const offerUrl = `${window.location.origin}/buy?offerId=${offerData.offerId}`;
+                    document.getElementById('offerUrl').textContent = offerUrl;
+
+                    // Generate QR code
+                    const qrContainer = document.getElementById('qrCodeContainer');
+                    qrContainer.innerHTML = '';
+                    
+                    new QRCode(qrContainer, {
+                        text: offerUrl,
+                        width: 256,
+                        height: 256,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+
+                    // Show step 2
+                    document.getElementById('step1').classList.remove('active');
+                    document.getElementById('step2').classList.add('active');
+                } else {
+                    throw new Error(data.error || 'Failed to create offer');
+                }
+            } catch (error) {
+                alert('Error creating offer: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        // Copy offer link
+        function copyOfferLink() {
+            const url = document.getElementById('offerUrl').textContent;
+            navigator.clipboard.writeText(url);
+            alert('✅ Offer link copied!\n\nShare this link with the buyer.');
+        }
+
+        // Download QR code
+        function downloadQR() {
+            const qrContainer = document.getElementById('qrCodeContainer');
+            const canvas = qrContainer.querySelector('canvas');
+            
+            if (canvas) {
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `offer-${offerData.offerId}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    alert('✅ QR code downloaded!');
+                });
+            }
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            loadItem();
+            getBTCPrice();
+        });
+
+        function parseBitcoinQrPayload(raw) {
+            const text = String(raw || '').trim();
+            if (!text) return { address: '' };
+            const lower = text.toLowerCase();
+            if (lower.startsWith('bitcoin:')) {
+                const withoutScheme = text.slice(text.indexOf(':') + 1);
+                const [addrPart] = withoutScheme.split('?');
+                return { address: String(addrPart || '').trim() };
+            }
+            return { address: text };
+        }
+
+        function isLikelyBitcoinAddress(address) {
+            const a = String(address || '').trim();
+            if (!a) return false;
+            if (a.length < 14 || a.length > 90) return false;
+            const lower = a.toLowerCase();
+
+            if (/^(bc1|tb1|bcrt1)[0-9a-z]{11,87}$/.test(lower)) {
+                return true;
+            }
+
+            if (/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(a)) {
+                return true;
+            }
+
+            if (/^[mn2][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(a)) {
+                return true;
+            }
+
+            return false;
+        }
+
+        function clearBuyerAddress() {
+            const el = document.getElementById('buyerAddress');
+            if (el) el.value = '';
+        }
+
+        async function openBuyerScanner() {
+            const overlay = document.getElementById('buyerScannerOverlay');
+            const readerEl = document.getElementById('buyerQrReader');
+            if (!overlay || !readerEl) return;
+
+            if (typeof Html5Qrcode !== 'function') {
+                alert('QR scanner not available. Please paste the address.');
+                return;
+            }
+
+            overlay.style.display = 'flex';
+            readerEl.innerHTML = '';
+
+            buyerQr = new Html5Qrcode('buyerQrReader');
+            try {
+                await buyerQr.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 260, height: 260 } },
+                    async (decodedText) => {
+                        try {
+                            const { address } = parseBitcoinQrPayload(decodedText);
+                            if (address && isLikelyBitcoinAddress(address)) {
+                                const input = document.getElementById('buyerAddress');
+                                if (input) input.value = address;
+                                await closeBuyerScanner();
+                            }
+                        } catch {}
+                    },
+                    () => {}
+                );
+            } catch (e) {
+                alert('Camera access denied or not available. Please paste the address.');
+                await closeBuyerScanner();
+            }
+        }
+
+        async function closeBuyerScanner() {
+            const overlay = document.getElementById('buyerScannerOverlay');
+            if (buyerQr) {
+                try {
+                    await buyerQr.stop();
+                    buyerQr.clear();
+                } catch {}
+                buyerQr = null;
+            }
+            if (overlay) overlay.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

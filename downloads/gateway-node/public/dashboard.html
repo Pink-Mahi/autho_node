@@ -1,0 +1,3651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Main Node Dashboard - Bitcoin Ownership Protocol</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Montserrat:wght@300;400;500;600&display=swap');
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            padding: 20px;
+            color: #d4af37;
+            min-height: 100vh;
+        }
+
+        .dashboard { max-width: 1400px; margin: 0 auto; }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            color: #d4af37;
+            padding: 40px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.3), inset 0 1px 0 rgba(212, 175, 55, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #d4af37, transparent);
+        }
+
+        .header h1 { 
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 10px rgba(212, 175, 55, 0.5);
+        }
+        
+        .header p { 
+            opacity: 0.8;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 12px 28px;
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: #d4af37;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
+        .nav-tab:hover {
+            background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+            color: #0a0a0a;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.4);
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: #0a0a0a;
+            border-color: #f4d03f;
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.6);
+            font-weight: 600;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(212, 175, 55, 0.1);
+            text-align: center;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #d4af37, transparent);
+        }
+
+        .stat-card:hover { 
+            transform: translateY(-8px);
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.3);
+            border-color: #f4d03f;
+        }
+        
+        .stat-icon { 
+            font-size: 3rem;
+            margin-bottom: 15px;
+            filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.5));
+        }
+        
+        .stat-label { 
+            color: #999;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+        
+        .stat-value { 
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .section {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 1px solid #d4af37;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(212, 175, 55, 0.1);
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .section.active { display: block; }
+        
+        .section-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.8rem;
+            margin-bottom: 25px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            border-bottom: 2px solid #d4af37;
+            padding-bottom: 15px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+            color: #0a0a0a;
+            border: 1px solid #f4d03f;
+            padding: 14px 32px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-right: 12px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.3);
+        }
+
+        .btn:hover {
+            background: linear-gradient(135deg, #f4d03f 0%, #d4af37 100%);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 40px rgba(212, 175, 55, 0.5);
+            border-color: #d4af37;
+        }
+
+        .btn-success { 
+            background: linear-gradient(135deg, #2a7a3f 0%, #1e5a2f 100%);
+            color: #d4af37;
+            border-color: #2a7a3f;
+        }
+        
+        .btn-success:hover { 
+            background: linear-gradient(135deg, #35a050 0%, #2a7a3f 100%);
+            box-shadow: 0 10px 40px rgba(42, 122, 63, 0.5);
+        }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            color: #d4af37;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 14px 18px;
+            border: 1px solid #d4af37;
+            border-radius: 10px;
+            font-size: 1rem;
+            background: #0a0a0a;
+            color: #d4af37;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #f4d03f;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+            background: #1a1a1a;
+        }
+
+        .form-group input::placeholder {
+            color: #666;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success-message.active { display: block; }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error-message.active { display: block; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            table-layout: fixed;
+        }
+
+        .table-wrap {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .table-wrap table {
+            min-width: 980px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: top;
+        }
+
+        th {
+            white-space: nowrap;
+        }
+
+        td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        @media (max-width: 900px) {
+            .table-wrap table { min-width: 860px; }
+        }
+
+        th {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            font-weight: 600;
+            color: #d4af37;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #d4af37;
+        }
+
+        td {
+            color: #999;
+        }
+
+        tr:hover { 
+            background: rgba(212, 175, 55, 0.05);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .network-node {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #d4af37;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+
+        .network-node.clickable {
+            cursor: pointer;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            width: 100%;
+            max-width: 720px;
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            border-radius: 16px;
+            box-shadow: 0 20px 80px rgba(212, 175, 55, 0.25);
+            padding: 22px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .modal-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal-close {
+            border: 1px solid #d4af37;
+            background: transparent;
+            color: #d4af37;
+            border-radius: 10px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .modal-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .modal-row {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 12px;
+            align-items: start;
+            padding: 10px 12px;
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            border-radius: 12px;
+            background: rgba(0,0,0,0.25);
+        }
+
+        .modal-label {
+            color: #999;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .modal-value {
+            color: #d4af37;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.95rem;
+        }
+
+        .network-node:hover {
+            border-color: #f4d03f;
+            box-shadow: 0 5px 20px rgba(212, 175, 55, 0.2);
+        }
+
+        .status-badge {
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .status-online { 
+            background: linear-gradient(135deg, #2a7a3f 0%, #1e5a2f 100%);
+            color: #d4af37;
+            border: 1px solid #2a7a3f;
+        }
+        
+        .status-slow { 
+            background: linear-gradient(135deg, #8b7500 0%, #6b5900 100%);
+            color: #f4d03f;
+            border: 1px solid #8b7500;
+        }
+        
+        .status-offline { 
+            background: linear-gradient(135deg, #7a2a2a 0%, #5a1e1e 100%);
+            color: #ff6b6b;
+            border: 1px solid #7a2a2a;
+        }
+
+        .currency-toggle {
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid #555;
+            color: #999;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .currency-toggle:hover {
+            border-color: #d4af37;
+            color: #d4af37;
+        }
+
+        .currency-toggle.active {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border-color: #d4af37;
+            color: #0a0a0a;
+            box-shadow: 0 3px 10px rgba(212, 175, 55, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>🎛️ Main Node Dashboard</h1>
+            <p>Bitcoin Ownership Protocol - Admin Control Center</p>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('overview')">📊 Overview</button>
+                <button class="nav-tab" onclick="switchTab('registry')">📦 Item Registry</button>
+                <button class="nav-tab" onclick="switchTab('wallet')">₿ Node Wallet</button>
+                <button class="nav-tab" onclick="switchTab('network')">🌐 Network Status</button>
+                <button class="nav-tab" onclick="switchTab('revenue')">💰 Revenue</button>
+                <button class="nav-tab" onclick="switchTab('security')">🔐 Security</button>
+                <button class="nav-tab" onclick="switchTab('verifiers')">🏢 Verifiers</button>
+                <button class="nav-tab" onclick="switchTab('retailerapps')">🛍️ Retailer Verification</button>
+                <button class="nav-tab" onclick="switchTab('roleapps')">🏭 Role Applications</button>
+                <button class="nav-tab" onclick="switchTab('opcandidates')">🧑‍💼 Operator Candidates</button>
+                <button class="nav-tab" style="margin-left: auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
+            </div>
+        </div>
+
+        <!-- Overview Tab -->
+        <div class="section active" id="overview-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-label">Events Processed</div>
+                    <div class="stat-value" id="eventsProcessed">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📦</div>
+                    <div class="stat-label">Items Tracked</div>
+                    <div class="stat-value" id="itemsTracked">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📝</div>
+                    <div class="stat-label">Items Registered</div>
+                    <div class="stat-value" id="itemsRegistered">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">Total Revenue</div>
+                    <div class="stat-value" id="totalRevenue">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🌐</div>
+                    <div class="stat-label">Network Nodes</div>
+                    <div class="stat-value" id="networkNodes">1</div>
+                </div>
+            </div>
+
+            <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                <h2 class="section-title">⚡ Quick Actions</h2>
+                <button class="btn" onclick="switchTab('registry')">📝 Register Items</button>
+                <button class="btn btn-success" onclick="switchTab('registry')">🔄 Transfer Ownership</button>
+                <button class="btn" onclick="window.location.href='/scan'">🔍 Scan Items</button>
+                <button class="btn" onclick="window.location.href='/setup'">👥 User Setup</button>
+            </div>
+        </div>
+
+        <!-- Item Registry Tab -->
+        <div class="section" id="registry-section">
+            <h2 class="section-title">📦 Item Registry</h2>
+            
+            <div class="stats-grid" style="margin-bottom: 30px;">
+                <div class="stat-card">
+                    <div class="stat-icon">📝</div>
+                    <div class="stat-label">Total Items</div>
+                    <div class="stat-value" id="totalItems">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-label">Total Owners</div>
+                    <div class="stat-value" id="totalOwners">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔄</div>
+                    <div class="stat-label">Ownership Transfers</div>
+                    <div class="stat-value" id="totalTransfers">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-label">Authentications</div>
+                    <div class="stat-value" id="totalAuthentications">0</div>
+                </div>
+            </div>
+
+            <!-- Register Item -->
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📝 Register Physical Item</h3>
+                <div class="success-message" id="registerSuccess"></div>
+                <div class="error-message" id="registerError"></div>
+                <form id="registerForm" onsubmit="registerItem(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Serial Number *</label>
+                            <input type="text" id="serialNumber" required placeholder="e.g., TW-2025-001">
+                        </div>
+                        <div class="form-group">
+                            <label>Item Type *</label>
+                            <input type="text" id="itemType" required placeholder="e.g., Limited Edition Wallet">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Description *</label>
+                        <input type="text" id="itemDescription" required placeholder="e.g., Tesla Cybertruck Edition">
+                    </div>
+                    <div class="form-group">
+                        <label>Manufacturer ID *</label>
+                        <input type="text" id="manufacturerId" required placeholder="e.g., Tesla">
+                    </div>
+                    <button type="submit" class="btn">📝 Register Item</button>
+                </form>
+            </div>
+
+            <!-- Transfer Ownership -->
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">🔄 Transfer Item Ownership</h3>
+                <div class="success-message" id="transferSuccess"></div>
+                <div class="error-message" id="transferError"></div>
+                <form id="transferForm" onsubmit="transferOwnership(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Item ID *</label>
+                            <input type="text" id="itemId" required placeholder="ITEM_abc123...">
+                        </div>
+                        <div class="form-group">
+                            <label>New Owner Address *</label>
+                            <input type="text" id="newOwnerAddress" required placeholder="bc1q...">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Payment Transaction Hash *</label>
+                        <input type="text" id="paymentTxHash" required placeholder="Bitcoin transaction hash">
+                    </div>
+                    <div style="background: rgba(212, 175, 55, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #d4af37;">
+                        <strong style="color: #d4af37;">Note:</strong> <span style="color: #999;">Payment must be completed peer-to-peer before transfer</span>
+                    </div>
+                    <button type="submit" class="btn btn-success">🔄 Transfer Ownership</button>
+                </form>
+            </div>
+
+            <!-- Item Registry -->
+            <div>
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📦 Registered Items</h3>
+                <div id="itemInventory" class="empty-state">No items registered yet</div>
+            </div>
+        </div>
+
+        <!-- Node Wallet Tab -->
+        <div class="section" id="wallet-section">
+            <h2 class="section-title">₿ Node Bitcoin Wallet</h2>
+            
+            <!-- Wallet Balance -->
+            <div class="stats-grid" style="margin-bottom: 30px;">
+                <div class="stat-card">
+                    <div class="stat-icon">₿</div>
+                    <div class="stat-label">Confirmed Balance</div>
+                    <div class="stat-value" id="walletBalance">0.00000000 BTC</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-label">Unconfirmed</div>
+                    <div class="stat-value" id="walletUnconfirmed">0.00000000 BTC</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💵</div>
+                    <div class="stat-label">USD Value</div>
+                    <div class="stat-value" id="walletUSD">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">BTC Price (Live)</div>
+                    <div class="stat-value" id="btcPrice">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🌐</div>
+                    <div class="stat-label">Network</div>
+                    <div class="stat-value" id="walletNetwork">Testnet</div>
+                </div>
+            </div>
+
+            <!-- Receive Section -->
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📥 Receive Bitcoin</h3>
+                <div style="background: rgba(212, 175, 55, 0.1); padding: 20px; border-radius: 10px; border: 1px solid rgba(212, 175, 55, 0.3);">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; color: #d4af37; margin-bottom: 8px; font-weight: 500;">Node Wallet Address</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="text" id="nodeWalletAddress" readonly style="flex: 1; padding: 12px; background: rgba(26, 26, 26, 0.8); border: 2px solid rgba(212, 175, 55, 0.3); border-radius: 8px; color: #d4af37; font-family: 'Courier New', monospace; font-size: 0.9rem;">
+                            <button class="btn" onclick="copyAddress()" style="padding: 12px 20px;">📋 Copy</button>
+                        </div>
+                    </div>
+                    <div id="qrCodeContainer" style="text-align: center; padding: 20px; background: white; border-radius: 10px; margin-top: 15px; display: flex; justify-content: center; align-items: center;">
+                        <div id="qrCode"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Send Section -->
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📤 Send Bitcoin</h3>
+                <div class="success-message" id="sendSuccess"></div>
+                <div class="error-message" id="sendError"></div>
+                <form id="sendForm" onsubmit="sendBitcoin(event)" novalidate>
+                    <div class="form-group">
+                        <label>Recipient Address *</label>
+                        <input type="text" id="sendToAddress" required placeholder="bc1q... or tb1q...">
+                    </div>
+                    
+                    <!-- Currency Toggle -->
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 8px;">Amount Currency</label>
+                        <div style="display: flex; gap: 10px;">
+                            <button type="button" class="currency-toggle active" data-currency="btc" onclick="toggleCurrency('btc')">
+                                ₿ BTC
+                            </button>
+                            <button type="button" class="currency-toggle" data-currency="usd" onclick="toggleCurrency('usd')">
+                                $ USD
+                            </button>
+                            <button type="button" class="currency-toggle" data-currency="sats" onclick="toggleCurrency('sats')">
+                                ⚡ Sats
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label id="amountLabel">Amount (BTC) *</label>
+                            <input type="number" id="sendAmount" step="0.00000001" min="0.00000001" required placeholder="0.00000000" oninput="updateAmountConversion()">
+                            <div id="amountConversion" style="font-size: 0.85rem; color: #999; margin-top: 5px;"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>Network Fee (Priority)</label>
+                            <select id="feePriority" onchange="updateFeeEstimate()">
+                                <option value="nopriority">No Priority (Economy)</option>
+                                <option value="low" selected>Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <input type="number" id="sendFee" step="0.1" value="1" placeholder="0.9" style="display: none; margin-top: 10px;">
+                            <div id="feeEstimate" style="font-size: 0.85rem; color: #999; margin-top: 5px;">Estimated fee: ...</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: -6px; margin-bottom: 14px;">
+                        <button type="button" class="btn" onclick="sendMaxBitcoin()" style="background: rgba(212, 175, 55, 0.12); color: #d4af37; border: 1px solid rgba(212, 175, 55, 0.35);">Send Max</button>
+                    </div>
+                    <div style="background: rgba(255, 149, 0, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255, 149, 0, 0.3);">
+                        <strong style="color: #ff9500;">⚠️ Warning:</strong> <span style="color: #999;">Double-check the recipient address. Bitcoin transactions are irreversible.</span>
+                    </div>
+                    <button type="submit" class="btn">📤 Send Bitcoin</button>
+                </form>
+            </div>
+
+            <!-- Transaction History -->
+            <div>
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📜 Recent Transactions</h3>
+                <div id="walletTransactions" class="empty-state">Loading transactions...</div>
+            </div>
+        </div>
+
+        <!-- Network Status Tab -->
+        <div class="section" id="network-section">
+            <h2 class="section-title">🌐 Network Status</h2>
+            
+            <div class="stats-grid" style="margin-bottom: 30px;">
+                <div class="stat-card">
+                    <div class="stat-icon">🔗</div>
+                    <div class="stat-label">Quorum Status</div>
+                    <div class="stat-value" id="quorumStatus">3-of-5</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-label">Nodes Online</div>
+                    <div class="stat-value" id="nodesOnline">1</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📡</div>
+                    <div class="stat-label">Transactions Validated</div>
+                    <div class="stat-value" id="txValidated">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔐</div>
+                    <div class="stat-label">Consensus</div>
+                    <div class="stat-value" id="consensusStatus">—</div>
+                    <div style="color:#999; font-size:0.9rem; margin-top:6px;" id="consensusDetail">—</div>
+                </div>
+            </div>
+
+            <div id="networkOverviewPanel" style="margin-bottom: 30px;">
+                <div class="empty-state">Loading network overview...</div>
+            </div>
+
+            <h3 style="margin-bottom: 15px;">Operator Nodes</h3>
+            <div id="operatorNodes">
+                <div style="color: #666; padding: 20px; text-align: center;">
+                    Loading operator nodes...
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; margin-bottom: 20px;">
+                <a href="/admin/operators.html" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">
+                    🌐 Manage Operators
+                </a>
+            </div>
+
+            <h3 style="margin-bottom: 15px; margin-top: 30px;">Gateway Nodes</h3>
+            <div id="gatewayNodesList">
+                <div style="color: #666; padding: 20px; text-align: center;">
+                    Loading gateway nodes...
+                </div>
+            </div>
+        </div>
+
+        <div id="nodeDetailsOverlay" class="modal-overlay" onclick="closeNodeDetails(event)">
+            <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <div class="modal-title" id="nodeDetailsTitle">Node Details</div>
+                    <button class="modal-close" onclick="closeNodeDetails()">Close</button>
+                </div>
+                <div class="modal-grid" id="nodeDetailsGrid"></div>
+            </div>
+        </div>
+
+        <!-- Revenue Tab -->
+        <div class="section" id="revenue-section">
+            <h2 class="section-title">💰 Protocol Fees Dashboard</h2>
+            
+            <div class="stats-grid" style="margin-bottom: 30px;">
+                <div class="stat-card">
+                    <div class="stat-icon">🪙</div>
+                    <div class="stat-label">Registry Sales</div>
+                    <div class="stat-value" id="revTokenSales">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📦</div>
+                    <div class="stat-label">Protocol Fees Earned</div>
+                    <div class="stat-value" id="revProtocolFees">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💵</div>
+                    <div class="stat-label">Total Earnings</div>
+                    <div class="stat-value" id="revTotal">$0</div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: 15px;">💳 Revenue Bitcoin Wallet</h3>
+            <div style="background: #e7f3ff; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <p style="margin-bottom: 10px;"><strong>Address:</strong></p>
+                <p id="revenueWalletAddress" style="font-family: monospace; word-break: break-all; font-size: 0.9rem; margin-bottom: 15px;">
+                    Loading...
+                </p>
+                <button onclick="copyRevenueAddress()" style="background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%); color: #0a0a0a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-right: 10px;">📋 Copy Address</button>
+                <div id="revenueQR" style="text-align: center; margin-top: 20px; background: white; padding: 20px; border-radius: 10px;">
+                    <canvas id="revenueQRCanvas"></canvas>
+                </div>
+                <p style="margin-top: 15px; color: #666;">Protocol fees are paid peer-to-peer on Bitcoin and received by this wallet. This is the same wallet as your main node wallet.</p>
+            </div>
+
+            <h3 style="margin-bottom: 15px; color: #d4af37;">📈 Offer Activity & Title Update Fees</h3>
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <div class="stats-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-icon">🧾</div>
+                        <div class="stat-label">Offers Total</div>
+                        <div class="stat-value" id="offersTotal">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⏳</div>
+                        <div class="stat-label">Offers Pending</div>
+                        <div class="stat-value" id="offersPending">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-label">Offers Paid</div>
+                        <div class="stat-value" id="offersPaid">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">💰</div>
+                        <div class="stat-label">Main Node Fee Earned</div>
+                        <div class="stat-value" id="mainNodeFeeEarned">0 sats</div>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 15px;">
+                    <button class="btn" type="button" onclick="loadOfferActivity()">Refresh Offer Activity</button>
+                </div>
+
+                <div id="offerActivityList" class="empty-state">Loading offer activity...</div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">📤 Send Bitcoin</h3>
+                <div class="success-message" id="revSendSuccess"></div>
+                <div class="error-message" id="revSendError"></div>
+                <form id="revSendForm" onsubmit="sendRevenueBitcoin(event)" novalidate>
+                    <div class="form-group">
+                        <label>Recipient Address *</label>
+                        <input type="text" id="revSendToAddress" required placeholder="bc1q... or 1...">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Amount (BTC) *</label>
+                            <input type="number" id="revSendAmount" step="0.00000001" min="0.00000001" required placeholder="0.00000000">
+                        </div>
+                        <div class="form-group">
+                            <label>Fee Rate (sats/vB) (optional)</label>
+                            <input type="number" id="revSendFee" step="1" min="1" placeholder="7">
+                        </div>
+                    </div>
+                    <div style="background: rgba(255, 149, 0, 0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255, 149, 0, 0.3);">
+                        <strong style="color: #ff9500;">⚠️ Warning:</strong> <span style="color: #999;">Double-check the recipient address. Bitcoin transactions are irreversible.</span>
+                    </div>
+                    <button type="submit" class="btn">📤 Send Bitcoin</button>
+                </form>
+            </div>
+
+            <h3 style="margin-bottom: 15px;">📊 Ownership Update History</h3>
+            <div id="salesHistory" class="empty-state">No ownership updates yet</div>
+        </div>
+
+        <!-- Security Tab -->
+        <div class="section" id="security-section">
+            <h2 class="section-title">🔐 Security Settings</h2>
+            
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 30px; border-radius: 10px; margin-bottom: 30px;">
+                <h3 style="margin-bottom: 20px; color: #d4af37;">🔑 Two-Factor Authentication (2FA)</h3>
+                
+                <div id="2faStatus" style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                        <div style="font-size: 2rem;">⏳</div>
+                        <div>
+                            <div style="font-weight: 600; color: #d4af37; margin-bottom: 5px;">Checking 2FA status...</div>
+                            <div style="color: #999; font-size: 0.9rem;">Please wait</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="2faDisabled" style="display: none;">
+                    <div style="background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="color: #ffc107; font-weight: 600; margin-bottom: 10px;">⚠️ Two-Factor Authentication is Disabled</div>
+                        <div style="color: #999; font-size: 0.9rem; line-height: 1.6;">
+                            Enable 2FA to add an extra layer of security to your operator dashboard. You'll need an authenticator app like Google Authenticator, Authy, or Microsoft Authenticator.
+                        </div>
+                    </div>
+                    <button onclick="setup2FA()" class="btn" style="max-width: 300px;">
+                        🔐 Enable Two-Factor Authentication
+                    </button>
+                </div>
+
+                <div id="2faEnabled" style="display: none;">
+                    <div style="background: rgba(52, 199, 89, 0.1); border: 1px solid rgba(52, 199, 89, 0.3); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="color: #34c759; font-weight: 600; margin-bottom: 10px;">✅ Two-Factor Authentication is Enabled</div>
+                        <div style="color: #999; font-size: 0.9rem; line-height: 1.6;">
+                            Your account is protected with two-factor authentication. You'll need to enter a code from your authenticator app when logging in.
+                        </div>
+                    </div>
+                    <button onclick="disable2FA()" class="btn" style="max-width: 300px; background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%);">
+                        🔓 Disable Two-Factor Authentication
+                    </button>
+                </div>
+
+                <div id="2faSetup" style="display: none;">
+                    <div style="background: rgba(212, 175, 55, 0.1); border: 1px solid rgba(212, 175, 55, 0.3); padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                        <h4 style="color: #d4af37; margin-bottom: 20px;">📱 Setup Instructions</h4>
+                        
+                        <div style="margin-bottom: 25px;">
+                            <div style="font-weight: 600; color: #d4af37; margin-bottom: 10px;">Step 1: Scan QR Code</div>
+                            <div style="color: #999; font-size: 0.9rem; margin-bottom: 15px;">
+                                Open your authenticator app and scan this QR code:
+                            </div>
+                            <div id="twoFaQrCodeContainer" style="background: white; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 15px; min-height: 290px; display: flex; align-items: center; justify-content: center;">
+                                <div style="color: #666;">Click "Enable Two-Factor Authentication" to generate QR code</div>
+                            </div>
+                            <div style="color: #999; font-size: 0.85rem; text-align: center;">
+                                Can't scan? Use manual entry: <span id="twoFaManualEntry" style="font-family: monospace; color: #d4af37; word-break: break-all;"></span>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 20px;">
+                            <div style="font-weight: 600; color: #d4af37; margin-bottom: 10px;">Step 2: Enter Verification Code</div>
+                            <div style="color: #999; font-size: 0.9rem; margin-bottom: 15px;">
+                                Enter the 6-digit code from your authenticator app to verify setup:
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="text" id="setupTotpCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" 
+                                    style="flex: 1; max-width: 200px; padding: 15px; background: rgba(26, 26, 26, 0.8); border: 2px solid rgba(212, 175, 55, 0.3); border-radius: 8px; color: #d4af37; font-size: 1.5rem; text-align: center; font-family: monospace;">
+                                <button onclick="verify2FASetup()" class="btn" style="max-width: 200px;">
+                                    ✅ Verify & Enable
+                                </button>
+                            </div>
+                        </div>
+
+                        <button onclick="cancel2FASetup()" style="background: transparent; border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                            ← Cancel Setup
+                        </button>
+                    </div>
+                </div>
+
+                <div id="2faDisableConfirm" style="display: none;">
+                    <div style="background: rgba(255, 59, 48, 0.1); border: 1px solid rgba(255, 59, 48, 0.3); padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                        <h4 style="color: #ff3b30; margin-bottom: 20px;">⚠️ Disable Two-Factor Authentication</h4>
+                        
+                        <div style="color: #999; font-size: 0.9rem; margin-bottom: 20px; line-height: 1.6;">
+                            Disabling 2FA will reduce the security of your operator dashboard. Enter your current 2FA code to confirm:
+                        </div>
+
+                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+                            <input type="text" id="disableTotpCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" 
+                                style="flex: 1; max-width: 200px; padding: 15px; background: rgba(26, 26, 26, 0.8); border: 2px solid rgba(212, 175, 55, 0.3); border-radius: 8px; color: #d4af37; font-size: 1.5rem; text-align: center; font-family: monospace;">
+                            <button onclick="confirm2FADisable()" class="btn" style="max-width: 200px; background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%);">
+                                🔓 Confirm Disable
+                            </button>
+                        </div>
+
+                        <button onclick="cancel2FADisable()" style="background: transparent; border: 1px solid rgba(212, 175, 55, 0.3); color: #d4af37; padding: 10px 20px; border-radius: 8px; cursor: pointer;">
+                            ← Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <div id="2faMessage" style="display: none; margin-top: 20px;"></div>
+            </div>
+
+            <div style="background: rgba(212, 175, 55, 0.1); border: 1px solid rgba(212, 175, 55, 0.3); padding: 20px; border-radius: 10px;">
+                <h4 style="color: #d4af37; margin-bottom: 15px;">🛡️ Security Best Practices</h4>
+                <ul style="color: #999; font-size: 0.9rem; line-height: 1.8; list-style: none; padding: 0;">
+                    <li style="margin-bottom: 10px;">✅ Enable two-factor authentication for maximum security</li>
+                    <li style="margin-bottom: 10px;">✅ Use a strong, unique password for your admin account</li>
+                    <li style="margin-bottom: 10px;">✅ Keep your private keys backed up in multiple secure locations</li>
+                    <li style="margin-bottom: 10px;">✅ Never share your private keys or 2FA codes with anyone</li>
+                    <li style="margin-bottom: 10px;">✅ Regularly review your wallet transactions and network status</li>
+                    <li>✅ Keep your operator node software up to date</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section" id="verifiers-section">
+            <h2 class="section-title">🏢 Manufacturers & Authenticators</h2>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">✅ Verifier Registry</h3>
+                <div class="error-message" id="verifiersError"></div>
+                <div class="success-message" id="verifiersSuccess"></div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="loadVerifiers()">Refresh</button>
+                </div>
+                <div id="verifiersList" class="empty-state" style="margin-top: 15px;">Open this tab to load verifiers.</div>
+            </div>
+        </div>
+
+        <div class="section" id="retailerapps-section">
+            <h2 class="section-title">🛍️ Retailer Verification Applications</h2>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">🔑 Main Node Admin Session</h3>
+                <p style="color: #999; margin-bottom: 15px; font-size: 0.9rem;">Sign in at /admin/login on the main node, then use that session to review retailer verification applications.</p>
+
+                <div class="error-message" id="retailerAppsError"></div>
+                <div class="success-message" id="retailerAppsSuccess"></div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="ensureRetailerAppsSession()">Use Dashboard Session</button>
+                    <button class="btn" type="button" onclick="clearRetailerAppsSession()">Clear Session</button>
+                </div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">🧾 Pending Applications</h3>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <select id="retailerAppsStatus" class="input" style="max-width: 220px;">
+                        <option value="open" selected>Open</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="finalized">Finalized</option>
+                        <option value="all">All</option>
+                    </select>
+                    <button class="btn" type="button" onclick="loadRetailerApplications()">Refresh</button>
+                </div>
+                <div id="retailerAppsList" class="empty-state">Sign in to /admin/login first, then come back to this tab.</div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">✅ Verified Retailers</h3>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="loadVerifiedRetailers()">Refresh</button>
+                </div>
+                <div id="verifiedRetailersList" class="empty-state">Open this tab and click refresh to load verified retailers.</div>
+            </div>
+        </div>
+
+        <div class="section" id="roleapps-section">
+            <h2 class="section-title">🏭 Manufacturer / Authenticator Applications</h2>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">🔑 Main Node Admin Session</h3>
+                <p style="color: #999; margin-bottom: 15px; font-size: 0.9rem;">You must be signed in to the dashboard as the main node admin to review applications and generate invite codes.</p>
+
+                <div class="error-message" id="roleAppsError"></div>
+                <div class="success-message" id="roleAppsSuccess"></div>
+
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="roleAppsEmail" placeholder="operator@example.com" style="width: 100%; display:none;">
+                </div>
+
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="roleAppsPassword" placeholder="••••••••" style="width: 100%; display:none;">
+                </div>
+
+                <div class="form-group" id="roleAppsTotpGroup">
+                    <label>2FA Code (required for operators)</label>
+                    <input type="text" id="roleAppsTotp" placeholder="123456" style="width: 100%; display:none;">
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="operatorLoginWithPassword()">Use Dashboard Session</button>
+                    <button class="btn" type="button" onclick="clearRoleAppsSession()">Clear Session</button>
+                </div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">🧾 Pending Applications</h3>
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="loadRoleApplications()">Refresh</button>
+                </div>
+                <div id="roleAppsList" class="empty-state">Sign in to /admin/login first, then come back to this tab.</div>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); border: 1px solid #d4af37; padding: 25px; border-radius: 10px;">
+                <h3 style="margin-bottom: 15px; color: #d4af37;">🎫 One-Time Invite Codes (Skip Waiting Period)</h3>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select id="inviteRole">
+                            <option value="manufacturer">manufacturer</option>
+                            <option value="authenticator">authenticator</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Expires In (days)</label>
+                        <input id="inviteExpiresDays" type="number" min="1" step="1" value="14" />
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="btn" type="button" onclick="createInviteCode()">Generate Invite Code</button>
+                </div>
+
+                <div id="inviteResult" style="margin-top: 15px; display:none;">
+                    <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 15px; border-radius: 10px;">
+                        <div style="color:#d4af37; font-weight: 600; margin-bottom: 10px;">Share this code with the company:</div>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <input id="inviteCodeHex" type="text" readonly style="flex:1; min-width: 360px; font-family: monospace;" />
+                            <button class="btn" type="button" onclick="copyInviteCode()">Copy</button>
+                        </div>
+                        <div style="color:#999; font-size: 0.9rem; margin-top: 10px;">
+                            Invite ID: <span id="inviteId"></span>
+                            <br />
+                            Expires At: <span id="inviteExpiresAt"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="opcandidates-section">
+            <h2 class="section-title">🧑‍💼 Operator Candidates</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Review and vote on pending operator applications. Candidates require 2/3 supermajority approval from active operators.
+                <strong>Note:</strong> Voting is only enabled after the 30-day founder window expires.
+            </p>
+
+            <div class="error-message" id="opCandidatesError"></div>
+            <div class="success-message" id="opCandidatesSuccess"></div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom: 20px;">
+                <button class="btn" type="button" onclick="loadOperatorCandidates()">Refresh</button>
+                <select id="opCandidatesStatusFilter" onchange="loadOperatorCandidates()" style="padding: 12px 16px; border-radius: 8px; border: 1px solid #d4af37; background: #fff; color: #333;">
+                    <option value="all" selected>All</option>
+                    <option value="open">Open (Founder Window)</option>
+                    <option value="voting">Voting Enabled</option>
+                </select>
+            </div>
+
+            <div id="opCandidatesList" class="empty-state">Click Refresh to load operator candidates.</div>
+        </div>
+    </div>
+
+    <script>
+        let registryStats = {
+            totalItems: 0,
+            totalOwners: 0,
+            totalTransfers: 0,
+            totalAuthentications: 0
+        };
+
+        let tokenStats = {
+            tokenRevenue: 0
+        };
+
+        let allItems = [];
+        let transferHistory = [];
+
+        function switchTab(tab) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`${tab}-section`).classList.add('active');
+
+            if (tab === 'registry') {
+                loadRegistryStats();
+            } else if (tab === 'network') {
+                loadNetworkStatus();
+            } else if (tab === 'revenue') {
+                loadRevenue();
+            } else if (tab === 'security') {
+                load2FAStatus();
+            } else if (tab === 'verifiers') {
+                loadVerifiers();
+            } else if (tab === 'retailerapps') {
+                ensureRetailerAppsSession();
+            } else if (tab === 'roleapps') {
+                ensureRoleAppsSession();
+            } else if (tab === 'opcandidates') {
+                loadOperatorCandidates();
+            }
+        }
+
+        function setRetailerAppsError(message) {
+            const el = document.getElementById('retailerAppsError');
+            if (!el) return;
+            if (!message) {
+                el.textContent = '';
+                el.classList.remove('active');
+                return;
+            }
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        function setRetailerAppsSuccess(message) {
+            const el = document.getElementById('retailerAppsSuccess');
+            if (!el) return;
+            if (!message) {
+                el.textContent = '';
+                el.classList.remove('active');
+                return;
+            }
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        function clearRetailerAppsSession() {
+            setRetailerAppsSuccess('Cleared retailer verification view.');
+            setRetailerAppsError('');
+            const el = document.getElementById('retailerAppsList');
+            if (el) el.innerHTML = 'Sign in to /admin/login first, then come back to this tab.';
+        }
+
+        async function ensureRetailerAppsSession() {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                setRetailerAppsError('No admin session. Please sign in at /admin/login first.');
+                return;
+            }
+            try {
+                const r = await fetch('/api/admin/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.valid !== true) {
+                    setRetailerAppsError('Admin session expired. Please sign in again at /admin/login.');
+                    return;
+                }
+                setRetailerAppsError('');
+                setRetailerAppsSuccess('Admin session ready.');
+                await loadRetailerApplications();
+            } catch (e) {
+                setRetailerAppsError(e?.message || String(e));
+            }
+        }
+
+        async function loadRetailerApplications() {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                setRetailerAppsError('No admin session. Sign in first.');
+                return;
+            }
+            setRetailerAppsError('');
+            setRetailerAppsSuccess('');
+
+            const statusEl = document.getElementById('retailerAppsStatus');
+            const status = statusEl ? String(statusEl.value || 'open') : 'open';
+
+            const r = await fetch(`/api/admin/retailers/verification/applications?status=${encodeURIComponent(status)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                if (r.status === 401) {
+                    setRetailerAppsError('Admin session expired. Sign in again.');
+                    return;
+                }
+                setRetailerAppsError(data?.error || 'Failed to load retailer applications.');
+                return;
+            }
+
+            renderRetailerApplications(Array.isArray(data.applications) ? data.applications : []);
+        }
+
+        async function loadVerifiedRetailers() {
+            const token = sessionStorage.getItem('admin_token');
+            const el = document.getElementById('verifiedRetailersList');
+            if (!el) return;
+
+            if (!token) {
+                setRetailerAppsError('No admin session. Sign in first.');
+                el.innerHTML = '<div class="empty-state">Sign in at /admin/login to view verified retailers.</div>';
+                return;
+            }
+
+            setRetailerAppsError('');
+            setRetailerAppsSuccess('');
+            el.innerHTML = '<div class="empty-state">Loading verified retailers...</div>';
+
+            try {
+                const r = await fetch('/api/admin/retailers/verified', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || data.success !== true) {
+                    setRetailerAppsError(data?.error || 'Failed to load verified retailers.');
+                    el.innerHTML = '<div class="empty-state">Failed to load verified retailers.</div>';
+                    return;
+                }
+                renderVerifiedRetailers(Array.isArray(data.retailers) ? data.retailers : []);
+                setRetailerAppsSuccess(`Loaded ${Number(data.count || 0)} verified retailers.`);
+            } catch (e) {
+                setRetailerAppsError(e?.message || String(e));
+                el.innerHTML = '<div class="empty-state">Failed to load verified retailers.</div>';
+            }
+        }
+
+        function renderVerifiedRetailers(retailers) {
+            const el = document.getElementById('verifiedRetailersList');
+            if (!el) return;
+            if (!retailers || retailers.length === 0) {
+                el.innerHTML = '<div class="empty-state">No verified retailers.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 170px;">Account</th>
+                                <th style="width: 200px;">Name</th>
+                                <th style="width: 200px;">Company</th>
+                                <th style="width: 210px;">Website</th>
+                                <th style="width: 180px;">Verified At</th>
+                                <th style="width: 110px;">Bond</th>
+                                <th style="width: 140px;">Bond Confirmed</th>
+                                <th style="width: 170px;">Bond Last Checked</th>
+                                <th style="width: 110px;">Rating</th>
+                                <th style="width: 120px;">Reports</th>
+                                <th style="width: 220px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${retailers.map(r => {
+                            const name = (r.displayName || r.companyName || r.username || '');
+                            const website = r.website ? String(r.website) : '';
+                            const websiteHref = website
+                                ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`)
+                                : '';
+                            const verifiedAt = r.retailerVerifiedAt ? new Date(r.retailerVerifiedAt).toLocaleString() : '';
+                            const bondMin = Number(r.bondMinSats || 0);
+                            const bondConfirmed = Number(r.bondConfirmedSats || 0);
+                            const bondLast = r.bondLastCheckedAt ? new Date(r.bondLastCheckedAt).toLocaleString() : '';
+                            const bondMeets = (typeof r.bondMeetsMin === 'boolean') ? Boolean(r.bondMeetsMin) : null;
+                            const bondLabel = !bondMin ? 'N/A' : (bondMeets === true ? 'OK' : (bondMeets === false ? 'NOT MET' : 'UNKNOWN'));
+                            const bondStyle = (!bondMin)
+                                ? 'background: rgba(212,175,55,0.10); border-color: rgba(212,175,55,0.25); color:#d4af37;'
+                                : (bondMeets === true
+                                    ? 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;'
+                                    : 'background: rgba(255,159,10,0.12); border-color: rgba(255,159,10,0.35); color:#ff9f0a;');
+                            const ratingAvg = (typeof r.ratingAvg === 'number') ? Number(r.ratingAvg) : null;
+                            const ratingCount = (typeof r.ratingCount === 'number') ? Number(r.ratingCount) : 0;
+                            const ratingLabel = (ratingAvg === null || ratingCount === 0) ? 'N/A' : `${ratingAvg.toFixed(2)} (${ratingCount})`;
+                            const reports = (typeof r.reportCount === 'number') ? Number(r.reportCount) : 0;
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;" title="${String(r.accountId || '')}">${String(r.accountId || '').substring(0, 18)}...</td>
+                                    <td>${String(name)}</td>
+                                    <td>${r.companyName || ''}</td>
+                                    <td>${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}</td>
+                                    <td>${verifiedAt}</td>
+                                    <td><span class="status-badge" style="${bondStyle}">${bondLabel}</span></td>
+                                    <td>${bondConfirmed ? `${bondConfirmed.toLocaleString()} sats` : ''}</td>
+                                    <td>${bondLast}</td>
+                                    <td>${ratingLabel}</td>
+                                    <td>${reports}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn" type="button" style="padding: 10px 14px; font-size: 0.85rem; background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%); border-color:#ff3b30;" onclick="adminRevokeRetailerVerification('${String(r.accountId)}')">Revoke Verification</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function adminRevokeRetailerVerification(accountId) {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                setRetailerAppsError('No admin session. Please sign in at /admin/login first.');
+                return;
+            }
+
+            const reason = prompt('Reason for revocation (optional):') || '';
+            setRetailerAppsError('');
+            setRetailerAppsSuccess('');
+
+            const r = await fetch(`/api/admin/retailers/${encodeURIComponent(String(accountId))}/verification/revoke`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ reason: reason || undefined })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                setRetailerAppsError(data?.error || 'Failed to revoke retailer verification.');
+                return;
+            }
+
+            setRetailerAppsSuccess(`Revoked retailer verification for ${String(accountId).substring(0, 18)}...`);
+            await loadVerifiedRetailers();
+        }
+
+        function renderRetailerApplications(applications) {
+            const el = document.getElementById('retailerAppsList');
+            if (!el) return;
+            if (!applications || applications.length === 0) {
+                el.innerHTML = '<div class="empty-state">No pending retailer applications.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 200px;">Application</th>
+                                <th style="width: 300px;">Account</th>
+                                <th style="width: 180px;">Company</th>
+                                <th style="width: 220px;">Contact</th>
+                                <th style="width: 200px;">Website</th>
+                                <th style="width: 190px;">Submitted</th>
+                                <th style="width: 170px;">Reviewed</th>
+                                <th style="width: 170px;">Finalized</th>
+                                <th style="width: 160px;">Votes</th>
+                                <th style="width: 220px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${applications.map(a => {
+                            const submitted = a.submittedAt ? new Date(a.submittedAt).toLocaleString() : '';
+                            const reviewedAt = a.reviewed?.reviewedAt ? new Date(a.reviewed.reviewedAt).toLocaleString() : '';
+                            const reviewedDecision = a.reviewed?.decision ? String(a.reviewed.decision) : '';
+                            const finalizedAt = a.finalized?.finalizedAt ? new Date(a.finalized.finalizedAt).toLocaleString() : '';
+                            const finalizedDecision = a.finalized?.decision ? String(a.finalized.decision) : '';
+                            const votesA = a.voteCount?.approve ? Number(a.voteCount.approve) : 0;
+                            const votesR = a.voteCount?.reject ? Number(a.voteCount.reject) : 0;
+                            const website = a.website ? String(a.website) : '';
+                            const websiteHref = website
+                                ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`)
+                                : '';
+                            const canReview = !a.reviewed && !a.finalized;
+                            const canFinalize = !!a.reviewed && !a.finalized;
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;" title="${String(a.applicationId || '')}">${String(a.applicationId || '').substring(0, 18)}...</td>
+                                    <td style="font-family: monospace;" title="${String(a.accountId || '')}">${String(a.accountId || '').substring(0, 24)}...</td>
+                                    <td>${a.companyName || ''}</td>
+                                    <td>${a.contactEmail || ''}</td>
+                                    <td>${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}</td>
+                                    <td>${submitted}</td>
+                                    <td>${reviewedDecision ? `${reviewedDecision} ${reviewedAt ? `@ ${reviewedAt}` : ''}` : ''}</td>
+                                    <td>${finalizedDecision ? `${finalizedDecision} ${finalizedAt ? `@ ${finalizedAt}` : ''}` : ''}</td>
+                                    <td>${votesA} / ${votesR}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            ${canReview ? `
+                                                <button class="btn btn-success" type="button" onclick="reviewRetailerApplication('${a.applicationId}','approve')">Approve</button>
+                                                <button class="btn" type="button" style="background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%); border-color:#ff3b30;" onclick="reviewRetailerApplication('${a.applicationId}','reject')">Reject</button>
+                                            ` : ''}
+                                            ${canFinalize ? `
+                                                <button class="btn" type="button" style="padding: 10px 14px; font-size: 0.85rem; background: linear-gradient(135deg, #2a7a3f 0%, #1e5a2f 100%); border-color:#2a7a3f;" onclick="finalizeRetailerApplication('${a.applicationId}')">Finalize</button>
+                                            ` : ''}
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function reviewRetailerApplication(applicationId, decision) {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                setRetailerAppsError('No admin session. Sign in first.');
+                return;
+            }
+
+            const reason = prompt('Optional reason (can be blank):') || '';
+            const r = await fetch(`/api/admin/retailers/verification/applications/${encodeURIComponent(applicationId)}/review`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ decision, reason: reason || undefined })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                setRetailerAppsError(data?.error || 'Failed to review retailer application.');
+                return;
+            }
+
+            setRetailerAppsSuccess(`Retailer application ${applicationId} ${decision}d.`);
+            try {
+                const statusEl = document.getElementById('retailerAppsStatus');
+                if (statusEl) statusEl.value = 'reviewed';
+            } catch {}
+            await loadRetailerApplications();
+        }
+
+        async function finalizeRetailerApplication(applicationId) {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                setRetailerAppsError('No admin session. Sign in first.');
+                return;
+            }
+
+            const reason = prompt('Optional reason for finalize (can be blank):') || '';
+            const r = await fetch(`/api/admin/retailers/verification/applications/${encodeURIComponent(applicationId)}/finalize`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ reason: reason || undefined })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                setRetailerAppsError(data?.error || 'Failed to finalize retailer application.');
+                return;
+            }
+
+            setRetailerAppsSuccess(`Retailer application ${applicationId} finalized: ${String(data.decision || '')}`);
+            try {
+                const statusEl = document.getElementById('retailerAppsStatus');
+                if (statusEl) statusEl.value = 'finalized';
+            } catch {}
+            await loadRetailerApplications();
+            await loadVerifiedRetailers();
+        }
+
+        function setVerifiersError(message) {
+            const el = document.getElementById('verifiersError');
+            if (!el) return;
+            if (!message) {
+                el.textContent = '';
+                el.classList.remove('active');
+                return;
+            }
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        function setVerifiersSuccess(message) {
+            const el = document.getElementById('verifiersSuccess');
+            if (!el) return;
+            if (!message) {
+                el.textContent = '';
+                el.classList.remove('active');
+                return;
+            }
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        async function loadVerifiers() {
+            const token = sessionStorage.getItem('admin_token');
+            const listEl = document.getElementById('verifiersList');
+            if (!listEl) return;
+
+            if (!token) {
+                setVerifiersError('No admin session. Please sign in at /admin/login first.');
+                listEl.innerHTML = '<div class="empty-state">Sign in at /admin/login to view verifiers.</div>';
+                return;
+            }
+
+            setVerifiersError('');
+            setVerifiersSuccess('');
+            listEl.innerHTML = '<div class="empty-state">Loading verifiers...</div>';
+
+            try {
+                const r = await fetch('/api/admin/verifiers', { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await r.json();
+                if (!r.ok || !data || data.success !== true) {
+                    setVerifiersError(data?.error || 'Failed to load verifiers.');
+                    listEl.innerHTML = '<div class="empty-state">Failed to load verifiers.</div>';
+                    return;
+                }
+                renderVerifiers(Array.isArray(data.verifiers) ? data.verifiers : []);
+                setVerifiersSuccess(`Loaded ${Number(data.count || 0)} verifiers.`);
+            } catch (e) {
+                setVerifiersError(e?.message || String(e));
+                listEl.innerHTML = '<div class="empty-state">Failed to load verifiers.</div>';
+            }
+        }
+
+        function renderVerifiers(verifiers) {
+            const el = document.getElementById('verifiersList');
+            if (!el) return;
+            if (!verifiers || verifiers.length === 0) {
+                el.innerHTML = '<div class="empty-state">No verifiers found.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 160px;">Account</th>
+                                <th style="width: 110px;">Role</th>
+                                <th style="width: 170px;">Name</th>
+                                <th style="width: 160px;">Website</th>
+                                <th style="width: 110px;">Status</th>
+                                <th style="width: 90px;">Bond</th>
+                                <th style="width: 140px;">Bond Confirmed</th>
+                                <th style="width: 160px;">Bond Last Checked</th>
+                                <th style="width: 160px;">Revoked At</th>
+                                <th style="width: 170px;">Reactivated At</th>
+                                <th style="width: 230px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${verifiers.map(v => {
+                            const status = String(v.verifierStatus || 'active').toUpperCase();
+                            const revokedAt = v.verifierRevokedAt ? new Date(v.verifierRevokedAt).toLocaleString() : '';
+                            const reactivatedAt = v.verifierReactivatedAt ? new Date(v.verifierReactivatedAt).toLocaleString() : '';
+                            const statusStyle = status === 'REVOKED'
+                                ? 'background: rgba(255,59,48,0.15); border-color: rgba(255,59,48,0.35); color:#ff6b6b;'
+                                : 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;';
+                            const name = (v.displayName || v.companyName || v.username || '');
+                            const website = v.website ? String(v.website) : '';
+                            const websiteHref = website
+                                ? (website.startsWith('http://') || website.startsWith('https://') ? website : `https://${website}`)
+                                : '';
+                            const viewHref = `/verifier-profile.html?accountId=${encodeURIComponent(String(v.accountId || ''))}`;
+                            const isRevoked = status === 'REVOKED';
+                            const bondMin = Number(v.bondMinSats || 0);
+                            const bondConfirmed = Number(v.bondConfirmedSats || 0);
+                            const bondLast = v.bondLastCheckedAt ? new Date(v.bondLastCheckedAt).toLocaleString() : '';
+                            const bondMeets = (typeof v.bondMeetsMin === 'boolean') ? Boolean(v.bondMeetsMin) : null;
+                            const bondLabel = !bondMin ? 'N/A' : (bondMeets === true ? 'OK' : (bondMeets === false ? 'NOT MET' : 'UNKNOWN'));
+                            const bondStyle = (!bondMin)
+                                ? 'background: rgba(212,175,55,0.10); border-color: rgba(212,175,55,0.25); color:#d4af37;'
+                                : (bondMeets === true
+                                    ? 'background: rgba(52,199,89,0.12); border-color: rgba(52,199,89,0.35); color:#4cd964;'
+                                    : 'background: rgba(255,159,10,0.12); border-color: rgba(255,159,10,0.35); color:#ff9f0a;');
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;" title="${String(v.accountId || '')}">${String(v.accountId || '').substring(0, 18)}...</td>
+                                    <td>${String(v.role || '')}</td>
+                                    <td>${String(name)}</td>
+                                    <td>${website ? `<a href="${websiteHref}" target="_blank" rel="noreferrer" style="color:#f4d03f; text-decoration:none;">${website}</a>` : ''}</td>
+                                    <td><span class="status-badge" style="${statusStyle}">${status}</span></td>
+                                    <td><span class="status-badge" style="${bondStyle}">${bondLabel}</span></td>
+                                    <td>${bondConfirmed ? `${bondConfirmed.toLocaleString()} sats` : ''}</td>
+                                    <td>${bondLast}</td>
+                                    <td>${revokedAt}</td>
+                                    <td>${reactivatedAt}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a class="btn" style="padding: 10px 14px; font-size: 0.85rem;" href="${viewHref}">View Profile</a>
+                                            <button class="btn" type="button" style="padding: 10px 14px; font-size: 0.85rem; background: ${isRevoked ? 'linear-gradient(135deg, #2a7a3f 0%, #1e5a2f 100%)' : 'linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%)'}; border-color: ${isRevoked ? '#2a7a3f' : '#ff3b30'};" onclick="adminSetVerifierStatus('${String(v.accountId)}', '${isRevoked ? 'reactivate' : 'revoke'}')">${isRevoked ? 'Unban (Immediate)' : 'Ban (Immediate)'}</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function adminSetVerifierStatus(accountId, action) {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                setVerifiersError('No admin session. Please sign in at /admin/login first.');
+                return;
+            }
+
+            const reason = prompt(`Reason for ${action} (optional):`) || '';
+            setVerifiersError('');
+            setVerifiersSuccess('');
+
+            const r = await fetch(`/api/admin/verifiers/${encodeURIComponent(String(accountId))}/${encodeURIComponent(String(action))}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ reason: reason || undefined })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true) {
+                setVerifiersError(data?.error || 'Failed to update verifier status.');
+                return;
+            }
+
+            setVerifiersSuccess(`Updated ${String(accountId).substring(0, 18)}... to ${String(data.status || '').toUpperCase()}.`);
+            await loadVerifiers();
+        }
+
+        function setRoleAppsError(message) {
+            const el = document.getElementById('roleAppsError');
+            if (!message) {
+                el.textContent = '';
+                el.classList.remove('active');
+                return;
+            }
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        function setRoleAppsSuccess(message) {
+            const el = document.getElementById('roleAppsSuccess');
+            if (!message) {
+                el.textContent = '';
+                el.classList.remove('active');
+                return;
+            }
+            el.textContent = message;
+            el.classList.add('active');
+        }
+
+        function getRoleAppsSessionId() {
+            return sessionStorage.getItem('admin_token');
+        }
+
+        function clearRoleAppsSession() {
+            setRoleAppsSuccess('Cleared role applications view.');
+            setRoleAppsError('');
+            document.getElementById('roleAppsList').innerHTML = 'Sign in with an operator wallet session to view applications.';
+        }
+
+        async function ensureRoleAppsSession() {
+            const sessionId = getRoleAppsSessionId();
+            if (!sessionId) {
+                setRoleAppsError('No admin session. Please sign in at /admin/login first.');
+                return;
+            }
+            try {
+                const r = await fetch('/api/admin/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: sessionId })
+                });
+                const data = await r.json();
+                if (!r.ok || !data || data.valid !== true) {
+                    setRoleAppsError('Admin session expired. Please sign in again at /admin/login.');
+                    return;
+                }
+                setRoleAppsError('');
+                setRoleAppsSuccess('Admin session ready.');
+                await loadRoleApplications();
+            } catch (e) {
+            }
+        }
+
+        async function operatorLoginWithPassword() {
+            setRoleAppsError('');
+            setRoleAppsSuccess('');
+            
+            try {
+                const token = getRoleAppsSessionId();
+                if (!token) {
+                    setRoleAppsError('No admin session. Please sign in at /admin/login first.');
+                    return;
+                }
+                setRoleAppsSuccess('Using current admin session…');
+                await ensureRoleAppsSession();
+            } catch (err) {
+                setRoleAppsError('Network error: ' + err.message);
+            }
+        }
+
+        async function loadRoleApplications() {
+            const sessionId = getRoleAppsSessionId();
+            if (!sessionId) {
+                setRoleAppsError('No admin session. Sign in first.');
+                return;
+            }
+            setRoleAppsError('');
+            setRoleAppsSuccess('');
+
+            const r = await fetch('/api/admin/roles/applications?status=open', {
+                headers: { 'Authorization': `Bearer ${sessionId}` }
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                if (r.status === 401) {
+                    setRoleAppsError('Admin session expired. Sign in again.');
+                    return;
+                }
+                setRoleAppsError(data?.error || 'Failed to load applications.');
+                return;
+            }
+
+            renderRoleApplications(Array.isArray(data.applications) ? data.applications : []);
+        }
+
+        function renderRoleApplications(applications) {
+            const el = document.getElementById('roleAppsList');
+            if (!applications || applications.length === 0) {
+                el.innerHTML = '<div class="empty-state">No pending applications.</div>';
+                return;
+            }
+
+            el.innerHTML = `
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 200px;">Application</th>
+                                <th style="width: 300px;">Account</th>
+                                <th style="width: 120px;">Role</th>
+                                <th style="width: 160px;">Company</th>
+                                <th style="width: 200px;">Contact</th>
+                                <th style="width: 190px;">Submitted</th>
+                                <th style="width: 220px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${applications.map(a => {
+                            const submitted = new Date(a.submittedAt).toLocaleString();
+                            return `
+                                <tr>
+                                    <td style="font-family: monospace;" title="${String(a.applicationId || '')}">${String(a.applicationId || '').substring(0, 18)}...</td>
+                                    <td style="font-family: monospace;" title="${String(a.accountId || '')}">${String(a.accountId || '').substring(0, 24)}...</td>
+                                    <td>${a.requestedRole}</td>
+                                    <td>${a.companyName || ''}</td>
+                                    <td>${a.contactEmail || ''}</td>
+                                    <td>${submitted}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-success" type="button" onclick="reviewRoleApplication('${a.applicationId}','approve')">Approve</button>
+                                            <button class="btn" type="button" style="background: linear-gradient(135deg, #ff3b30 0%, #ff6b60 100%); border-color:#ff3b30;" onclick="reviewRoleApplication('${a.applicationId}','reject')">Reject</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        async function loadOfferActivity() {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                const list = document.getElementById('offerActivityList');
+                if (list) list.innerHTML = '<div class="empty-state">Sign in at /admin/login to view offer activity.</div>';
+                return;
+            }
+
+            const headers = { 'Authorization': `Bearer ${token}` };
+
+            // Summary first
+            let summary;
+            try {
+                const r = await fetch('/api/admin/offers/summary', { headers });
+                summary = await r.json();
+            } catch {
+                summary = null;
+            }
+
+            try {
+                const offersTotalEl = document.getElementById('offersTotal');
+                const offersPendingEl = document.getElementById('offersPending');
+                const offersPaidEl = document.getElementById('offersPaid');
+                const mainNodeFeeEl = document.getElementById('mainNodeFeeEarned');
+
+                if (summary && summary.success) {
+                    const byStatus = summary.byStatus || {};
+                    if (offersTotalEl) offersTotalEl.textContent = String(summary.offerCount || 0);
+                    if (offersPendingEl) offersPendingEl.textContent = String(byStatus.PENDING || 0);
+                    if (offersPaidEl) offersPaidEl.textContent = String(byStatus.PAID || 0);
+                    const mainNodeFeeSats = Number(summary?.totals?.mainNodeFeeSats || 0);
+                    if (mainNodeFeeEl) mainNodeFeeEl.textContent = `${mainNodeFeeSats.toLocaleString()} sats`;
+                } else {
+                    if (offersTotalEl) offersTotalEl.textContent = '0';
+                    if (offersPendingEl) offersPendingEl.textContent = '0';
+                    if (offersPaidEl) offersPaidEl.textContent = '0';
+                    if (mainNodeFeeEl) mainNodeFeeEl.textContent = '0 sats';
+                }
+            } catch {}
+
+            // Recent offers list
+            const listEl = document.getElementById('offerActivityList');
+            if (!listEl) return;
+
+            try {
+                const r = await fetch('/api/admin/offers?limit=50', { headers });
+                const data = await r.json();
+                if (!r.ok || !data || data.success !== true) {
+                    listEl.innerHTML = `<div class="empty-state">Failed to load offers: ${(data && data.error) ? data.error : 'Unknown error'}</div>`;
+                    return;
+                }
+
+                const offers = Array.isArray(data.offers) ? data.offers : [];
+                if (offers.length === 0) {
+                    listEl.innerHTML = '<div class="empty-state">No offers yet.</div>';
+                    return;
+                }
+
+                listEl.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Offer</th>
+                                <th>Item</th>
+                                <th>Status</th>
+                                <th>Buyer</th>
+                                <th>Owner</th>
+                                <th>Sats</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${offers.map((o) => {
+                                const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleString() : '';
+                                return `
+                                    <tr>
+                                        <td style="font-family: monospace;">${String(o.offerId || '').substring(0, 18)}...</td>
+                                        <td style="font-family: monospace;">${String(o.itemId || '').substring(0, 14)}...</td>
+                                        <td><span class="status-badge status-online">${String(o.status || '')}</span></td>
+                                        <td style="font-family: monospace;">${String(o.buyerAddress || '').substring(0, 14)}...</td>
+                                        <td style="font-family: monospace;">${String(o.sellerAddress || '').substring(0, 14)}...</td>
+                                        <td>${Number(o.sats || 0).toLocaleString()}</td>
+                                        <td>${createdAt}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (e) {
+                listEl.innerHTML = `<div class="empty-state">Failed to load offers: ${e?.message || String(e)}</div>`;
+            }
+        }
+
+        async function reviewRoleApplication(applicationId, decision) {
+            const sessionId = getRoleAppsSessionId();
+            if (!sessionId) {
+                setRoleAppsError('No admin session. Sign in first.');
+                return;
+            }
+
+            const reason = prompt('Optional reason (can be blank):') || '';
+            const r = await fetch(`/api/admin/roles/applications/${encodeURIComponent(applicationId)}/review`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionId}`
+                },
+                body: JSON.stringify({ decision, reason: reason || undefined })
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                setRoleAppsError(data?.error || 'Failed to review application.');
+                return;
+            }
+
+            setRoleAppsSuccess(`Application ${applicationId} ${decision}d.`);
+            await loadRoleApplications();
+        }
+
+        async function createInviteCode() {
+            const sessionId = getRoleAppsSessionId();
+            if (!sessionId) {
+                setRoleAppsError('No admin session. Sign in first.');
+                return;
+            }
+
+            setRoleAppsError('');
+            setRoleAppsSuccess('');
+
+            const role = document.getElementById('inviteRole').value;
+            const days = Number(document.getElementById('inviteExpiresDays').value || 14);
+            const expiresInMs = Math.max(1, days) * 24 * 60 * 60 * 1000;
+
+            const r = await fetch('/api/admin/roles/invites/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionId}`
+                },
+                body: JSON.stringify({ role, expiresInMs })
+            });
+            const data = await r.json();
+            if (!r.ok || !data || !data.codeHex) {
+                setRoleAppsError(data?.error || 'Failed to create invite.');
+                return;
+            }
+
+            document.getElementById('inviteResult').style.display = 'block';
+            document.getElementById('inviteCodeHex').value = data.codeHex;
+            document.getElementById('inviteId').textContent = data.inviteId || '';
+            document.getElementById('inviteExpiresAt').textContent = data.expiresAt ? new Date(data.expiresAt).toLocaleString() : '';
+            setRoleAppsSuccess('Invite created.');
+        }
+
+        function copyInviteCode() {
+            const v = document.getElementById('inviteCodeHex').value;
+            if (!v) return;
+            navigator.clipboard.writeText(v);
+            setRoleAppsSuccess('Invite code copied.');
+        }
+
+        async function registerItem(event) {
+            event.preventDefault();
+            const serialNumber = document.getElementById('serialNumber').value;
+            const itemType = document.getElementById('itemType').value;
+            const itemDescription = document.getElementById('itemDescription').value;
+            const manufacturerId = document.getElementById('manufacturerId').value;
+
+            try {
+                const response = await fetch('/api/registry/item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        manufacturerId,
+                        serialNumber,
+                        metadata: {
+                            itemType,
+                            description: itemDescription,
+                            manufacturingDate: Date.now()
+                        },
+                        initialOwner: manufacturerId,
+                        manufacturerSignature: 'sig_' + Date.now()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('registerSuccess').textContent = `✅ Successfully registered item!`;
+                    document.getElementById('registerSuccess').classList.add('active');
+                    document.getElementById('registerError').classList.remove('active');
+                    
+                    allItems.push(data.itemRecord);
+                    updateRegistryStats();
+                    document.getElementById('registerForm').reset();
+                    
+                    setTimeout(() => {
+                        document.getElementById('registerSuccess').classList.remove('active');
+                    }, 5000);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                document.getElementById('registerError').textContent = `❌ Error: ${error.message}`;
+                document.getElementById('registerError').classList.add('active');
+            }
+        }
+
+        async function transferOwnership(event) {
+            event.preventDefault();
+            const itemId = document.getElementById('itemId').value;
+            const newOwnerAddress = document.getElementById('newOwnerAddress').value;
+            const paymentTxHash = document.getElementById('paymentTxHash').value;
+
+            const item = allItems.find(i => i.itemId === itemId);
+            
+            if (!item) {
+                document.getElementById('transferError').textContent = `❌ Item not found in registry.`;
+                document.getElementById('transferError').classList.add('active');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/registry/transfer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        itemId,
+                        currentOwner: item.currentOwner,
+                        newOwner: newOwnerAddress,
+                        paymentTxHash,
+                        transferType: 'sale',
+                        currentOwnerSignature: 'sig_' + Date.now()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('transferSuccess').textContent = `✅ Ownership transferred successfully!`;
+                    document.getElementById('transferSuccess').classList.add('active');
+                    document.getElementById('transferError').classList.remove('active');
+                    
+                    item.currentOwner = newOwnerAddress;
+
+                    transferHistory.push({
+                        itemId,
+                        previousOwner: data.itemRecord.previousOwner,
+                        newOwner: newOwnerAddress,
+                        timestamp: Date.now()
+                    });
+
+                    updateRegistryStats();
+                    try {
+                        await loadStats();
+                    } catch {}
+                    document.getElementById('transferForm').reset();
+                    
+                    setTimeout(() => {
+                        document.getElementById('transferSuccess').classList.remove('active');
+                    }, 5000);
+                } else {
+                    throw new Error(data.error);
+                }
+            } catch (error) {
+                document.getElementById('transferError').textContent = `❌ Error: ${error.message}`;
+                document.getElementById('transferError').classList.add('active');
+            }
+        }
+
+        function updateRegistryStats() {
+            registryStats.totalItems = allItems.length;
+            registryStats.totalOwners = new Set(allItems.map(i => i.currentOwner)).size;
+            registryStats.totalAuthentications = allItems.reduce((sum, item) => sum + (item.authentications?.length || 0), 0);
+
+            document.getElementById('totalItems').textContent = registryStats.totalItems;
+            document.getElementById('totalOwners').textContent = registryStats.totalOwners;
+            document.getElementById('totalTransfers').textContent = registryStats.totalTransfers;
+            document.getElementById('totalAuthentications').textContent = registryStats.totalAuthentications;
+            document.getElementById('itemsRegistered').textContent = registryStats.totalItems;
+            document.getElementById('itemsTracked').textContent = registryStats.totalItems;
+        }
+
+        async function loadRegistryStats() {
+            // Fetch items from API
+            try {
+                const response = await fetch('/api/registry/items');
+                const data = await response.json();
+                allItems = (data && data.success === true && Array.isArray(data.items)) ? data.items : [];
+            } catch (error) {
+                console.error('Error fetching items:', error);
+            }
+
+            updateRegistryStats();
+            const container = document.getElementById('itemInventory');
+            
+            if (allItems.length === 0) {
+                container.innerHTML = '<div class="empty-state">No items registered yet. Visit the manufacturer dashboard to register items.</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item ID</th>
+                            <th>Type</th>
+                            <th>Serial Number</th>
+                            <th>Status</th>
+                            <th>Owner</th>
+                            <th>Registered At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${allItems.slice(-10).reverse().map(item => `
+                            <tr>
+                                <td style="font-family: monospace; font-size: 0.85rem;">${item.itemId.substring(0, 20)}...</td>
+                                <td>${(item.metadata && item.metadata.itemType) ? item.metadata.itemType : 'Unknown'}</td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">-</td>
+                                <td><span class="status-badge status-online">${item.status || 'registered'}</span></td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">${(item.currentOwner || 'Unknown').substring(0, 15)}...</td>
+                                <td>${new Date(item.registeredAt || Date.now()).toLocaleString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function loadNetworkStatus() {
+            // Placeholder for network status
+        }
+
+        async function loadRevenue() {
+            let revenueAddress = '';
+            try {
+                // Get the main node wallet address (same as revenue wallet)
+                const addressResponse = await fetch('/api/node/wallet/address');
+                const addressData = await addressResponse.json();
+                revenueAddress = addressData.address;
+                
+                // Display the address
+                document.getElementById('revenueWalletAddress').textContent = revenueAddress;
+                
+                // Generate QR code for revenue address
+                const qrCanvas = document.getElementById('revenueQRCanvas');
+                if (qrCanvas) {
+                    QRCode.toCanvas(qrCanvas, revenueAddress, {
+                        width: 200,
+                        margin: 2,
+                        color: {
+                            dark: '#000000',
+                            light: '#ffffff'
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load revenue wallet:', err);
+                document.getElementById('revenueWalletAddress').textContent = 'Error loading address';
+            }
+            
+            // Fetch protocol fees earned (sats) from offer summary (authoritative), with fallback to wallet balance.
+            document.getElementById('revProtocolFees').textContent = 'Loading...';
+
+            const btcPrice = await getBTCPrice();
+            let feesSats = 0;
+            try {
+                const token = sessionStorage.getItem('admin_token');
+                if (token) {
+                    const r = await fetch('/api/admin/offers/summary', { headers: { 'Authorization': `Bearer ${token}` } });
+                    const summary = await r.json();
+                    if (r.ok && summary && summary.success) {
+                        feesSats = Number(summary?.totals?.mainNodeFeeSats || 0);
+                    }
+                }
+            } catch (e) {
+                // Ignore; we'll try fallback below
+            }
+
+            if (!Number.isFinite(feesSats) || feesSats < 0) feesSats = 0;
+
+            // Fallback: show wallet balance if we couldn't load fees.
+            if (feesSats === 0) {
+                try {
+                    const balRes = await fetch('/api/node/wallet/balance');
+                    const bal = await balRes.json();
+                    const totalSats = Number(bal?.totalSats || 0);
+                    if (Number.isFinite(totalSats) && totalSats > 0) {
+                        feesSats = totalSats;
+                    }
+                } catch {}
+            }
+
+            const feesUsd = (feesSats / 100000000) * btcPrice;
+            document.getElementById('revProtocolFees').textContent = `$${feesUsd.toFixed(2)} (${feesSats.toLocaleString()} sats)`;
+            document.getElementById('revTotal').textContent = `$${feesUsd.toFixed(2)}`;
+
+            document.getElementById('revTokenSales').textContent = '$0.00';
+
+            const container = document.getElementById('salesHistory');
+            
+            if (salesHistory.length === 0) {
+                container.innerHTML = '<div class="empty-state">No settlements yet</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Buyer Address</th>
+                            <th>Quantity</th>
+                            <th>Price</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${salesHistory.map(sale => `
+                            <tr>
+                                <td style="font-family: monospace; font-size: 0.85rem;">${sale.buyer.substr(0, 30)}...</td>
+                                <td>${sale.quantity} items</td>
+                                <td style="color: #28a745; font-weight: 600;">$${sale.price.toFixed(2)}</td>
+                                <td>${new Date(sale.timestamp).toLocaleString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function copyRevenueAddress() {
+            const address = document.getElementById('revenueWalletAddress').textContent;
+            navigator.clipboard.writeText(address).then(() => {
+                alert('✅ Revenue wallet address copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+
+        async function sendRevenueBitcoin(event) {
+            event.preventDefault();
+
+            const toAddress = document.getElementById('revSendToAddress').value.trim();
+            const amount = parseFloat(document.getElementById('revSendAmount').value);
+            const feeVal = document.getElementById('revSendFee').value;
+            const feeRateSatPerVByte = feeVal ? Math.floor(parseFloat(feeVal)) : undefined;
+
+            const successEl = document.getElementById('revSendSuccess');
+            const errorEl = document.getElementById('revSendError');
+            successEl.classList.remove('active');
+            errorEl.classList.remove('active');
+            successEl.textContent = '';
+            errorEl.textContent = '';
+
+            try {
+                const res = await fetch('/api/node/wallet/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toAddress, amount, feeRateSatPerVByte })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || data.message || 'Send failed');
+                }
+
+                successEl.textContent = `✅ Sent! TXID: ${data.txid}`;
+                successEl.classList.add('active');
+
+                document.getElementById('revSendForm').reset();
+
+                setTimeout(() => {
+                    loadWalletData();
+                    loadRevenue();
+                }, 1500);
+            } catch (err) {
+                errorEl.textContent = `❌ ${err.message || 'Send failed'}`;
+                errorEl.classList.add('active');
+            }
+        }
+
+        // Update total price calculation
+        document.getElementById('tokenQuantity')?.addEventListener('input', updateTotalPrice);
+        document.getElementById('tokenPrice')?.addEventListener('input', updateTotalPrice);
+
+        function updateTotalPrice() {
+            const quantity = parseFloat(document.getElementById('tokenQuantity')?.value || 0);
+            const price = parseFloat(document.getElementById('tokenPrice')?.value || 0);
+            document.getElementById('totalPrice').textContent = (quantity * price).toFixed(2);
+        }
+
+        // Load initial stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/registry/stats');
+                const data = await response.json();
+                if (data.success) {
+                    const stats = data.stats;
+                    registryStats.totalItems = Number(stats.totalItems || 0);
+                    registryStats.totalOwners = Number(stats.totalOwners || 0);
+                    registryStats.totalTransfers = Number(stats.totalTransfers || 0);
+                    registryStats.totalAuthentications = Number(stats.totalAuthentications || 0);
+                    document.getElementById('totalItems').textContent = stats.totalItems;
+                    document.getElementById('totalOwners').textContent = stats.totalOwners;
+                    document.getElementById('totalTransfers').textContent = stats.totalTransfers;
+                    document.getElementById('totalAuthentications').textContent = stats.totalAuthentications;
+                    document.getElementById('itemsRegistered').textContent = stats.totalItems;
+                    document.getElementById('itemsTracked').textContent = stats.totalItems;
+
+                    const txValidatedEl = document.getElementById('txValidated');
+                    if (txValidatedEl) {
+                        const txCount = Number(stats.totalTransfers || 0) + Number(stats.totalAuthentications || 0);
+                        txValidatedEl.textContent = String(txCount);
+                    }
+                }
+
+                await loadNetworkConnections();
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        loadStats();
+
+        function formatDuration(ms) {
+            const s = Math.floor((Number(ms || 0)) / 1000);
+            const days = Math.floor(s / 86400);
+            const hours = Math.floor((s % 86400) / 3600);
+            const mins = Math.floor((s % 3600) / 60);
+            const secs = s % 60;
+            const parts = [];
+            if (days) parts.push(`${days}d`);
+            if (hours || days) parts.push(`${hours}h`);
+            if (mins || hours || days) parts.push(`${mins}m`);
+            parts.push(`${secs}s`);
+            return parts.join(' ');
+        }
+
+        function safeText(v) {
+            const s = String(v ?? '').trim();
+            return s.length ? s : '—';
+        }
+
+        function shortText(v, n = 18) {
+            const s = String(v ?? '').trim();
+            if (!s) return '—';
+            if (s.length <= n * 2) return s;
+            return `${s.slice(0, n)}…${s.slice(-n)}`;
+        }
+
+        function statusBadge(connected) {
+            return `<span class="status-badge ${connected ? 'status-online' : 'status-offline'}">${connected ? 'Connected' : 'Disconnected'}</span>`;
+        }
+
+        function nodeRow(label, subLabel, connected, onClick) {
+            const clickAttr = onClick ? ` onclick="${onClick}"` : '';
+            const cls = onClick ? 'network-node clickable' : 'network-node';
+            return `
+                <div class="${cls}"${clickAttr}>
+                    <div>
+                        <strong>${label}</strong>
+                        <div style="color: #666; font-size: 0.9rem;">${subLabel}</div>
+                    </div>
+                    ${statusBadge(connected)}
+                </div>
+            `;
+        }
+
+        let __networkConnections = { operators: [], gateways: [] };
+
+        function showNodeDetails(kind, idx) {
+            const overlay = document.getElementById('nodeDetailsOverlay');
+            const title = document.getElementById('nodeDetailsTitle');
+            const grid = document.getElementById('nodeDetailsGrid');
+
+            const item = kind === 'operator'
+                ? (__networkConnections.operators || [])[idx]
+                : (__networkConnections.gateways || [])[idx];
+
+            if (!item) return;
+
+            const rows = [];
+            const connectedAt = Number(item.connectedAt || 0);
+            const lastSeen = Number(item.lastSeen || 0);
+            const uptimeMs = Number(item.uptimeMs || 0);
+
+            if (kind === 'operator') {
+                const op = item.operator || null;
+                title.textContent = `Operator: ${safeText(item.operatorId || op?.operatorId)}`;
+                rows.push({ k: 'Type', v: 'Operator' });
+                rows.push({ k: 'Operator ID', v: safeText(item.operatorId || op?.operatorId) });
+                rows.push({ k: 'Status', v: safeText(op?.status) });
+                rows.push({ k: 'URL', v: safeText(op?.operatorUrl || op?.operatorURL || op?.url) });
+                rows.push({ k: 'BTC Address', v: safeText(op?.btcAddress) });
+                rows.push({ k: 'Public Key', v: safeText(op?.publicKey) });
+            } else {
+                title.textContent = `Gateway: ${safeText(item.id)}`;
+                rows.push({ k: 'Type', v: 'Gateway' });
+                rows.push({ k: 'Gateway ID', v: safeText(item.id) });
+            }
+
+            rows.push({ k: 'Connected', v: item.connected ? 'Yes' : 'No' });
+            rows.push({ k: 'Connected Since', v: connectedAt ? new Date(connectedAt).toLocaleString() : '—' });
+            rows.push({ k: 'Uptime', v: formatDuration(uptimeMs) });
+            rows.push({ k: 'Last Seen', v: lastSeen ? new Date(lastSeen).toLocaleString() : '—' });
+            rows.push({ k: 'IP', v: safeText(item.ip) });
+
+            grid.innerHTML = rows.map(r => `
+                <div class="modal-row">
+                    <div class="modal-label">${r.k}</div>
+                    <div class="modal-value">${r.v}</div>
+                </div>
+            `).join('');
+
+            overlay.classList.add('active');
+        }
+
+        function closeNodeDetails(evt) {
+            const overlay = document.getElementById('nodeDetailsOverlay');
+            if (!overlay) return;
+            if (evt && evt.target && evt.target !== overlay) return;
+            overlay.classList.remove('active');
+        }
+
+        async function loadNetworkConnections() {
+            try {
+                const response = await fetch('/api/network/connections');
+                const data = await response.json();
+
+                if (!data || data.success !== true) {
+                    throw new Error(data?.error || 'Failed to load network connections');
+                }
+
+                const operators = data.operators || {};
+                const gateways = data.gateways || {};
+                const network = data.network || {};
+                
+                __networkConnections = {
+                    operators: Array.isArray(operators.connected) ? operators.connected : [],
+                    gateways: Array.isArray(gateways.connected) ? gateways.connected : [],
+                };
+
+                const opContainer = document.getElementById('operatorNodes');
+                const gwContainer = document.getElementById('gatewayNodesList');
+
+                const ops = __networkConnections.operators;
+                if (ops.length > 0) {
+                    opContainer.innerHTML = ops.map((o, idx) => {
+                        const label = `Operator ${idx + 1}`;
+                        const sub = o.operator?.operatorUrl ? `URL: ${o.operator.operatorUrl}` : (o.operatorId ? `ID: ${o.operatorId}` : 'Connected operator');
+                        return nodeRow(label, sub, Boolean(o.connected), `showNodeDetails('operator', ${idx})`);
+                    }).join('');
+                } else {
+                    opContainer.innerHTML = `
+                        <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                            No operator nodes connected yet.
+                        </div>
+                    `;
+                }
+
+                const gws = __networkConnections.gateways;
+                if (gws.length > 0) {
+                    gwContainer.innerHTML = gws.map((g, idx) => {
+                        const label = `Gateway Node ${idx + 1}`;
+                        const sub = 'Read-only Registry Replica';
+                        return nodeRow(label, sub, Boolean(g.connected), `showNodeDetails('gateway', ${idx})`);
+                    }).join('');
+                } else {
+                    gwContainer.innerHTML = `
+                        <div style="color: #666; padding: 20px; text-align: center; background: #0a0a0a; border: 1px solid rgba(212,175,55,0.25); border-radius: 10px;">
+                            No gateway nodes connected yet.
+                            <a href="/install-gateway.html" style="color: #d4af37; text-decoration: underline;">Install a gateway node</a>
+                        </div>
+                    `;
+                }
+
+                const totalNodes = 1 + (Number(operators.total || 0)) + (Number(gateways.total || 0));
+                const networkNodesEl = document.getElementById('networkNodes');
+                if (networkNodesEl) networkNodesEl.textContent = totalNodes;
+
+                const connectedOps = (ops || []).filter(o => Boolean(o.connected)).length;
+                const connectedGws = (gws || []).filter(g => Boolean(g.connected)).length;
+                const nodesOnlineEl = document.getElementById('nodesOnline');
+                if (nodesOnlineEl) nodesOnlineEl.textContent = String(1 + connectedOps + connectedGws);
+
+                const quorumStatusEl = document.getElementById('quorumStatus');
+                if (quorumStatusEl) {
+                    const n = Math.max(0, Math.floor(Number(operators.total || 0)));
+                    const online = Math.max(0, Math.floor(Number(operators.online || 0)));
+                    const required = (n <= 1) ? 1 : (n === 2 ? 2 : Math.ceil((2 * n) / 3));
+                    quorumStatusEl.textContent = `${Math.min(online, n)}-of-${required}`;
+                }
+
+                const overviewEl = document.getElementById('networkOverviewPanel');
+                if (overviewEl) {
+                    overviewEl.innerHTML = `
+                        <div style="background: rgba(20,20,20,0.95); border: 1px solid rgba(212,175,55,0.25); padding: 18px; border-radius: 12px;">
+                            <h3 style="margin-bottom: 12px; color: #d4af37;">📊 Network Overview</h3>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Metric</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>Current Sequence</td><td style="font-family: monospace; font-weight: 700;">#${Number(network.currentSequence || 0)}</td></tr>
+                                    <tr><td>Current Hash</td><td style="font-family: monospace; font-size: 0.85rem;">${safeText(network.currentHash || 'N/A')}</td></tr>
+                                    <tr><td>Active Operators</td><td><span style="color: #4cd964; font-weight: 700;">${Number(operators.online || 0)}</span> / ${Number(operators.total || 0)}</td></tr>
+                                    <tr><td>Connected Gateways</td><td style="font-weight: 700;">${Number(gateways.total || 0)}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                try {
+                    const token = sessionStorage.getItem('admin_token');
+                    if (token) {
+                        const cr = await fetch('/api/admin/consensus/status', {
+                            headers: { 'Authorization': `Bearer ${token}` },
+                            cache: 'no-store'
+                        });
+                        const c = await cr.json().catch(() => ({}));
+
+                        const csEl = document.getElementById('consensusStatus');
+                        const cdEl = document.getElementById('consensusDetail');
+
+                        if (cr.ok && c && c.success === true && c.enabled) {
+                            const ok = !!c.consensusAchieved;
+                            const pct = Number(c.agreementPercentage || 0);
+                            const nodes = Number(c.totalNodes || 0);
+                            csEl.textContent = ok ? '✅ OK' : '⚠️ WARN';
+                            csEl.style.color = ok ? '#34c759' : '#ff9f0a';
+                            const lastTs = Number(c.lastVerification || 0);
+                            const ageSec = lastTs ? Math.max(0, Math.floor((Date.now() - lastTs) / 1000)) : 0;
+                            const ageTxt = lastTs ? `${ageSec}s ago` : '—';
+                            cdEl.textContent = `${pct.toFixed(1)}% · ${nodes} nodes · ${ageTxt}`;
+                        } else {
+                            csEl.textContent = '—';
+                            csEl.style.color = '';
+                            cdEl.textContent = 'Unavailable';
+                        }
+                    }
+                } catch (e) {
+                    const csEl = document.getElementById('consensusStatus');
+                    const cdEl = document.getElementById('consensusDetail');
+                    if (csEl) { csEl.textContent = '—'; csEl.style.color = ''; }
+                    if (cdEl) cdEl.textContent = 'Unavailable';
+                }
+            } catch (error) {
+                console.error('Failed to load network connections:', error);
+                const gw = document.getElementById('gatewayNodesList');
+                const op = document.getElementById('operatorNodes');
+                const overviewEl = document.getElementById('networkOverviewPanel');
+                if (overviewEl) overviewEl.innerHTML = '<div class="empty-state">Unable to load network overview</div>';
+                if (gw) {
+                    gw.innerHTML = `
+                        <div style="color: #999; padding: 20px; text-align: center;">
+                            Unable to load gateway nodes
+                        </div>
+                    `;
+                }
+                if (op) {
+                    op.innerHTML = `
+                        <div style="color: #999; padding: 20px; text-align: center;">
+                            Unable to load operator nodes
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        window.showNodeDetails = showNodeDetails;
+        window.closeNodeDetails = closeNodeDetails;
+
+        loadNetworkConnections();
+        setInterval(loadNetworkConnections, 10000);
+
+        // Authentication check
+        window.addEventListener('load', async () => {
+            const token = sessionStorage.getItem('admin_token');
+            if (!token) {
+                window.location.href = '/admin/login';
+                return;
+            }
+
+            // Verify token
+            try {
+                const response = await fetch('/api/admin/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+                const data = await response.json();
+                if (!response.ok || !data || data.valid !== true) {
+                    try { sessionStorage.removeItem('admin_token'); } catch {}
+                    try { sessionStorage.removeItem('admin_user'); } catch {}
+                    window.location.href = '/admin/login';
+                    return;
+                }
+            } catch (error) {
+                console.error('Auth verification failed:', error);
+                try { sessionStorage.removeItem('admin_token'); } catch {}
+                try { sessionStorage.removeItem('admin_user'); } catch {}
+                window.location.href = '/admin/login';
+                return;
+            }
+
+            // Load wallet data
+            loadWalletData();
+
+            // Keep wallet balances fresh so Unconfirmed updates while waiting for confirmations.
+            setInterval(() => {
+                try { loadWalletData(); } catch {}
+            }, 15000);
+        });
+
+        // Logout function
+        window.logout = () => {
+            if (confirm('Are you sure you want to logout?')) {
+                sessionStorage.removeItem('admin_token');
+                sessionStorage.removeItem('admin_user');
+                localStorage.removeItem('autho_operator_session_id');
+                window.location.href = '/admin/login';
+            }
+        };
+
+        window.sendMaxBitcoin = async () => {
+            const toAddress = String(document.getElementById('sendToAddress').value || '').trim();
+            const feeRateSatPerVByte = Number(document.getElementById('sendFee').value);
+
+            if (!toAddress) {
+                alert('Enter recipient address');
+                return;
+            }
+
+            if (!confirm('Send MAX (sweep all confirmed funds) to this address?\n\nThis will attempt to empty the wallet.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/node/wallet/sweep', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toAddress, feeRateSatPerVByte })
+                });
+
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    const sentSats = Number(data.sentSats || 0);
+                    const feeSats = Number(data.feeSats || 0);
+                    document.getElementById('sendSuccess').textContent = `✅ Sweep sent! TXID: ${data.txid} | Sent: ${sentSats.toLocaleString()} sats | Fee: ${feeSats.toLocaleString()} sats`;
+                    document.getElementById('sendSuccess').classList.add('active');
+                    document.getElementById('sendForm').reset();
+                    toggleCurrency('btc');
+                    setTimeout(() => {
+                        loadWalletData();
+                        document.getElementById('sendSuccess').classList.remove('active');
+                    }, 3000);
+                } else {
+                    throw new Error(data.error || 'Sweep failed');
+                }
+            } catch (error) {
+                document.getElementById('sendError').textContent = `❌ Error: ${error.message}`;
+                document.getElementById('sendError').classList.add('active');
+                setTimeout(() => {
+                    document.getElementById('sendError').classList.remove('active');
+                }, 5000);
+            }
+        };
+
+        // 2FA Management Functions
+        async function load2FAStatus() {
+            try {
+                const response = await fetch('/api/admin/2fa/status');
+                const data = await response.json();
+                
+                document.getElementById('2faStatus').style.display = 'none';
+                
+                if (data.enabled) {
+                    document.getElementById('2faEnabled').style.display = 'block';
+                    document.getElementById('2faDisabled').style.display = 'none';
+                } else {
+                    document.getElementById('2faEnabled').style.display = 'none';
+                    document.getElementById('2faDisabled').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Failed to load 2FA status:', error);
+                show2FAMessage('Failed to load 2FA status', 'error');
+            }
+        }
+
+        async function setup2FA() {
+            try {
+                const response = await fetch('/api/admin/2fa/setup', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Show setup UI
+                    document.getElementById('2faDisabled').style.display = 'none';
+                    document.getElementById('2faSetup').style.display = 'block';
+                    
+                    // Display QR code
+                    const qrContainer = document.getElementById('twoFaQrCodeContainer');
+                    
+                    console.log('=== 2FA Setup Debug ===');
+                    console.log('Full response data:', JSON.stringify(data, null, 2));
+                    console.log('Has qrCodeUrl:', !!data.qrCodeUrl);
+                    console.log('Has otpauthUrl:', !!data.otpauthUrl);
+                    console.log('Has secret:', !!data.secret);
+                    console.log('QRCode library:', typeof QRCode);
+                    
+                    if (data.qrCodeUrl) {
+                        qrContainer.innerHTML = '';
+
+                        const img = document.createElement('img');
+                        img.src = `${data.qrCodeUrl}${data.qrCodeUrl.includes('?') ? '&' : '?'}r=${Date.now()}`;
+                        img.alt = '2FA QR Code';
+                        img.style.maxWidth = '250px';
+                        img.style.height = 'auto';
+                        img.style.display = 'block';
+                        img.style.margin = '0 auto';
+                        img.style.border = '2px solid #000';
+                        img.style.padding = '10px';
+                        img.style.backgroundColor = '#fff';
+
+                        img.onerror = function() {
+                            console.error('✗ QR PNG failed to load from', img.src);
+                            qrContainer.innerHTML = `<div style="color: #ff3b30; padding: 20px;">Failed to load QR code image. Please use manual entry below.</div>`;
+                        };
+
+                        qrContainer.appendChild(img);
+
+                        const downloadBtn = document.createElement('a');
+                        downloadBtn.href = img.src;
+                        downloadBtn.download = 'autho-2fa-qrcode.png';
+                        downloadBtn.style.display = 'block';
+                        downloadBtn.style.marginTop = '10px';
+                        downloadBtn.style.padding = '10px 20px';
+                        downloadBtn.style.background = '#d4af37';
+                        downloadBtn.style.color = '#0a0a0a';
+                        downloadBtn.style.textDecoration = 'none';
+                        downloadBtn.style.borderRadius = '5px';
+                        downloadBtn.style.textAlign = 'center';
+                        downloadBtn.style.fontWeight = '600';
+                        downloadBtn.textContent = '📥 Download QR Code';
+                        qrContainer.appendChild(downloadBtn);
+
+                        if (data.otpauthUrl) {
+                            const phoneLink = document.createElement('a');
+                            phoneLink.href = data.otpauthUrl;
+                            phoneLink.style.display = 'block';
+                            phoneLink.style.marginTop = '10px';
+                            phoneLink.style.padding = '10px 20px';
+                            phoneLink.style.background = '#34c759';
+                            phoneLink.style.color = '#fff';
+                            phoneLink.style.textDecoration = 'none';
+                            phoneLink.style.borderRadius = '5px';
+                            phoneLink.style.textAlign = 'center';
+                            phoneLink.style.fontWeight = '600';
+                            phoneLink.textContent = '📱 Open on Phone (Direct Link)';
+                            qrContainer.appendChild(phoneLink);
+                        }
+                    } else {
+                        console.error('✗ No qrCodeUrl in response');
+                        qrContainer.innerHTML = `<div style="color: #ff3b30; padding: 20px;">QR code generation failed. Please use manual entry below.</div>`;
+                    }
+                    
+                    // Display manual entry code
+                    if (data.secret) {
+                        document.getElementById('twoFaManualEntry').textContent = data.secret;
+                        console.log('✓ Manual entry code set');
+                    } else {
+                        console.error('✗ No secret in response');
+                    }
+                } else {
+                    show2FAMessage(data.error || 'Failed to setup 2FA', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to setup 2FA:', error);
+                show2FAMessage('Failed to setup 2FA', 'error');
+            }
+        }
+
+        async function verify2FASetup() {
+            const totpCode = document.getElementById('setupTotpCode').value;
+            
+            if (!totpCode || totpCode.length !== 6) {
+                show2FAMessage('Please enter a valid 6-digit code', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/2fa/verify-setup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ totpCode })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    show2FAMessage('✅ Two-factor authentication enabled successfully!', 'success');
+                    setTimeout(() => {
+                        document.getElementById('2faSetup').style.display = 'none';
+                        load2FAStatus();
+                    }, 2000);
+                } else {
+                    show2FAMessage(data.error || 'Invalid verification code', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to verify 2FA setup:', error);
+                show2FAMessage('Failed to verify 2FA setup', 'error');
+            }
+        }
+
+        function cancel2FASetup() {
+            document.getElementById('2faSetup').style.display = 'none';
+            document.getElementById('setupTotpCode').value = '';
+            load2FAStatus();
+        }
+
+        function disable2FA() {
+            document.getElementById('2faEnabled').style.display = 'none';
+            document.getElementById('2faDisableConfirm').style.display = 'block';
+        }
+
+        async function confirm2FADisable() {
+            const totpCode = document.getElementById('disableTotpCode').value;
+            
+            if (!totpCode || totpCode.length !== 6) {
+                show2FAMessage('Please enter a valid 6-digit code', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/2fa/disable', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ totpCode })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    show2FAMessage('Two-factor authentication disabled', 'success');
+                    setTimeout(() => {
+                        document.getElementById('2faDisableConfirm').style.display = 'none';
+                        document.getElementById('disableTotpCode').value = '';
+                        load2FAStatus();
+                    }, 2000);
+                } else {
+                    show2FAMessage(data.error || 'Invalid verification code', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to disable 2FA:', error);
+                show2FAMessage('Failed to disable 2FA', 'error');
+            }
+        }
+
+        function cancel2FADisable() {
+            document.getElementById('2faDisableConfirm').style.display = 'none';
+            document.getElementById('disableTotpCode').value = '';
+            load2FAStatus();
+        }
+
+        function show2FAMessage(message, type) {
+            const messageDiv = document.getElementById('2faMessage');
+            messageDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                messageDiv.style.background = 'rgba(52, 199, 89, 0.1)';
+                messageDiv.style.border = '1px solid rgba(52, 199, 89, 0.3)';
+                messageDiv.style.color = '#34c759';
+            } else {
+                messageDiv.style.background = 'rgba(255, 59, 48, 0.1)';
+                messageDiv.style.border = '1px solid rgba(255, 59, 48, 0.3)';
+                messageDiv.style.color = '#ff3b30';
+            }
+            
+            messageDiv.style.padding = '15px';
+            messageDiv.style.borderRadius = '8px';
+            messageDiv.textContent = message;
+            
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Generate QR code for Bitcoin address
+        function generateQRCode(address) {
+            const qrContainer = document.getElementById('qrCode');
+            
+            // Clear any existing QR code
+            qrContainer.innerHTML = '';
+            // Generate new QR code
+            const canvas = document.createElement('canvas');
+            qrContainer.appendChild(canvas);
+
+            if (typeof QRCode === 'undefined' || typeof QRCode.toCanvas !== 'function') {
+                qrContainer.innerHTML = '<div style="color:#333; font-family: monospace;">QR library not loaded</div>';
+                return;
+            }
+
+            QRCode.toCanvas(canvas, address, {
+                width: 200,
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            }).catch((err) => {
+                console.error('Error generating Node Wallet QR:', err);
+                qrContainer.innerHTML = '<div style="color:#333; font-family: monospace;">Failed to generate QR</div>';
+            });
+        }
+
+        // Get real-time BTC price from CoinGecko API
+        async function getBTCPrice() {
+            try {
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+                const data = await response.json();
+                return data.bitcoin.usd;
+            } catch (error) {
+                console.error('Error fetching BTC price:', error);
+                // Fallback to approximate current price if API fails
+                return 42000;
+            }
+        }
+
+        // Wallet management functions
+        async function loadWalletData() {
+            try {
+                // Get wallet address
+                const addressResponse = await fetch('/api/node/wallet/address');
+                const addressData = await addressResponse.json();
+                document.getElementById('nodeWalletAddress').value = addressData.address;
+                document.getElementById('walletNetwork').textContent = addressData.network === 'mainnet' ? 'Mainnet' : 'Testnet';
+                
+                // Generate QR code
+                generateQRCode(addressData.address);
+
+                // Get wallet balance
+                const balanceResponse = await fetch('/api/node/wallet/balance');
+                const balanceData = await balanceResponse.json();
+                
+                // Display BTC with full precision and sats in parentheses
+                const confirmedSats = balanceData.confirmedSats || Math.round(balanceData.confirmed * 100000000);
+                const unconfirmedSats = balanceData.unconfirmedSats || Math.round(balanceData.unconfirmed * 100000000);
+                const totalSats = balanceData.totalSats || Math.round(balanceData.total * 100000000);
+                
+                document.getElementById('walletBalance').textContent = balanceData.confirmed.toFixed(8) + ' BTC (' + confirmedSats.toLocaleString() + ' sats)';
+                document.getElementById('walletUnconfirmed').textContent = balanceData.unconfirmed.toFixed(8) + ' BTC (' + unconfirmedSats.toLocaleString() + ' sats)';
+                
+                // Get real-time BTC price
+                const btcPrice = await getBTCPrice();
+                const usdValue = balanceData.total * btcPrice;
+                document.getElementById('walletUSD').textContent = '$' + usdValue.toFixed(2) + ' (' + totalSats.toLocaleString() + ' sats)';
+                document.getElementById('btcPrice').textContent = '$' + btcPrice.toLocaleString();
+
+                // Load transactions
+                const txResponse = await fetch('/api/node/wallet/transactions');
+                const txData = await txResponse.json();
+                displayTransactions(txData.transactions);
+            } catch (error) {
+                console.error('Error loading wallet data:', error);
+            }
+        }
+
+        function displayTransactions(transactions) {
+            const container = document.getElementById('walletTransactions');
+            
+            if (!transactions || transactions.length === 0) {
+                container.innerHTML = '<div class="empty-state">No transactions yet</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Confirmations</th>
+                            <th>Date</th>
+                            <th>Transaction ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${transactions.map(tx => {
+                            const sats = tx.amountSats || Math.round(tx.amount * 100000000);
+                            return `
+                            <tr>
+                                <td><span class="status-badge ${tx.type === 'receive' ? 'status-online' : 'status-slow'}">${tx.type === 'receive' ? '📥 Receive' : '📤 Send'}</span></td>
+                                <td style="color: ${tx.type === 'receive' ? '#4cd964' : '#ff9500'}; font-weight: 600;">
+                                    ${tx.type === 'receive' ? '+' : '-'}${tx.amount.toFixed(8)} BTC
+                                    <br><span style="font-size: 0.85rem; opacity: 0.8;">(${sats.toLocaleString()} sats)</span>
+                                </td>
+                                <td>${tx.confirmations} confirmations</td>
+                                <td>${new Date(tx.timestamp).toLocaleString()}</td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">${tx.txid.substring(0, 20)}...</td>
+                            </tr>
+                        `}).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // Currency conversion state
+        let currentCurrency = 'btc';
+        let currentBTCPrice = 0;
+
+        window.toggleCurrency = (currency) => {
+            currentCurrency = currency;
+            
+            // Update button states
+            document.querySelectorAll('.currency-toggle').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.currency === currency) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Update label and input
+            const amountInput = document.getElementById('sendAmount');
+            const amountLabel = document.getElementById('amountLabel');
+            
+            if (currency === 'btc') {
+                amountLabel.textContent = 'Amount (BTC) *';
+                amountInput.step = '0.00000001';
+                amountInput.min = '0.00000001';
+                amountInput.placeholder = '0.00000000';
+            } else if (currency === 'usd') {
+                amountLabel.textContent = 'Amount (USD) *';
+                amountInput.step = '0.01';
+                amountInput.min = '0.01';
+                amountInput.placeholder = '0.00';
+            } else if (currency === 'sats') {
+                amountLabel.textContent = 'Amount (Sats) *';
+                amountInput.step = '1';
+                amountInput.min = '1';
+                amountInput.placeholder = '0';
+            }
+            
+            amountInput.value = '';
+            document.getElementById('amountConversion').textContent = '';
+        };
+
+        window.updateAmountConversion = async () => {
+            const amount = parseFloat(document.getElementById('sendAmount').value);
+            if (!amount || amount <= 0) {
+                document.getElementById('amountConversion').textContent = '';
+                return;
+            }
+
+            if (!currentBTCPrice) {
+                currentBTCPrice = await getBTCPrice();
+            }
+
+            let btcAmount, usdAmount, satsAmount;
+            
+            if (currentCurrency === 'btc') {
+                btcAmount = amount;
+                usdAmount = amount * currentBTCPrice;
+                satsAmount = Math.floor(amount * 100000000);
+            } else if (currentCurrency === 'usd') {
+                btcAmount = amount / currentBTCPrice;
+                usdAmount = amount;
+                satsAmount = Math.floor(btcAmount * 100000000);
+            } else if (currentCurrency === 'sats') {
+                btcAmount = amount / 100000000;
+                usdAmount = btcAmount * currentBTCPrice;
+                satsAmount = amount;
+            }
+
+            const conversions = [];
+            if (currentCurrency !== 'btc') conversions.push(`${btcAmount.toFixed(8)} BTC`);
+            if (currentCurrency !== 'usd') conversions.push(`$${usdAmount.toFixed(2)}`);
+            if (currentCurrency !== 'sats') conversions.push(`${satsAmount.toLocaleString()} sats`);
+            
+            document.getElementById('amountConversion').textContent = '≈ ' + conversions.join(' = ');
+        };
+
+        window.updateFeeEstimate = () => {
+            const priority = document.getElementById('feePriority').value;
+            const customFeeInput = document.getElementById('sendFee');
+
+            const formatRate = (r) => {
+                const n = Number(r);
+                if (!Number.isFinite(n) || n <= 0) return '1';
+                if (n < 1) return n.toFixed(1);
+                if (n < 10) return n.toFixed(1);
+                return n.toFixed(0);
+            };
+
+            const estimateVbytes = 250;
+
+            const ensureFeeRatesLoaded = async () => {
+                if (window.__feeRates && window.__feeRates.ts && (Date.now() - window.__feeRates.ts) < 60_000) {
+                    return window.__feeRates;
+                }
+                try {
+                    const base = (String(document.getElementById('walletNetwork')?.textContent || '').toLowerCase().includes('main') ? 'https://mempool.space/api' : 'https://mempool.space/testnet/api');
+                    const rec = await fetch(`${base}/v1/fees/recommended`, { cache: 'no-store' }).then(r => r.json());
+                    const rates = {
+                        noPriority: Number(rec?.minimumFee ?? rec?.economyFee ?? rec?.hourFee ?? 1),
+                        low: Number(rec?.economyFee ?? rec?.hourFee ?? rec?.minimumFee ?? 1),
+                        medium: Number(rec?.hourFee ?? rec?.halfHourFee ?? rec?.economyFee ?? 2),
+                        high: Number(rec?.fastestFee ?? rec?.halfHourFee ?? rec?.hourFee ?? 5),
+                        ts: Date.now(),
+                    };
+                    window.__feeRates = rates;
+                    return rates;
+                } catch {
+                    const fallback = { noPriority: 1, low: 2, medium: 7, high: 25, ts: Date.now() };
+                    window.__feeRates = fallback;
+                    return fallback;
+                }
+            };
+            
+            if (priority === 'custom') {
+                customFeeInput.style.display = 'block';
+                document.getElementById('feeEstimate').textContent = 'Enter custom fee rate in sats/vB (e.g. 10)';
+            } else {
+                customFeeInput.style.display = 'none';
+
+                (async () => {
+                    const rates = await ensureFeeRatesLoaded();
+
+                    let feeRate = rates.low;
+                    let confirmTime = 'Recommended';
+                    if (priority === 'nopriority') {
+                        feeRate = rates.noPriority;
+                        confirmTime = 'No Priority';
+                    } else if (priority === 'low') {
+                        feeRate = rates.low;
+                        confirmTime = 'Low';
+                    } else if (priority === 'medium') {
+                        feeRate = rates.medium;
+                        confirmTime = 'Medium';
+                    } else if (priority === 'high') {
+                        feeRate = rates.high;
+                        confirmTime = 'High';
+                    }
+
+                    feeRate = Math.max(0.1, Math.min(500, Number(feeRate || 1)));
+                    const feeSats = Math.ceil(estimateVbytes * feeRate);
+                    customFeeInput.value = String(feeRate);
+                    document.getElementById('feeEstimate').textContent = `Estimated fee: ~${feeSats.toLocaleString()} sats (${estimateVbytes} vB @ ~${formatRate(feeRate)} sats/vB) - ${confirmTime}`;
+                })();
+            }
+        };
+
+        window.copyAddress = async () => {
+            const address = document.getElementById('nodeWalletAddress').value;
+            try {
+                await navigator.clipboard.writeText(address);
+                alert('✅ Address copied to clipboard!');
+            } catch (error) {
+                console.error('Failed to copy:', error);
+                alert('Failed to copy address. Please copy manually.');
+            }
+        };
+
+        window.sendBitcoin = async (event) => {
+            event.preventDefault();
+            
+            const toAddress = document.getElementById('sendToAddress').value;
+            let inputAmount = parseFloat(document.getElementById('sendAmount').value);
+            const feeRateSatPerVByte = Number(document.getElementById('sendFee').value);
+
+            // Convert to BTC based on selected currency
+            let btcAmount;
+            if (currentCurrency === 'btc') {
+                btcAmount = inputAmount;
+            } else if (currentCurrency === 'usd') {
+                if (!currentBTCPrice) {
+                    currentBTCPrice = await getBTCPrice();
+                }
+                btcAmount = inputAmount / currentBTCPrice;
+            } else if (currentCurrency === 'sats') {
+                btcAmount = inputAmount / 100000000;
+            }
+
+            const satsAmount = Math.floor(btcAmount * 100000000);
+            const usdAmount = btcAmount * currentBTCPrice;
+
+            if (!confirm(`Send ${btcAmount.toFixed(8)} BTC (${satsAmount.toLocaleString()} sats ≈ $${usdAmount.toFixed(2)}) to ${toAddress}?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/node/wallet/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ toAddress, amount: btcAmount, feeRateSatPerVByte })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    document.getElementById('sendSuccess').textContent = `✅ Transaction sent! TXID: ${data.txid}`;
+                    document.getElementById('sendSuccess').classList.add('active');
+                    document.getElementById('sendForm').reset();
+                    
+                    // Reset currency to BTC
+                    toggleCurrency('btc');
+                    
+                    // Reload wallet data
+                    setTimeout(() => {
+                        loadWalletData();
+                        document.getElementById('sendSuccess').classList.remove('active');
+                    }, 3000);
+                } else {
+                    throw new Error(data.error || 'Transaction failed');
+                }
+            } catch (error) {
+                document.getElementById('sendError').textContent = `❌ Error: ${error.message}`;
+                document.getElementById('sendError').classList.add('active');
+                setTimeout(() => {
+                    document.getElementById('sendError').classList.remove('active');
+                }, 5000);
+            }
+        };
+
+        // ==================== OPERATOR CANDIDATES ====================
+        function getAdminToken() {
+            return sessionStorage.getItem('admin_token');
+        }
+
+        function getAdminAuthHeaders() {
+            const token = getAdminToken();
+            return token ? { 'Authorization': `Bearer ${token}` } : {};
+        }
+
+        async function loadOperatorCandidates() {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            const listEl = document.getElementById('opCandidatesList');
+            
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+            if (listEl) listEl.innerHTML = '<div class="empty-state">Loading operator candidates...</div>';
+
+            const status = document.getElementById('opCandidatesStatusFilter')?.value || 'all';
+            const url = `/api/operators/candidates?status=${encodeURIComponent(status)}`;
+
+            try {
+                const r = await fetch(url, { headers: getAdminAuthHeaders(), cache: 'no-store' });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to load operator candidates'; errorEl.classList.add('active'); }
+                    if (listEl) listEl.innerHTML = '<div class="empty-state">Failed to load candidates. Make sure you are signed in as admin.</div>';
+                    return;
+                }
+
+                const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+                if (candidates.length === 0) {
+                    if (listEl) listEl.innerHTML = '<div class="empty-state">No operator candidates found.</div>';
+                    return;
+                }
+
+                renderOperatorCandidates(candidates);
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+                if (listEl) listEl.innerHTML = '<div class="empty-state">Network error.</div>';
+            }
+        }
+
+        // Store candidates globally for detail view
+        let _opCandidatesData = [];
+
+        function renderOperatorCandidates(candidates) {
+            const el = document.getElementById('opCandidatesList');
+            if (!el) return;
+
+            _opCandidatesData = candidates; // Store for detail view
+
+            const now = Date.now();
+            const rows = candidates.map((c, idx) => {
+                const candidateId = String(c.operatorId || c.candidateId || '');
+                const operatorUrl = String(c.operatorUrl || '');
+                const btcAddress = String(c.btcAddress || '');
+                const publicKey = String(c.publicKey || '');
+                const sponsorId = String(c.sponsorId || '');
+                const requestedAt = Number(c.candidateRequestedAt || 0);
+                const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+                const eligibleVoterCount = Number(c.eligibleVoterCount || 0);
+                const requiredYesVotes = Number(c.requiredYesVotes || 0);
+                const voteCount = c.voteCount || { approve: 0, reject: 0 };
+
+                const votingEnabled = now >= eligibleVotingAt;
+                const votingStartsIn = eligibleVotingAt > now ? Math.ceil((eligibleVotingAt - now) / (24 * 60 * 60 * 1000)) : 0;
+
+                const statusBadge = votingEnabled
+                    ? '<span style="background: #22c55e; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">VOTING OPEN</span>'
+                    : `<span style="background: #f59e0b; color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">FOUNDER WINDOW (${votingStartsIn}d)</span>`;
+
+                // Admin/Founder buttons - always available on main node
+                const adminButtons = `
+                    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="adminApproveCandidate('${candidateId}', '${publicKey}', '${btcAddress}')">✓ Admin Approve</button>
+                        <button class="btn" onclick="adminRejectCandidate('${candidateId}')" style="background: #dc3545; border-color: #dc3545; color: #fff;">✗ Admin Reject</button>
+                        <button class="btn" onclick="showCandidateDetails(${idx})" style="background: #6366f1; border-color: #6366f1; color: #fff;">📋 View Details</button>
+                    </div>
+                `;
+
+                return `
+                    <div style="background: #f8f9fa; border: 1px solid #d4af37; padding: 20px; border-radius: 12px; margin-bottom: 15px; cursor: pointer;" onclick="showCandidateDetails(${idx})">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #333; margin-bottom: 8px;">
+                                    ${candidateId}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    <strong>URL:</strong> ${operatorUrl || '(none)'}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    <strong>BTC Address:</strong> <span style="font-family: monospace;">${btcAddress.substring(0, 20)}...</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px;">
+                                    <strong>Sponsor:</strong> <span style="font-family: monospace;">${sponsorId.substring(0, 20)}...</span>
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    <strong>Applied:</strong> ${requestedAt ? new Date(requestedAt).toLocaleDateString() : 'Unknown'}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                ${statusBadge}
+                                <div style="margin-top: 10px; font-size: 0.85rem; color: #666;">
+                                    <strong>Votes:</strong> ${voteCount.approve || 0} approve / ${voteCount.reject || 0} reject
+                                </div>
+                                <div style="font-size: 0.85rem; color: #666;">
+                                    <strong>Required:</strong> ${requiredYesVotes} of ${eligibleVoterCount} voters
+                                </div>
+                            </div>
+                        </div>
+                        <div onclick="event.stopPropagation();">
+                            ${adminButtons}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            el.innerHTML = rows;
+        }
+
+        function showCandidateDetails(idx) {
+            const c = _opCandidatesData[idx];
+            if (!c) return;
+
+            const candidateId = String(c.operatorId || c.candidateId || '');
+            const operatorUrl = String(c.operatorUrl || '');
+            const btcAddress = String(c.btcAddress || '');
+            const publicKey = String(c.publicKey || '');
+            const sponsorId = String(c.sponsorId || '');
+            const requestedAt = Number(c.candidateRequestedAt || 0);
+            const eligibleVotingAt = Number(c.eligibleVotingAt || 0);
+            const eligibleVoterCount = Number(c.eligibleVoterCount || 0);
+            const requiredYesVotes = Number(c.requiredYesVotes || 0);
+            const voteCount = c.voteCount || { approve: 0, reject: 0 };
+
+            const detailsHtml = `
+                <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center;" onclick="this.remove()">
+                    <div style="background: #fff; border-radius: 16px; padding: 30px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+                        <h2 style="color: #d4af37; margin-bottom: 20px; border-bottom: 2px solid #d4af37; padding-bottom: 10px;">Operator Candidate Details</h2>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Operator ID:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${candidateId}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Public Key:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all; font-size: 0.8rem;">${publicKey}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">BTC Address:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${btcAddress}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Operator URL:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${operatorUrl || '(not set)'}</div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <strong style="color: #333;">Sponsor ID:</strong>
+                            <div style="font-family: monospace; background: #f5f5f5; padding: 8px; border-radius: 6px; word-break: break-all;">${sponsorId}</div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                            <div>
+                                <strong style="color: #333;">Applied:</strong>
+                                <div>${requestedAt ? new Date(requestedAt).toLocaleString() : 'Unknown'}</div>
+                            </div>
+                            <div>
+                                <strong style="color: #333;">Voting Eligible:</strong>
+                                <div>${eligibleVotingAt ? new Date(eligibleVotingAt).toLocaleString() : 'Unknown'}</div>
+                            </div>
+                            <div>
+                                <strong style="color: #333;">Votes:</strong>
+                                <div>${voteCount.approve || 0} approve / ${voteCount.reject || 0} reject</div>
+                            </div>
+                            <div>
+                                <strong style="color: #333;">Required:</strong>
+                                <div>${requiredYesVotes} of ${eligibleVoterCount} voters</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid #eee; padding-top: 20px;">
+                            <button class="btn btn-success" onclick="adminApproveCandidate('${candidateId}', '${publicKey}', '${btcAddress}'); this.closest('[style*=position]').remove();">✓ Approve</button>
+                            <button class="btn" onclick="adminRejectCandidate('${candidateId}'); this.closest('[style*=position]').remove();" style="background: #dc3545; border-color: #dc3545; color: #fff;">✗ Reject</button>
+                            <button class="btn" onclick="this.closest('[style*=position]').remove();" style="margin-left: auto;">Close</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', detailsHtml);
+        }
+
+        async function adminApproveCandidate(operatorId, publicKey, btcAddress) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            if (!confirm(`Approve operator ${operatorId} as an active operator? This action is immediate and cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/admin/operators/approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ operatorId, publicKey, btcAddress })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to approve operator'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                if (successEl) { successEl.textContent = `Operator ${operatorId} approved successfully!`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+
+        async function adminRejectCandidate(operatorId) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            const reason = prompt('Reason for rejection (required):');
+            if (!reason) {
+                if (errorEl) { errorEl.textContent = 'Rejection reason is required'; errorEl.classList.add('active'); }
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/admin/operators/reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ operatorId, reason })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to reject operator'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                if (successEl) { successEl.textContent = `Operator ${operatorId} rejected.`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+
+        async function voteOnCandidate(candidateId, vote) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            const reason = prompt(`Reason for ${vote} (optional):`);
+
+            try {
+                const r = await fetch(`/api/operators/candidates/${encodeURIComponent(candidateId)}/vote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ vote, reason: reason || undefined })
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to submit vote'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                if (successEl) { successEl.textContent = `Vote recorded: ${vote}`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+
+        async function finalizeCandidate(candidateId) {
+            const errorEl = document.getElementById('opCandidatesError');
+            const successEl = document.getElementById('opCandidatesSuccess');
+            if (errorEl) { errorEl.textContent = ''; errorEl.classList.remove('active'); }
+            if (successEl) { successEl.textContent = ''; successEl.classList.remove('active'); }
+
+            if (!confirm(`Finalize voting for candidate ${candidateId}? This will admit or reject them based on current votes.`)) {
+                return;
+            }
+
+            try {
+                const r = await fetch(`/api/operators/candidates/${encodeURIComponent(candidateId)}/finalize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({})
+                });
+                const data = await r.json().catch(() => ({}));
+
+                if (!r.ok || !data || data.success !== true) {
+                    if (errorEl) { errorEl.textContent = data?.error || 'Failed to finalize candidate'; errorEl.classList.add('active'); }
+                    return;
+                }
+
+                const decision = data.decision || 'unknown';
+                if (successEl) { successEl.textContent = `Candidate ${candidateId} finalized: ${decision.toUpperCase()}`; successEl.classList.add('active'); }
+                await loadOperatorCandidates();
+            } catch (err) {
+                if (errorEl) { errorEl.textContent = 'Network error: ' + err.message; errorEl.classList.add('active'); }
+            }
+        }
+    </script>
+</body>
+</html>

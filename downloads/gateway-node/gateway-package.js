@@ -1322,6 +1322,13 @@ class GatewayNode {
 
     // JSON parsing
     this.app.use(express.json());
+    
+    // Serve local public folder if it exists (for bundled UI files)
+    const localPublicPath = path.join(__dirname, 'public');
+    if (fs.existsSync(localPublicPath)) {
+      this.app.use(express.static(localPublicPath));
+      console.log(`📂 Serving static files from: ${localPublicPath}`);
+    }
 
     // Rate limiting
     if (CONFIG.rateLimitEnabled) {

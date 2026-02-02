@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Sign In - Bitcoin Ownership Protocol</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #d4af37;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; }
+
+        .card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%);
+            border: 2px solid #d4af37;
+            padding: 26px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(212, 175, 55, 0.15);
+            margin-bottom: 18px;
+        }
+
+        h1 { font-size: 2rem; margin-bottom: 8px; }
+
+        .muted { color: #999; line-height: 1.55; }
+
+        .form-group { margin-top: 14px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #d4af37;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background: rgba(42, 42, 42, 0.8);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            color: #fff;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+            color: #0a0a0a;
+            border: 1px solid #f4d03f;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-secondary {
+            background: rgba(212, 175, 55, 0.12);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.6);
+        }
+
+        .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+        .error {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: #ff6b6b;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .success {
+            background: rgba(76, 217, 100, 0.10);
+            border: 1px solid rgba(76, 217, 100, 0.35);
+            color: #c9f7d5;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .divider { margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(212, 175, 55, 0.2); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>⚡ Operator Sign In</h1>
+            <div class="muted">
+                Operators must first create a normal account, then apply for operator admission. Once admitted, you can access the operator dashboard and vote.
+            </div>
+            <div class="row">
+                <a class="btn btn-secondary" href="/" style="text-decoration:none;">Back</a>
+                <a class="btn btn-secondary" href="/operator/apply" style="text-decoration:none;">Apply Page</a>
+                <a class="btn btn-secondary" href="/install-operator.html" style="text-decoration:none;">Install Operator Node</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 10px;">🔑 Sign In with Email &amp; Password</h2>
+            <div class="muted">If you enabled 2FA, you’ll be prompted for a code.</div>
+
+            <div class="error" id="loginError"></div>
+
+            <div class="form-group">
+                <label>Email</label>
+                <input id="loginEmail" type="email" placeholder="your@email.com" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input id="loginPassword" type="password" placeholder="••••••••" />
+            </div>
+            <div class="form-group" id="login2faGroup" style="display:none;">
+                <label>2FA Code (if enabled)</label>
+                <input id="loginTotp" type="text" placeholder="123456" />
+            </div>
+            <div class="row">
+                <button class="btn" type="button" onclick="loginWithPassword()">Sign In</button>
+            </div>
+
+            <div class="divider" id="applyBlock" style="display:none;">
+                <h2 style="margin-bottom: 10px;">📝 Operator Application</h2>
+                <div class="muted" id="applyMessage">Loading…</div>
+                <div class="row" style="margin-top: 12px;">
+                    <a class="btn" href="/operator/apply" style="text-decoration:none;">Apply to be an Operator</a>
+                    <a class="btn btn-secondary" href="/operator/dashboard" style="text-decoration:none;">Operator Dashboard</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 10px;">📝 New User? Register First</h2>
+            <div class="muted">
+                Don’t have an account yet? Create a buyer account first, then sign in above and apply.
+                You must have a wallet created at <span style="color:#d4af37;">/m/wallet</span>.
+            </div>
+
+            <div class="error" id="regError"></div>
+            <div class="success" id="regSuccess"></div>
+
+            <div class="form-group">
+                <label>Username</label>
+                <input id="regUsername" type="text" placeholder="Your name or company" />
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input id="regEmail" type="email" placeholder="contact@company.com" />
+            </div>
+            <div class="form-group">
+                <label>Password (min 8 characters)</label>
+                <input id="regPassword" type="password" placeholder="••••••••" />
+            </div>
+            <div class="row">
+                <button class="btn" type="button" onclick="registerNewUser()">Create Account</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function show(id, msg) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = String(msg || '');
+            el.style.display = msg ? 'block' : 'none';
+        }
+
+        function getSessionId() {
+            try { return String(localStorage.getItem('autho_session_id') || '').trim(); } catch { return ''; }
+        }
+
+        async function loadMe() {
+            const sessionId = getSessionId();
+            if (!sessionId) return null;
+            const r = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${sessionId}` }, cache: 'no-store' });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data || data.success !== true || !data.account) return null;
+            return data;
+        }
+
+        async function refreshApplyBlock() {
+            const me = await loadMe();
+            const block = document.getElementById('applyBlock');
+            const msg = document.getElementById('applyMessage');
+            if (!block || !msg) return;
+
+            if (!me) {
+                block.style.display = 'none';
+                return;
+            }
+
+            const isOperator = (String(me.account.role || '') === 'operator') || (me.isOperator === true);
+            if (isOperator) {
+                window.location.href = '/operator/dashboard';
+                return;
+            }
+
+            block.style.display = 'block';
+            msg.textContent = 'You are signed in, but not admitted as an operator yet. Submit an operator application to join the operator set.';
+        }
+
+        async function loginWithPassword() {
+            show('loginError', '');
+            const email = String(document.getElementById('loginEmail').value || '').trim();
+            const password = String(document.getElementById('loginPassword').value || '');
+            const totpCode = String(document.getElementById('loginTotp').value || '').trim();
+
+            if (!email || !password) {
+                show('loginError', 'Email and password are required');
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, totpCode: totpCode || undefined })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data || !data.sessionId) {
+                    if (data && data.requires2FA) {
+                        document.getElementById('login2faGroup').style.display = 'block';
+                        show('loginError', data.error || '2FA code required');
+                        return;
+                    }
+                    show('loginError', data?.error || 'Login failed');
+                    return;
+                }
+
+                localStorage.setItem('autho_session_id', String(data.sessionId));
+
+                try {
+                    if (data.walletVault) localStorage.setItem('autho_wallet_vault', JSON.stringify(data.walletVault));
+                    const existing = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+                    const merged = {
+                        ...existing,
+                        publicKey: String(data.accountId || existing.publicKey || ''),
+                        paymentAddress: String(data.walletAddress || existing.paymentAddress || existing.address || ''),
+                        address: String(data.walletAddress || existing.address || existing.paymentAddress || ''),
+                    };
+                    localStorage.setItem('autho_wallet', JSON.stringify(merged));
+                } catch {}
+
+                await refreshApplyBlock();
+            } catch (e) {
+                show('loginError', 'Network error: ' + (e?.message || String(e)));
+            }
+        }
+
+        async function registerNewUser() {
+            show('regError', '');
+            show('regSuccess', '');
+
+            const username = String(document.getElementById('regUsername').value || '').trim();
+            const email = String(document.getElementById('regEmail').value || '').trim();
+            const password = String(document.getElementById('regPassword').value || '');
+
+            let wallet = {};
+            try { wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}'); } catch {}
+            const bitcoinAddress = String(wallet.paymentAddress || wallet.address || '').trim();
+            const publicKey = String(wallet.publicKey || '').trim();
+
+            let walletVault;
+            try {
+                const vaultStr = localStorage.getItem('autho_wallet_vault');
+                if (vaultStr) walletVault = JSON.parse(vaultStr);
+            } catch {}
+
+            if (!username || !email || !password) {
+                show('regError', 'Username, email, and password are required');
+                return;
+            }
+
+            if (!bitcoinAddress || !publicKey || !walletVault) {
+                show('regError', 'Please create or import your wallet first at /m/wallet, then come back here.');
+                return;
+            }
+
+            if (password.length < 8) {
+                show('regError', 'Password must be at least 8 characters');
+                return;
+            }
+
+            try {
+                const r = await fetch('/api/users/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        email,
+                        bitcoinAddress,
+                        publicKey,
+                        password,
+                        role: 'buyer',
+                        walletVault,
+                    })
+                });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || !data) {
+                    show('regError', data?.error || 'Registration failed');
+                    return;
+                }
+
+                show('regSuccess', '✅ Account created! Now sign in above to apply for operator admission.');
+
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regEmail').value = '';
+                document.getElementById('regPassword').value = '';
+
+                document.getElementById('loginEmail').value = email;
+            } catch (e) {
+                show('regError', 'Network error: ' + (e?.message || String(e)));
+            }
+        }
+
+        (async () => {
+            try { await refreshApplyBlock(); } catch {}
+        })();
+    </script>
+</body>
+</html>
