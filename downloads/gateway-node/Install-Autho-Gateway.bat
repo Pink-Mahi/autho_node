@@ -54,6 +54,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 powershell -Command "& {$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://autho.pinkmahi.com/downloads/gateway-node/package.json' -OutFile '%INSTALL_DIR%\package.json' -UseBasicParsing}"
+powershell -Command "& {$ProgressPreference='SilentlyContinue'; if (!(Test-Path '%INSTALL_DIR%\gateway.env')) { Invoke-WebRequest -Uri 'https://autho.pinkmahi.com/downloads/gateway-node/gateway.env' -OutFile '%INSTALL_DIR%\gateway.env' -UseBasicParsing }}"
 echo  [OK] Files downloaded
 
 :: Install npm dependencies

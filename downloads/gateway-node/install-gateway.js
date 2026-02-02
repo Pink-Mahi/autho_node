@@ -39,6 +39,7 @@ if (!fs.existsSync(installDir)) {
 // Copy files
 const filesToCopy = [
   'gateway-package.js',
+  'gateway.env',
   'package.json',
   'README.md'
 ];

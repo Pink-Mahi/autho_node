@@ -13,6 +13,31 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+function loadGatewayEnvFile() {
+  try {
+    const envPath = path.join(__dirname, 'gateway.env');
+    if (!fs.existsSync(envPath)) return;
+    const raw = fs.readFileSync(envPath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const idx = trimmed.indexOf('=');
+      if (idx <= 0) continue;
+      const key = trimmed.slice(0, idx).trim();
+      let value = trimmed.slice(idx + 1).trim();
+      if (!key) continue;
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    }
+  } catch (e) {}
+}
+
+loadGatewayEnvFile();
+
 const UI_CACHE_TTL_MS = (() => {
   const n = Number(process.env.AUTHO_UI_CACHE_TTL_MS);
   return Number.isFinite(n) && n >= 0 ? n : (5 * 60 * 1000);
@@ -2604,6 +2629,10 @@ class GatewayNode {
    */
   async tryCloudflaredTunnel() {
     const { spawn, execSync } = require('child_process');
+
+    const tunnelMode = String(process.env.GATEWAY_TUNNEL_MODE || process.env.AUTHO_GATEWAY_TUNNEL_MODE || 'quick').trim().toLowerCase();
+    const cloudflaredToken = String(process.env.CLOUDFLARED_TOKEN || process.env.AUTHO_CLOUDFLARED_TOKEN || '').trim();
+    const configuredPublicUrl = String(process.env.GATEWAY_PUBLIC_URL || process.env.AUTHO_GATEWAY_PUBLIC_URL || '').trim();
     
     // Kill any existing cloudflared process to avoid conflicts
     if (this.tunnelProcess) {
@@ -2648,6 +2677,17 @@ class GatewayNode {
       console.log('⚠️ cloudflared not installed');
       return false;
     }
+
+    if (tunnelMode !== 'quick') {
+      if (!cloudflaredToken) {
+        console.log('⚠️ Missing CLOUDFLARED_TOKEN for stable tunnel mode');
+        return false;
+      }
+      if (!configuredPublicUrl) {
+        console.log('⚠️ Missing GATEWAY_PUBLIC_URL for stable tunnel mode');
+        return false;
+      }
+    }
     
     // Clear any stale URL before starting a new tunnel attempt
     this.publicAccessUrl = null;
@@ -2655,9 +2695,12 @@ class GatewayNode {
     this.publicAccessMethod = null;
 
     return new Promise((resolve) => {
-      // Start cloudflared tunnel (no account needed for quick tunnels)
+      const args = tunnelMode === 'quick'
+        ? ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`]
+        : ['tunnel', 'run', '--token', cloudflaredToken];
+
       // Use shell:false to avoid security warnings and subprocess issues
-      this.tunnelProcess = spawn(cloudflaredPath, ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`], { 
+      this.tunnelProcess = spawn(cloudflaredPath, args, { 
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
@@ -2690,7 +2733,9 @@ class GatewayNode {
                 await resolver.resolve6(host);
               }
               try {
-                const resp = await fetch(`${url}/health`, { method: 'GET' });
+                const hasTimeoutSignal = globalThis.AbortSignal && typeof AbortSignal.timeout === 'function';
+                const signal = hasTimeoutSignal ? AbortSignal.timeout(5000) : undefined;
+                const resp = await fetch(`${url}/health`, { method: 'GET', signal });
                 if (resp && resp.ok) return true;
               } catch (e) {}
               return true;
@@ -2706,6 +2751,42 @@ class GatewayNode {
       let verifying = false;
       const handleOutput = (data) => {
         const output = data.toString();
+
+        if (tunnelMode !== 'quick') {
+          if (!resolved && /Registered tunnel connection/i.test(output)) {
+            if (verifying) return;
+            verifying = true;
+            Promise.resolve().then(async () => {
+              const ready = await waitForTunnelUrlReady(configuredPublicUrl);
+              if (!ready) {
+                console.log(`⚠️ Tunnel URL not reachable yet, still waiting... (${configuredPublicUrl})`);
+                return;
+              }
+
+              this.publicAccessEnabled = true;
+              this.publicAccessUrl = configuredPublicUrl;
+              this.publicAccessMethod = 'cloudflare_named';
+
+              this.logConnectionEvent('public_access_enabled', { method: 'cloudflare_named', url: this.publicAccessUrl });
+              console.log(`✅ Cloudflare Tunnel established!`);
+              console.log(`   Public URL: ${this.publicAccessUrl}`);
+              console.log(`   (No password required - direct access)`);
+
+              // Open browser with the public URL
+              this.openBrowserWithUrl(this.publicAccessUrl);
+
+              // Register this gateway URL with the seed ledger for peer discovery
+              this.registerPublicGatewayToLedger();
+
+              resolved = true;
+              clearTimeout(urlTimeout);
+              resolve(true);
+            }).finally(() => {
+              verifying = false;
+            });
+          }
+          return;
+        }
         // Look for the tunnel URL in output
         const urlMatch = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
         if (!urlMatch) return;
@@ -2751,7 +2832,7 @@ class GatewayNode {
       this.tunnelProcess.stderr.on('data', handleOutput);
       
       this.tunnelProcess.on('close', (code) => {
-        if (this.publicAccessEnabled && this.publicAccessMethod === 'cloudflare') {
+        if (this.publicAccessEnabled && (this.publicAccessMethod === 'cloudflare' || this.publicAccessMethod === 'cloudflare_named')) {
           console.log('⚠️ Cloudflare Tunnel closed, attempting to reconnect...');
           this.publicAccessEnabled = false;
           this.publicAccessUrl = null;

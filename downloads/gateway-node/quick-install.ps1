@@ -42,6 +42,10 @@ try {
     
     Invoke-WebRequest -Uri "$baseUrl/gateway-package.js?v=$cacheBust" -Headers $headers -OutFile "$installDir\gateway-package.js" -UseBasicParsing
     Invoke-WebRequest -Uri "$baseUrl/package.json?v=$cacheBust" -Headers $headers -OutFile "$installDir\package.json" -UseBasicParsing
+
+    if (-not (Test-Path "$installDir\gateway.env")) {
+        Invoke-WebRequest -Uri "$baseUrl/gateway.env?v=$cacheBust" -Headers $headers -OutFile "$installDir\gateway.env" -UseBasicParsing
+    }
     
     Write-Host "✅ Files downloaded" -ForegroundColor Green
 } catch {

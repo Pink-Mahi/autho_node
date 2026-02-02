@@ -45,6 +45,15 @@ node dist/gateway/gateway-node.js --mode=gateway --port=3001 --seed=autho.pinkma
 
 ## ⚙️ Configuration
 
+### **Easy Configuration (Recommended)**
+
+The gateway package supports a simple editable config file:
+
+- `gateway.env` (in the same folder as `gateway-package.js`)
+
+If `gateway.env` exists, the gateway loads it automatically on startup.
+This is the easiest way for non-technical users to set options without editing shortcuts or using the command line.
+
 ### **Basic Setup**
 ```bash
 node dist/gateway/gateway-node.js \
@@ -169,6 +178,37 @@ GATEWAY_PUBLIC_URL=https://your-gateway-domain.com
 
 # Run the gateway
 node gateway-package.js
+```
+
+### **Public URL Modes**
+
+#### **Mode 1: Quick Tunnel (default, easiest, random URL)**
+
+This mode uses Cloudflare's quick tunnel and prints a random `https://<random>.trycloudflare.com` URL.
+This URL is not guaranteed to stay the same after restarts.
+
+Use:
+
+```bash
+GATEWAY_TUNNEL_MODE=quick
+```
+
+#### **Mode 2: Stable URL (Cloudflare Named Tunnel + Custom Hostname)**
+
+If you want a public URL that stays the same across restarts, use a Cloudflare named tunnel.
+
+You must:
+
+1. Create a tunnel in Cloudflare Zero Trust
+2. Configure a Public Hostname (example: `https://mygateway.mydomain.com`) pointing to `http://localhost:3001`
+3. Copy the tunnel token
+
+Then set:
+
+```bash
+GATEWAY_TUNNEL_MODE=cloudflare_named
+GATEWAY_PUBLIC_URL=https://mygateway.mydomain.com
+CLOUDFLARED_TOKEN=your_token_here
 ```
 
 ### **What Public Gateways Do**
