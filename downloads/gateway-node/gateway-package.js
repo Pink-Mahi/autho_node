@@ -1272,9 +1272,20 @@ class GatewayNode {
             continue;
           }
 
-          const buf = Buffer.from(await resp.arrayBuffer());
-          fs.writeFileSync(filePath, buf);
+          let buf = Buffer.from(await resp.arrayBuffer());
           const contentType = resp.headers.get('content-type');
+          
+          // Inject gateway dashboard link into HTML pages
+          if (contentType && contentType.includes('text/html')) {
+            let html = buf.toString('utf8');
+            const gatewayBanner = `<div id="gw-banner" style="position:fixed;bottom:10px;right:10px;z-index:99999;background:linear-gradient(135deg,#667eea,#764ba2);padding:8px 16px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;font-size:13px;"><a href="/gateway-dashboard" style="color:#fff;text-decoration:none;display:flex;align-items:center;gap:6px;">⚡ Gateway Dashboard</a></div>`;
+            if (html.includes('</body>')) {
+              html = html.replace('</body>', gatewayBanner + '</body>');
+              buf = Buffer.from(html, 'utf8');
+            }
+          }
+          
+          fs.writeFileSync(filePath, buf);
           if (contentType) {
             res.setHeader('content-type', contentType);
           }
