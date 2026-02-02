@@ -2818,47 +2818,32 @@ class GatewayNode {
       let lastWaitLogAt = 0;
 
       const verifyCandidateUrl = (url) => {
-        if (verifying) return;
+        if (verifying || resolved) return;
         verifying = true;
         candidateUrl = url;
 
-        Promise.resolve().then(async () => {
-          const startedAt = Date.now();
-          while (!resolved && Date.now() - startedAt < (overallTimeoutMs - 15000)) {
-            const ok = await checkTunnelUrlOnce(url);
-            if (ok) {
-              this.publicAccessEnabled = true;
-              this.publicAccessUrl = url;
-              this.publicAccessMethod = tunnelMode === 'quick' ? 'cloudflare' : 'cloudflare_named';
+        // Trust the URL immediately when cloudflared allocates it
+        // Health checks from local network may fail if router blocks trycloudflare.com
+        // but the tunnel works fine from outside (tested by user on mobile off-wifi)
+        this.publicAccessEnabled = true;
+        this.publicAccessUrl = url;
+        this.publicAccessMethod = tunnelMode === 'quick' ? 'cloudflare' : 'cloudflare_named';
 
-              this.logConnectionEvent('public_access_enabled', { method: this.publicAccessMethod, url: this.publicAccessUrl });
-              console.log(`✅ Cloudflare Tunnel established!`);
-              console.log(`   Public URL: ${this.publicAccessUrl}`);
-              console.log(`   (No password required - direct access)`);
+        this.logConnectionEvent('public_access_enabled', { method: this.publicAccessMethod, url: this.publicAccessUrl });
+        console.log(`✅ Cloudflare Tunnel established!`);
+        console.log(`   Public URL: ${this.publicAccessUrl}`);
+        console.log(`   (No password required - direct access)`);
 
-              // Open browser with the public URL
-              this.openBrowserWithUrl(this.publicAccessUrl);
+        // Open browser with the public URL
+        this.openBrowserWithUrl(this.publicAccessUrl);
 
-              // Register this gateway URL with the seed ledger for peer discovery
-              this.registerPublicGatewayToLedger();
+        // Register this gateway URL with the seed ledger for peer discovery
+        this.registerPublicGatewayToLedger();
 
-              resolved = true;
-              clearTimeout(urlTimeout);
-              resolve(true);
-              return;
-            }
-
-            const now = Date.now();
-            if (now - lastWaitLogAt > 15000) {
-              lastWaitLogAt = now;
-              console.log(`⏳ Tunnel URL allocated, waiting for it to become reachable... (${url})`);
-            }
-
-            await new Promise(r => setTimeout(r, 2000));
-          }
-        }).finally(() => {
-          verifying = false;
-        });
+        resolved = true;
+        clearTimeout(urlTimeout);
+        resolve(true);
+        verifying = false;
       };
 
       const handleOutput = (data) => {
