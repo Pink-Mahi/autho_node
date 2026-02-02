@@ -3072,12 +3072,28 @@ class GatewayNode {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+      font-family: 'Georgia', 'Times New Roman', serif;
+      background: linear-gradient(180deg, #0d0d0d 0%, #1a1a1a 50%, #0a0a0a 100%);
       color: #fff;
       min-height: 100vh;
       padding: 20px;
     }
+    .back-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: linear-gradient(135deg, #d4af37, #b8962e);
+      color: #0d0d0d;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      border: 1px solid #d4af37;
+      transition: all 0.2s;
+      z-index: 1000;
+    }
+    .back-btn:hover { transform: scale(1.05); box-shadow: 0 4px 15px rgba(212,175,55,0.4); }
     .header {
       text-align: center;
       padding: 30px 20px;
@@ -3086,10 +3102,10 @@ class GatewayNode {
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 10px; }
+    .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 10px; letter-spacing: 3px; }
     .header p { font-size: 1.1rem; opacity: 0.9; color: #d4af37; }
     .main-qr {
-      background: linear-gradient(145deg, #1e1e3f, #252550);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
       border: 2px solid #d4af37;
       border-radius: 20px;
       padding: 30px;
@@ -3147,7 +3163,7 @@ class GatewayNode {
       padding: 0 20px;
     }
     .qr-card {
-      background: linear-gradient(145deg, #1e1e3f, #252550);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
       border: 1px solid rgba(212, 175, 55, 0.3);
       border-radius: 15px;
       padding: 20px;
@@ -3156,7 +3172,8 @@ class GatewayNode {
     }
     .qr-card:hover {
       transform: translateY(-5px);
-      box-shadow: 0 10px 30px rgba(212, 175, 55, 0.15);
+      box-shadow: 0 10px 30px rgba(212, 175, 55, 0.25);
+      border-color: #d4af37;
     }
     .qr-card h3 {
       color: #d4af37;
@@ -3215,6 +3232,7 @@ class GatewayNode {
   </style>
 </head>
 <body>
+  <a href="/" class="back-btn">← Back to Dashboard</a>
   <div class="header">
     <h1>⚡ AUTHO GATEWAY</h1>
     <p>Scan to Connect to the Decentralized Network</p>
