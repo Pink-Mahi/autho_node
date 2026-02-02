@@ -2618,9 +2618,14 @@ class GatewayNode {
     }
     
     console.log('⚠️ No tunnel service available.');
-    console.log('   For seamless public access, install cloudflared:');
-    console.log('   Windows: winget install cloudflare.cloudflared');
-    console.log('   Or download from: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/');
+    if (this.lastTunnelError === 'cloudflared_missing') {
+      console.log('   For seamless public access, install cloudflared:');
+      console.log('   Windows: winget install cloudflare.cloudflared');
+      console.log('   Or download from: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/');
+    } else if (this.lastTunnelError === 'cloudflared_timeout') {
+      console.log('   cloudflared started but the public URL did not become reachable in time.');
+      console.log('   This is usually a transient Cloudflare edge/DNS propagation delay. Try again or wait a few minutes.');
+    }
     return false;
   }
 
@@ -2675,6 +2680,7 @@ class GatewayNode {
       execSync(`"${cloudflaredPath}" --version`, { stdio: 'ignore', timeout: 3000 });
     } catch (e) {
       console.log('⚠️ cloudflared not installed');
+      this.lastTunnelError = 'cloudflared_missing';
       return false;
     }
 
@@ -2694,6 +2700,8 @@ class GatewayNode {
     this.publicAccessEnabled = false;
     this.publicAccessMethod = null;
 
+    this.lastTunnelError = null;
+
     return new Promise((resolve) => {
       const args = tunnelMode === 'quick'
         ? ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`]
@@ -2707,67 +2715,64 @@ class GatewayNode {
       });
       
       let resolved = false;
+      const overallTimeoutMs = 600000;
       const urlTimeout = setTimeout(() => {
         if (!resolved) {
           console.log('⚠️ Cloudflare Tunnel timeout');
+          this.lastTunnelError = 'cloudflared_timeout';
           this.tunnelProcess?.kill();
           resolve(false);
         }
-      }, 240000);
+      }, overallTimeoutMs);
       
-      const waitForTunnelUrlReady = async (url) => {
+      const checkTunnelUrlOnce = async (url) => {
         try {
           const dnsMod = require('dns');
           const resolver = new dnsMod.Resolver();
           resolver.setServers(['1.1.1.1', '1.0.0.1']);
           const host = new URL(url).hostname;
-          const startedAt = Date.now();
 
-          while (Date.now() - startedAt < 180000) {
+          const hasTimeoutSignal = globalThis.AbortSignal && typeof AbortSignal.timeout === 'function';
+          const signal = hasTimeoutSignal ? AbortSignal.timeout(5000) : undefined;
+          try {
+            await resolver.resolve4(host);
+          } catch (e4) {
             try {
-              // Some environments may return AAAA records before A.
-              // Treat DNS as ready if either resolves.
-              try {
-                await resolver.resolve4(host);
-              } catch (e4) {
-                await resolver.resolve6(host);
-              }
-              try {
-                const hasTimeoutSignal = globalThis.AbortSignal && typeof AbortSignal.timeout === 'function';
-                const signal = hasTimeoutSignal ? AbortSignal.timeout(5000) : undefined;
-                const resp = await fetch(`${url}/health`, { method: 'GET', signal });
-                if (resp && resp.ok) return true;
-              } catch (e) {}
-              return true;
-            } catch (e) {}
-
-            await new Promise(r => setTimeout(r, 2000));
+              await resolver.resolve6(host);
+            } catch (e6) {}
           }
+          try {
+            const resp = await fetch(`${url}/health`, { method: 'GET', signal });
+            if (resp && resp.ok) return true;
+          } catch (e) {}
+          try {
+            const resp = await fetch(`${url}/`, { method: 'GET', signal });
+            if (resp && resp.ok) return true;
+          } catch (e) {}
         } catch (e) {}
 
         return false;
       };
 
       let verifying = false;
-      const handleOutput = (data) => {
-        const output = data.toString();
+      let candidateUrl = null;
+      let lastWaitLogAt = 0;
 
-        if (tunnelMode !== 'quick') {
-          if (!resolved && /Registered tunnel connection/i.test(output)) {
-            if (verifying) return;
-            verifying = true;
-            Promise.resolve().then(async () => {
-              const ready = await waitForTunnelUrlReady(configuredPublicUrl);
-              if (!ready) {
-                console.log(`⚠️ Tunnel URL not reachable yet, still waiting... (${configuredPublicUrl})`);
-                return;
-              }
+      const verifyCandidateUrl = (url) => {
+        if (verifying) return;
+        verifying = true;
+        candidateUrl = url;
 
+        Promise.resolve().then(async () => {
+          const startedAt = Date.now();
+          while (!resolved && Date.now() - startedAt < (overallTimeoutMs - 15000)) {
+            const ok = await checkTunnelUrlOnce(url);
+            if (ok) {
               this.publicAccessEnabled = true;
-              this.publicAccessUrl = configuredPublicUrl;
-              this.publicAccessMethod = 'cloudflare_named';
+              this.publicAccessUrl = url;
+              this.publicAccessMethod = tunnelMode === 'quick' ? 'cloudflare' : 'cloudflare_named';
 
-              this.logConnectionEvent('public_access_enabled', { method: 'cloudflare_named', url: this.publicAccessUrl });
+              this.logConnectionEvent('public_access_enabled', { method: this.publicAccessMethod, url: this.publicAccessUrl });
               console.log(`✅ Cloudflare Tunnel established!`);
               console.log(`   Public URL: ${this.publicAccessUrl}`);
               console.log(`   (No password required - direct access)`);
@@ -2781,9 +2786,29 @@ class GatewayNode {
               resolved = true;
               clearTimeout(urlTimeout);
               resolve(true);
-            }).finally(() => {
-              verifying = false;
-            });
+              return;
+            }
+
+            const now = Date.now();
+            if (now - lastWaitLogAt > 15000) {
+              lastWaitLogAt = now;
+              console.log(`⏳ Tunnel URL allocated, waiting for it to become reachable... (${url})`);
+            }
+
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }).finally(() => {
+          verifying = false;
+        });
+      };
+
+      const handleOutput = (data) => {
+        const output = data.toString();
+
+        if (tunnelMode !== 'quick') {
+          if (!resolved && /Registered tunnel connection/i.test(output)) {
+            if (candidateUrl === configuredPublicUrl) return;
+            verifyCandidateUrl(configuredPublicUrl);
           }
           return;
         }
@@ -2792,40 +2817,8 @@ class GatewayNode {
         if (!urlMatch) return;
 
         const newUrl = urlMatch[0];
-        if (verifying) return;
-        if (newUrl === this.publicAccessUrl) return;
-
-        verifying = true;
-        Promise.resolve().then(async () => {
-          const ready = await waitForTunnelUrlReady(newUrl);
-          if (!ready) {
-            console.log(`⚠️ Tunnel URL not reachable yet, waiting for another... (${newUrl})`);
-            return;
-          }
-
-          this.publicAccessEnabled = true;
-          this.publicAccessUrl = newUrl;
-          this.publicAccessMethod = 'cloudflare';
-
-          this.logConnectionEvent('public_access_enabled', { method: 'cloudflare', url: this.publicAccessUrl });
-          console.log(`✅ Cloudflare Tunnel established!`);
-          console.log(`   Public URL: ${this.publicAccessUrl}`);
-          console.log(`   (No password required - direct access)`);
-
-          // Open browser with the public URL
-          this.openBrowserWithUrl(this.publicAccessUrl);
-
-          // Register this gateway URL with the seed ledger for peer discovery
-          this.registerPublicGatewayToLedger();
-
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(urlTimeout);
-            resolve(true);
-          }
-        }).finally(() => {
-          verifying = false;
-        });
+        if (candidateUrl === newUrl) return;
+        verifyCandidateUrl(newUrl);
       };
       
       this.tunnelProcess.stdout.on('data', handleOutput);
@@ -2859,7 +2852,7 @@ class GatewayNode {
     
     try {
       // Check if ngrok is installed
-      const checkProcess = spawn('ngrok', ['--version'], { shell: true });
+      const checkProcess = spawn('ngrok', ['--version'], { shell: false, windowsHide: true });
       await new Promise((resolve, reject) => {
         checkProcess.on('close', code => code === 0 ? resolve() : reject(new Error('not installed')));
         checkProcess.on('error', reject);
@@ -2872,7 +2865,8 @@ class GatewayNode {
     
     return new Promise((resolve) => {
       this.tunnelProcess = spawn('ngrok', ['http', EFFECTIVE_HTTP_PORT.toString()], { 
-        shell: true,
+        shell: false,
+        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       });
       
