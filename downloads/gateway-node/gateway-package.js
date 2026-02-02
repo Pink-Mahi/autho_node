@@ -1891,6 +1891,50 @@ class GatewayNode {
       }
     });
 
+    // QR Code Dashboard - for retail display scenarios
+    this.app.get('/api/gateway/qr-data', async (req, res) => {
+      try {
+        // Refresh peer gateways if stale
+        await this.discoverGateways();
+        
+        const publicStatus = this.getPublicAccessStatus();
+        const operators = this.operatorUrls.map(url => ({
+          url,
+          name: new URL(url).hostname,
+          type: 'operator'
+        }));
+        
+        const peerGateways = (this.discoveredGateways || []).map(gw => ({
+          url: gw.publicUrl,
+          name: gw.gatewayId,
+          type: 'gateway',
+          method: gw.method
+        })).filter(g => g.url);
+        
+        res.json({
+          success: true,
+          gateway: {
+            id: this.gatewayId,
+            publicUrl: publicStatus.url,
+            enabled: publicStatus.enabled,
+            method: publicStatus.method,
+            localUrl: `http://localhost:${EFFECTIVE_HTTP_PORT}`
+          },
+          operators,
+          peerGateways,
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // QR Code Dashboard HTML page - self-contained with inline QR generation
+    this.app.get('/gateway-dashboard', (req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.send(this.generateQrDashboardHtml());
+    });
+
     // Registry endpoints
     this.app.get('/api/registry/state', (req, res) => {
       const cacheKey = 'registry_state';
@@ -2942,6 +2986,288 @@ class GatewayNode {
       httpPort: EFFECTIVE_HTTP_PORT,
       wsPort: EFFECTIVE_WS_PORT,
     };
+  }
+
+  /**
+   * Generate QR Code Dashboard HTML - self-contained page for retail display
+   * Shows gateway's public URL QR code + active operator QR codes
+   */
+  generateQrDashboardHtml() {
+    const publicStatus = this.getPublicAccessStatus();
+    const operators = this.operatorUrls || [];
+    const peerGateways = this.discoveredGateways || [];
+    
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="60">
+  <title>Autho Gateway - QR Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .header {
+      text-align: center;
+      padding: 30px 20px;
+      background: linear-gradient(90deg, #d4af37, #f4d03f, #d4af37);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 10px; }
+    .header p { font-size: 1.1rem; opacity: 0.9; color: #d4af37; }
+    .main-qr {
+      background: linear-gradient(145deg, #1e1e3f, #252550);
+      border: 2px solid #d4af37;
+      border-radius: 20px;
+      padding: 30px;
+      margin: 30px auto;
+      max-width: 500px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(212, 175, 55, 0.2);
+    }
+    .main-qr h2 {
+      color: #d4af37;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+    .main-qr .qr-container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 15px;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+    .main-qr .url {
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #aaa;
+      word-break: break-all;
+      padding: 10px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    .status-badge.online { background: #27ae60; }
+    .status-badge.offline { background: #e74c3c; }
+    .status-badge.pending { background: #f39c12; }
+    .section-title {
+      color: #d4af37;
+      font-size: 1.3rem;
+      text-align: center;
+      margin: 40px 0 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    }
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    .qr-card {
+      background: linear-gradient(145deg, #1e1e3f, #252550);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 15px;
+      padding: 20px;
+      text-align: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .qr-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(212, 175, 55, 0.15);
+    }
+    .qr-card h3 {
+      color: #d4af37;
+      font-size: 0.9rem;
+      margin-bottom: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .qr-card .qr-container {
+      background: #fff;
+      padding: 10px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+    .qr-card .type-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      margin-top: 10px;
+      text-transform: uppercase;
+    }
+    .type-badge.operator { background: #3498db; }
+    .type-badge.gateway { background: #9b59b6; }
+    .footer {
+      text-align: center;
+      padding: 30px;
+      color: #666;
+      font-size: 0.85rem;
+    }
+    .no-public {
+      text-align: center;
+      padding: 40px;
+      color: #f39c12;
+    }
+    .no-public p { margin-bottom: 20px; }
+    .enable-btn {
+      background: linear-gradient(90deg, #d4af37, #f4d03f);
+      color: #1a1a2e;
+      border: none;
+      padding: 15px 30px;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 25px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .enable-btn:hover { transform: scale(1.05); }
+    .refresh-note {
+      text-align: center;
+      color: #666;
+      font-size: 0.8rem;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>⚡ AUTHO GATEWAY</h1>
+    <p>Scan to Connect to the Decentralized Network</p>
+  </div>
+
+  <div id="main-section">
+    ${publicStatus.enabled && publicStatus.url ? `
+      <div class="main-qr">
+        <span class="status-badge online">● PUBLIC ACCESS ENABLED</span>
+        <h2>📱 Scan to Access This Gateway</h2>
+        <div class="qr-container">
+          <canvas id="main-qr-canvas"></canvas>
+        </div>
+        <div class="url">${publicStatus.url}</div>
+        <p class="refresh-note">Page auto-refreshes every 60 seconds</p>
+      </div>
+    ` : `
+      <div class="no-public">
+        <span class="status-badge pending">● PUBLIC ACCESS PENDING</span>
+        <p>Public tunnel is being established...</p>
+        <p style="font-size: 0.9rem; color: #888;">
+          Local access: <a href="http://localhost:${EFFECTIVE_HTTP_PORT}" style="color: #d4af37;">http://localhost:${EFFECTIVE_HTTP_PORT}</a>
+        </p>
+        <button class="enable-btn" onclick="enablePublic()">Enable Public Access</button>
+      </div>
+    `}
+  </div>
+
+  <h2 class="section-title">🌐 Active Autho Operators</h2>
+  <div class="qr-grid" id="operators-grid"></div>
+
+  ${peerGateways.length > 0 ? `
+    <h2 class="section-title">🔗 Peer Gateways</h2>
+    <div class="qr-grid" id="gateways-grid"></div>
+  ` : ''}
+
+  <div class="footer">
+    <p>Gateway ID: ${this.gatewayId}</p>
+    <p>Powered by Autho Protocol • Decentralized Ownership Verification</p>
+  </div>
+
+  <script>
+    const operators = ${JSON.stringify(operators)};
+    const peerGateways = ${JSON.stringify(peerGateways.filter(g => g.publicUrl).map(g => ({ url: g.publicUrl, name: g.gatewayId })))};
+    const mainUrl = ${JSON.stringify(publicStatus.url || '')};
+
+    async function generateQR(canvas, url, size = 200) {
+      try {
+        await QRCode.toCanvas(canvas, url, {
+          width: size,
+          margin: 2,
+          color: { dark: '#1a1a2e', light: '#ffffff' }
+        });
+      } catch (err) {
+        console.error('QR generation error:', err);
+      }
+    }
+
+    function createQrCard(name, url, type) {
+      const card = document.createElement('div');
+      card.className = 'qr-card';
+      card.innerHTML = \`
+        <h3>\${name}</h3>
+        <div class="qr-container">
+          <canvas class="qr-canvas"></canvas>
+        </div>
+        <span class="type-badge \${type}">\${type}</span>
+      \`;
+      const canvas = card.querySelector('.qr-canvas');
+      generateQR(canvas, url, 150);
+      return card;
+    }
+
+    async function enablePublic() {
+      try {
+        const resp = await fetch('/api/public-access/enable', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+          location.reload();
+        } else {
+          alert('Failed to enable public access: ' + (data.error || 'Unknown error'));
+        }
+      } catch (e) {
+        alert('Error: ' + e.message);
+      }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      // Main QR
+      if (mainUrl) {
+        const mainCanvas = document.getElementById('main-qr-canvas');
+        if (mainCanvas) generateQR(mainCanvas, mainUrl, 250);
+      }
+
+      // Operator QRs
+      const opGrid = document.getElementById('operators-grid');
+      operators.forEach(url => {
+        try {
+          const hostname = new URL(url).hostname;
+          opGrid.appendChild(createQrCard(hostname, url, 'operator'));
+        } catch (e) {}
+      });
+
+      // Peer Gateway QRs
+      const gwGrid = document.getElementById('gateways-grid');
+      if (gwGrid) {
+        peerGateways.forEach(gw => {
+          if (gw.url) {
+            gwGrid.appendChild(createQrCard(gw.name || 'Gateway', gw.url, 'gateway'));
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>`;
   }
 
   /**
