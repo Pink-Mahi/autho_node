@@ -2499,6 +2499,17 @@ class GatewayNode {
    * This allows home users behind NAT to make their gateway publicly accessible
    */
   async enablePublicAccess() {
+    // Guard against concurrent tunnel attempts
+    if (this._enablingPublicAccess) {
+      console.log('⏳ Public access enable already in progress, skipping duplicate call');
+      return false;
+    }
+    // If tunnel is already running and healthy, skip
+    if (this.publicAccessEnabled && this.publicAccessUrl && this.tunnelProcess && !this.tunnelProcess.killed) {
+      console.log(`✅ Public access already enabled: ${this.publicAccessUrl}`);
+      return true;
+    }
+    this._enablingPublicAccess = true;
     console.log('🌍 Attempting to enable public access...');
     
     // Get public IP first for logging/reference
@@ -2509,16 +2520,19 @@ class GatewayNode {
     
     // Method 1: Check if already publicly accessible (manual port forward or direct IP)
     if (await this.checkDirectPublicAccess()) {
+      this._enablingPublicAccess = false;
       return true;
     }
     
     // Method 2: Try UPnP port forwarding (works on most home routers)
     if (await this.tryUpnpPortForward()) {
+      this._enablingPublicAccess = false;
       return true;
     }
     
     // Method 3: Try tunnel service (localtunnel, works everywhere)
     if (await this.tryTunnelService()) {
+      this._enablingPublicAccess = false;
       return true;
     }
     
@@ -2528,6 +2542,7 @@ class GatewayNode {
     console.log('   2. Use a reverse proxy like Cloudflare Tunnel or ngrok');
     console.log('   3. Set GATEWAY_PUBLIC_URL manually if you have a domain');
     
+    this._enablingPublicAccess = false;
     return false;
   }
 
