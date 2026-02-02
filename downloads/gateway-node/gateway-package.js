@@ -2066,6 +2066,48 @@ class GatewayNode {
       });
     });
 
+    // Page route aliases (same as operator node for consistent experience)
+    const publicDir = path.join(__dirname, 'public');
+    const sendPublicFile = (filename) => (req, res, next) => {
+      const fp = path.join(publicDir, filename);
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      next();
+    };
+
+    this.app.get('/', sendPublicFile('landing.html'));
+    this.app.get('/join', sendPublicFile('join.html'));
+    this.app.get('/how-it-works', sendPublicFile('how-it-works.html'));
+    this.app.get('/buy', sendPublicFile('buy.html'));
+    this.app.get('/setup', sendPublicFile('setup-wizard.html'));
+    this.app.get('/manufacturer', sendPublicFile('manufacturer-dashboard.html'));
+    this.app.get('/authenticator', sendPublicFile('authenticator-dashboard.html'));
+    this.app.get('/retailer', sendPublicFile('retailer-dashboard.html'));
+    this.app.get('/dashboard', sendPublicFile('dashboard.html'));
+    this.app.get('/operator', sendPublicFile('operator-portal.html'));
+    this.app.get('/operator/dashboard', sendPublicFile('operator-dashboard.html'));
+    this.app.get('/operator/apply', sendPublicFile('operator-apply.html'));
+    this.app.get('/operator/setup', sendPublicFile('operator-setup.html'));
+    this.app.get('/operator/restore', sendPublicFile('operator-restore.html'));
+    this.app.get(['/customer/login', '/customer/login/'], sendPublicFile('customer/login.html'));
+    this.app.get(['/customer/signup', '/customer/signup/'], sendPublicFile('customer/signup.html'));
+    this.app.get('/m', sendPublicFile('mobile-entry.html'));
+    this.app.get('/mobile', sendPublicFile('mobile-entry.html'));
+    this.app.get('/mobile/login', sendPublicFile('mobile-login.html'));
+    this.app.get('/mobile/wallet', sendPublicFile('mobile-wallet.html'));
+    this.app.get('/mobile/verify', sendPublicFile('mobile-verify.html'));
+    this.app.get('/mobile/items', sendPublicFile('mobile-items.html'));
+    this.app.get('/mobile/register', sendPublicFile('mobile-register-item.html'));
+    this.app.get('/mobile/search', sendPublicFile('mobile-search.html'));
+    this.app.get('/mobile/offers', sendPublicFile('mobile-offers.html'));
+    this.app.get('/mobile/messages', sendPublicFile('mobile-messages.html'));
+    this.app.get('/mobile/history', sendPublicFile('mobile-history.html'));
+    this.app.get('/mobile/consign', sendPublicFile('mobile-consign.html'));
+    this.app.get('/admin/login', sendPublicFile('admin-login.html'));
+    this.app.get('/mempool', sendPublicFile('mempool.html'));
+    this.app.get('/token', sendPublicFile('token-dashboard.html'));
+    this.app.get('/install/gateway', sendPublicFile('install-gateway.html'));
+    this.app.get('/install/operator', sendPublicFile('install-operator.html'));
+
     this.app.get('*', (req, res) => {
       Promise.resolve(this.serveUi(req, res)).catch((e) => {
         console.error('❌ Gateway UI serve error:', e);
