@@ -2991,7 +2991,7 @@ class GatewayNode {
   /**
    * Generate QR Code Dashboard HTML - self-contained page for retail display
    * Shows gateway's public URL QR code + active operator QR codes
-   * Uses embedded pure JS QR generator - NO external dependencies
+   * Uses project's qr.bundle.js served from /js/qr.bundle.js
    */
   generateQrDashboardHtml() {
     const publicStatus = this.getPublicAccessStatus();
@@ -3005,6 +3005,7 @@ class GatewayNode {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="60">
   <title>Autho Gateway - QR Dashboard</title>
+  <script src="/js/qr.bundle.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -3193,37 +3194,17 @@ class GatewayNode {
   </div>
 
   <script>
-    // Minimal embedded QR Code generator - NO external dependencies
-    // Based on qr-creator (MIT license), minified and embedded
-    const QR=(()=>{const a={L:1,M:0,Q:3,H:2},b=(c,d)=>{const e=[];for(let f=0;f<c;f++)e.push([]);return e},g=(c,d,e)=>{const f=1<<e;for(let h=0;h<e;h++){c.push(d&f?1:0);d<<=1}},i=(c,d)=>{const e=c.length;for(let f=0;f<d-e;f++)c.unshift(0)},j=(c,d)=>{let e=0;for(let f=0;f<c.length;f++)e^=c[f]*d[f];return e},k=(c,d,e)=>{const f=[];for(let h=0;h<d;h++)f.push(0);f.push(...c);while(f.length>d){if(f[0]===0){f.shift();continue}const h=f.shift();for(let l=0;l<e.length;l++)f[l]^=e[l]*h}return f.slice(0,d)},m=c=>{const d=[];let e=0;for(let f=0;f<c.length;f++){const h=c.charCodeAt(f);if(h<128){d.push(h)}else if(h<2048){d.push(192|h>>6,128|h&63)}else if(h<65536){d.push(224|h>>12,128|h>>6&63,128|h&63)}else{d.push(240|h>>18,128|h>>12&63,128|h>>6&63,128|h&63)}}return d},n=[1,2,4,8,16,32,64,128,29,58,116,232,205,135,19,38,76,152,45,90,180,117,234,201,143,3,6,12,24,48,96,192,157,39,78,156,37,74,148,53,106,212,181,119,238,193,159,35,70,140,5,10,20,40,80,160,93,186,105,210,185,111,222,161,95,190,97,194,153,47,94,188,101,202,137,15,30,60,120,240,253,231,211,187,107,214,177,127,254,225,223,163,91,182,113,226,217,175,67,134,17,34,68,136,13,26,52,104,208,189,103,206,129,31,62,124,248,237,199,147,59,118,236,197,151,51,102,204,133,23,46,92,184,109,218,169,79,158,33,66,132,21,42,84,168,77,154,41,82,164,85,170,73,146,57,114,228,213,183,115,230,209,191,99,198,145,63,126,252,229,215,179,123,246,241,255,227,219,171,75,150,49,98,196,149,55,110,220,165,87,174,65,130,25,50,100,200,141,7,14,28,56,112,224,221,167,83,166,81,162,89,178,121,242,249,239,195,155,43,86,172,69,138,9,18,36,72,144,61,122,244,245,247,243,251,235,203,139,11,22,44,88,176,125,250,233,207,131,27,54,108,216,173,71,142,1],o=[0,0,25,1,50,2,26,198,75,199,27,104,51,238,223,3,100,4,224,14,52,141,129,239,76,113,8,200,248,105,28,193,125,194,29,181,249,185,39,106,77,228,166,114,154,201,9,120,101,47,138,5,33,15,225,36,18,240,130,69,53,147,218,142,150,143,219,189,54,208,206,148,19,92,210,241,64,70,131,56,102,221,253,48,191,6,139,98,179,37,226,152,34,136,145,16,126,110,72,195,163,182,30,66,58,107,40,84,250,133,61,186,43,121,10,21,155,159,94,202,78,212,172,229,243,115,167,87,175,88,168,80,244,234,214,116,79,174,233,213,231,230,173,232,44,215,117,122,235,22,11,245,89,203,95,176,156,169,81,160,127,12,246,111,23,196,73,236,216,67,31,45,164,118,123,183,204,187,62,90,251,96,177,134,59,82,161,108,170,85,41,157,151,178,135,144,97,190,220,252,188,149,207,205,55,63,91,209,83,57,132,60,65,162,109,71,20,42,158,93,86,242,211,171,68,17,146,217,35,32,46,137,180,124,184,38,119,153,227,165,103,74,237,222,197,49,254,24,13,99,140,128,192,247,112,7];const p=(c,d)=>{if(c===0||d===0)return 0;return n[(o[c]+o[d])%255]},q=(c,d)=>{const e=[1];for(let f=0;f<c;f++){const h=[1,n[f]];const l=[];for(let r=0;r<e.length+h.length-1;r++)l.push(0);for(let r=0;r<e.length;r++)for(let s=0;s<h.length;s++)l[r+s]^=p(e[r],h[s]);e.length=0;e.push(...l)}return e},t=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],u=[[7,1,19,0,0],[10,1,16,0,0],[13,1,13,0,0],[17,1,9,0,0],[10,1,34,0,0],[16,1,28,0,0],[22,1,22,0,0],[28,1,16,0,0],[15,1,55,0,0],[26,1,44,0,0],[18,2,17,0,0],[22,2,13,0,0],[20,1,80,0,0],[18,2,32,0,0],[26,2,24,0,0],[16,4,9,0,0],[26,1,108,0,0],[24,2,43,0,0],[18,2,15,2,16],[22,2,11,2,12],[18,2,68,0,0],[16,4,27,0,0],[24,4,19,0,0],[28,4,15,0,0],[20,2,78,0,0],[18,4,31,0,0],[18,2,14,4,15],[26,4,13,1,14],[24,2,97,0,0],[22,2,38,2,39],[22,4,18,2,19],[26,4,14,2,15],[30,2,116,0,0],[22,3,36,2,37],[20,4,16,4,17],[24,4,12,4,13],[18,2,68,2,69],[26,4,43,1,44],[24,6,19,2,20],[28,6,15,2,16],[20,4,81,0,0],[30,1,50,4,51],[28,4,22,4,23],[24,3,12,8,13],[24,2,92,2,93],[22,6,36,2,37],[26,4,20,6,21],[20,7,14,4,15],[26,4,107,0,0],[22,8,37,1,38],[24,8,20,4,21],[30,12,11,4,12],[18,3,115,1,116],[20,4,40,5,41],[18,11,16,5,17],[24,11,12,5,13],[20,5,87,1,88],[24,5,41,5,42],[22,5,24,7,25],[24,11,12,7,13],[24,5,98,1,99],[28,7,45,3,46],[24,15,19,2,20],[30,3,15,13,16],[26,1,107,5,108],[28,10,46,1,47],[28,1,22,15,23],[28,2,14,17,15],[28,5,120,1,121],[26,9,43,4,44],[22,17,22,1,23],[28,2,14,19,15],[30,3,113,4,114],[26,3,44,11,45],[24,17,21,4,22],[28,9,13,16,14],[28,3,107,5,108],[26,3,41,13,42],[28,15,24,5,25],[28,15,15,10,16],[28,4,116,4,117],[26,17,42,0,0],[30,17,22,6,23],[30,19,16,6,17],[28,2,111,7,112],[28,17,46,0,0],[24,7,24,16,25],[30,34,13,0,0],[30,4,121,5,122],[28,4,47,14,48],[30,11,24,14,25],[30,16,15,14,16],[30,6,117,4,118],[30,6,45,14,46],[30,11,24,16,25],[30,30,16,2,17],[26,8,106,4,107],[28,8,47,13,48],[30,7,24,22,25],[30,22,15,13,16],[28,10,114,2,115],[28,19,46,4,47],[28,28,22,6,23],[30,33,16,4,17],[30,8,122,4,123],[30,22,45,3,46],[30,8,23,26,24],[30,12,15,28,16],[30,3,117,10,118],[30,3,45,23,46],[30,4,24,31,25],[30,11,15,31,16],[30,7,116,7,117],[30,21,45,7,46],[30,1,23,37,24],[30,19,15,26,16],[30,5,115,10,116],[30,19,47,10,48],[30,15,24,25,25],[30,23,15,25,16],[30,13,115,3,116],[30,2,46,29,47],[30,42,24,1,25],[30,23,15,28,16],[30,17,115,0,0],[30,10,46,23,47],[30,10,24,35,25],[30,19,15,35,16],[30,17,115,1,116],[30,14,46,21,47],[30,29,24,19,25],[30,11,15,46,16],[30,13,115,6,116],[30,14,46,23,47],[30,44,24,7,25],[30,59,16,1,17],[30,12,121,7,122],[30,12,47,26,48],[30,39,24,14,25],[30,22,15,41,16],[30,6,121,14,122],[30,6,47,34,48],[30,46,24,10,25],[30,2,15,64,16],[30,17,122,4,123],[30,29,46,14,47],[30,49,24,10,25],[30,24,15,46,16],[30,4,122,18,123],[30,13,46,32,47],[30,48,24,14,25],[30,42,15,32,16],[30,20,117,4,118],[30,40,47,7,48],[30,43,24,22,25],[30,10,15,67,16],[30,19,118,6,119],[30,18,47,31,48],[30,34,24,34,25],[30,20,15,61,16]];const v=(c,d)=>{const e=u[(c-1)*4+a[d]];return{totalDataCodewords:e[0],numBlocks:e[1]+e[3],block1DataCodewords:e[2],block2DataCodewords:e[4],numBlock1:e[1]}};const w=(c,d,e)=>{const f=v(c,d);const h=f.totalDataCodewords*8;const l=m(e);const r=[];g(r,4,4);g(r,l.length,c<10?8:16);for(const s of l)g(r,s,8);if(r.length>h)return null;g(r,0,Math.min(4,h-r.length));while(r.length%8!==0)r.push(0);while(r.length<h){r.push(1,1,1,0,1,1,0,0);if(r.length>=h)break;r.push(0,0,0,1,0,0,0,1)}const x=[];for(let s=0;s<r.length;s+=8){x.push(r[s]<<7|r[s+1]<<6|r[s+2]<<5|r[s+3]<<4|r[s+4]<<3|r[s+5]<<2|r[s+6]<<1|r[s+7])}return x};const y=(c,d,e)=>{const f=v(c,d);const h=c*4+17;const l=[];for(let T=0;T<h;T++){l.push([]);for(let U=0;U<h;U++)l[T].push(null)}const r=(T,U,V)=>{if(T>=0&&T<h&&U>=0&&U<h)l[T][U]=V};const s=(T,U,V)=>{for(let W=-V;W<=V;W++)for(let X=-V;X<=V;X++){const Y=Math.abs(W)===V||Math.abs(X)===V||W===0&&X===0;r(T+W,U+X,Y?1:0)}};s(3,3,3);s(3,h-4,3);s(h-4,3,3);for(let T=0;T<h;T++){r(6,T,T%2===0?1:0);r(T,6,T%2===0?1:0)}const x=t[c-1];if(x.length>0){for(const T of x)for(const U of x){if(l[T][U]!==null)continue;s(T,U,2)}}for(let T=0;T<9;T++){r(T,8,null);r(8,T,null);r(h-1-T,8,null);r(8,h-1-T,null)}r(8,8,null);const z=c>=7;if(z){for(let T=0;T<6;T++)for(let U=0;U<3;U++){r(h-11+U,T,null);r(T,h-11+U,null)}}const A=f.numBlocks;const B=f.block1DataCodewords;const C=f.block2DataCodewords;const D=f.numBlock1;const E=A-D;const F=(h*h-1-2*(h-8)-2*(h-8)-25-(x.length?x.length*x.length*25-3*25:0)-1-(z?36:0))/8;const G=F-f.totalDataCodewords;const H=Math.floor(G/A);const I=G%A;const J=q(H+(I>0?1:0),n);const K=[];let L=0;for(let T=0;T<A;T++){const U=T<D?B:C;const V=e.slice(L,L+U);L+=U;const W=T<A-I?H:H+1;const X=k(V,W,J);K.push({data:V,ecc:X})}const M=Math.max(B,C);const N=H+(I>0?1:0);const O=[];for(let T=0;T<M;T++)for(let U=0;U<A;U++)if(T<K[U].data.length)O.push(K[U].data[T]);for(let T=0;T<N;T++)for(let U=0;U<A;U++)if(T<K[U].ecc.length)O.push(K[U].ecc[T]);const P=[];for(const T of O)for(let U=7;U>=0;U--)P.push((T>>U)&1);let Q=0;for(let T=h-1;T>=1;T-=2){if(T===6)T=5;for(let U=0;U<h;U++){const V=((h-1-T)>>1)%2===0;const W=V?h-1-U:U;if(l[W][T]===null){l[W][T]=Q<P.length?P[Q++]:0}if(l[W][T-1]===null){l[W][T-1]=Q<P.length?P[Q++]:0}}}const R=[[1,0],[1,1],[0,1]];let S=0;for(let T=0;T<8;T++){const U=[];for(let V=0;V<h;V++){U.push([]);for(let W=0;W<h;W++){let X=l[V][W];if(X===null)X=0;if(T===0)X^=V%2===0?1:0;else if(T===1)X^=W%2===0?1:0;else if(T===2)X^=V%3===0?1:0;else if(T===3)X^=(V+W)%3===0?1:0;else if(T===4)X^=(Math.floor(V/2)+Math.floor(W/3))%2===0?1:0;else if(T===5)X^=(V*W)%2+(V*W)%3===0?1:0;else if(T===6)X^=((V*W)%2+(V*W)%3)%2===0?1:0;else X^=((V+W)%2+(V*W)%3)%2===0?1:0;U[V].push(X)}}let V=0;for(let W=0;W<h;W++){let X=0;for(let Y=0;Y<h;Y++){if(U[W][Y]===1){X++;if(X>=5)V+=X===5?3:1}else{X=0}}X=0;for(let Y=0;Y<h;Y++){if(U[Y][W]===1){X++;if(X>=5)V+=X===5?3:1}else{X=0}}}for(let W=0;W<h-1;W++)for(let X=0;X<h-1;X++){const Y=U[W][X]+U[W+1][X]+U[W][X+1]+U[W+1][X+1];if(Y===0||Y===4)V+=3}const W=[1,0,1,1,1,0,1,0,0,0,0];for(let X=0;X<h;X++){for(let Y=0;Y<h-10;Y++){let Z=true;for(let _=0;_<11;_++)if(U[X][Y+_]!==W[_]){Z=false;break}if(Z)V+=40;Z=true;for(let _=0;_<11;_++)if(U[Y+_][X]!==W[_]){Z=false;break}if(Z)V+=40}}let X=0;for(let Y=0;Y<h;Y++)for(let Z=0;Z<h;Z++)if(U[Y][Z]===1)X++;const Y=Math.abs(Math.floor(X*100/(h*h))-50)/5;V+=Y*10;if(T===0||V<S){S=V;for(let Z=0;Z<h;Z++)for(let _=0;_<h;_++)l[Z][_]=U[Z][_]}}const aa=a[d];const ab=(aa<<3)|0;for(let T=0;T<15;T++){const U=(21522>>T)&1;const V=((ab<<10|546)>>14-T)&1;const W=U^V;if(T<6)l[T][8]=W;else if(T<8)l[T+1][8]=W;else l[h-15+T][8]=W;if(T<8)l[8][h-1-T]=W;else l[8][14-T+1]=W}l[h-8][8]=1;if(z){let T=c<<12;for(let U=0;U<6;U++)if((T>>(17-U))&1)T^=7973<<(5-U);T|=c<<12;for(let U=0;U<18;U++){const V=(T>>U)&1;l[Math.floor(U/3)][h-11+U%3]=V;l[h-11+U%3][Math.floor(U/3)]=V}}return l};const z=(c,d='M')=>{for(let e=1;e<=40;e++){const f=w(e,d,c);if(f)return y(e,d,f)}return null};return{generate:z}})();
-
     const operators = ${JSON.stringify(operators)};
     const peerGateways = ${JSON.stringify(peerGateways.filter(g => g.publicUrl).map(g => ({ url: g.publicUrl, name: g.gatewayId })))};
     const mainUrl = ${JSON.stringify(publicStatus.url || '')};
 
-    function renderQR(canvas, data, size) {
-      const matrix = QR.generate(data);
-      if (!matrix) return;
-      const ctx = canvas.getContext('2d');
-      const cellSize = size / matrix.length;
-      canvas.width = size;
-      canvas.height = size;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
-      ctx.fillStyle = '#1a1a2e';
-      for (let y = 0; y < matrix.length; y++) {
-        for (let x = 0; x < matrix[y].length; x++) {
-          if (matrix[y][x]) ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-        }
-      }
-    }
-
     function createQrCard(name, url, type) {
       const card = document.createElement('div');
       card.className = 'qr-card';
-      card.innerHTML = \`<h3>\${name}</h3><div class="qr-container"><canvas class="qr-canvas"></canvas></div><span class="type-badge \${type}">\${type}</span>\`;
-      const canvas = card.querySelector('.qr-canvas');
-      renderQR(canvas, url, 150);
+      const canvas = document.createElement('canvas');
+      card.innerHTML = \`<h3>\${name}</h3><div class="qr-container"></div><span class="type-badge \${type}">\${type}</span>\`;
+      card.querySelector('.qr-container').appendChild(canvas);
+      QRCode.toCanvas(canvas, url, { width: 150, margin: 2, color: { dark: '#1a1a2e', light: '#ffffff' } });
       return card;
     }
 
@@ -3237,14 +3218,19 @@ class GatewayNode {
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+      // Main QR code
       if (mainUrl) {
         const mainCanvas = document.getElementById('main-qr-canvas');
-        if (mainCanvas) renderQR(mainCanvas, mainUrl, 250);
+        if (mainCanvas) {
+          QRCode.toCanvas(mainCanvas, mainUrl, { width: 250, margin: 2, color: { dark: '#1a1a2e', light: '#ffffff' } });
+        }
       }
+      // Operator QRs
       const opGrid = document.getElementById('operators-grid');
       operators.forEach(url => {
         try { opGrid.appendChild(createQrCard(new URL(url).hostname, url, 'operator')); } catch (e) {}
       });
+      // Peer Gateway QRs
       const gwGrid = document.getElementById('gateways-grid');
       if (gwGrid) peerGateways.forEach(gw => { if (gw.url) gwGrid.appendChild(createQrCard(gw.name || 'Gateway', gw.url, 'gateway')); });
     });
