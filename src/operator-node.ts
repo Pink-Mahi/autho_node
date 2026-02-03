@@ -6372,7 +6372,7 @@ export class OperatorNode extends EventEmitter {
    * Broadcast an ephemeral event to all operator peers AND gateways (for decentralized messaging)
    * Gateways serve as backup storage - they persist messages and can restore them to operators after restart
    */
-  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string): void {
+  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string, excludeSeed: boolean = false): void {
     const message = {
       type: 'ephemeral_event',
       event,
@@ -6380,6 +6380,12 @@ export class OperatorNode extends EventEmitter {
       timestamp: Date.now(),
     };
     const msgStr = JSON.stringify(message);
+
+    try {
+      if (!excludeSeed && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+        this.mainSeedWs.send(msgStr);
+      }
+    } catch {}
 
     // Broadcast to operator peers
     for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
@@ -7034,6 +7040,48 @@ export class OperatorNode extends EventEmitter {
       case 'new_event':
         await this.handleNewEvent(message.event);
         this.broadcastRegistryUpdate();
+        break;
+      case 'ephemeral_event':
+        try {
+          const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
+          const eventData = message?.event as EphemeralEvent;
+          if (eventData && eventData.eventId && eventData.eventType && this.ephemeralStore) {
+            const imported = await this.ephemeralStore.importEvent(eventData);
+            if (imported) {
+              this.broadcastEphemeralEvent(eventData, sourceOperatorId, true);
+            }
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error importing event from seed:`, e?.message);
+        }
+        break;
+      case 'ephemeral_sync_request':
+        try {
+          const sinceTimestamp = Number(message?.since || 0);
+          const maxEvents = Math.min(Number(message?.limit || 500), 1000);
+          const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+
+          this.mainSeedWs?.send(JSON.stringify({
+            type: 'ephemeral_sync_response',
+            events,
+            sinceTimestamp,
+            latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
+          }));
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error handling seed sync request:`, e?.message);
+        }
+        break;
+      case 'ephemeral_sync_response':
+        try {
+          const events = message?.events as EphemeralEvent[];
+          if (Array.isArray(events) && this.ephemeralStore) {
+            for (const ev of events) {
+              await this.ephemeralStore.importEvent(ev);
+            }
+          }
+        } catch (e: any) {
+          console.log(`[Ephemeral] Error processing seed sync response:`, e?.message);
+        }
         break;
       case 'registry_update':
         try {
