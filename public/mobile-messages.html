@@ -3472,8 +3472,8 @@
         const timeStr = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         const expiresIn = formatTimeUntil(msg.expiresAt);
         
-        // Choose correct encrypted content based on who sent it
-        const contentToDecrypt = isSent ? msg.encryptedForSender : msg.encryptedContent;
+        // Backend already returns correct encryptedContent for current user
+        const contentToDecrypt = msg.encryptedContent;
         
         let content = '';
         try {
