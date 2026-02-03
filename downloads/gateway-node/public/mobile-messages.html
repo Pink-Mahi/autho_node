@@ -6,6 +6,13 @@
   <title>Messages - Autho</title>
   <link rel="stylesheet" href="/css/mobile-common.css">
   <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      background: linear-gradient(180deg, #0d0d0d 0%, #1a1a1a 50%, #0a0a0a 100%);
+      color: #fff;
+      min-height: 100vh;
+    }
     .messages-container {
       max-width: 600px;
       margin: 0 auto;
@@ -63,17 +70,19 @@
     }
 
     .conversation-card {
-      background: rgba(30, 30, 30, 0.8);
-      border: 1px solid rgba(212, 175, 55, 0.2);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+      border: 1px solid rgba(212, 175, 55, 0.3);
       border-radius: 12px;
       padding: 1rem;
       cursor: pointer;
       transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     }
 
     .conversation-card:hover {
       border-color: #d4af37;
       transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(212, 175, 55, 0.15);
     }
 
     .conversation-card.unread {
@@ -160,8 +169,9 @@
       align-items: center;
       gap: 1rem;
       padding: 1rem;
-      background: rgba(30, 30, 30, 0.9);
-      border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+      border-bottom: 2px solid rgba(212, 175, 55, 0.4);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
     }
 
     .chat-back-btn {
@@ -201,14 +211,16 @@
 
     .message-bubble.sent {
       align-self: flex-end;
-      background: #d4af37;
-      color: #000;
+      background: linear-gradient(135deg, #d4af37, #b8962e);
+      color: #0d0d0d;
       border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 10px rgba(212, 175, 55, 0.3);
     }
 
     .message-bubble.received {
       align-self: flex-start;
-      background: rgba(60, 60, 60, 0.9);
+      background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+      border: 1px solid rgba(212, 175, 55, 0.2);
       color: #fff;
       border-bottom-left-radius: 4px;
     }
@@ -234,8 +246,8 @@
       justify-content: center;
       gap: 0.75rem;
       padding: 0.5rem 0.75rem;
-      background: rgba(30, 30, 30, 0.95);
-      border-top: 1px solid rgba(212, 175, 55, 0.2);
+      background: linear-gradient(180deg, #1a1a1a, #0d0d0d);
+      border-top: 1px solid rgba(212, 175, 55, 0.3);
     }
 
     .media-buttons-row .media-btn {
@@ -261,14 +273,14 @@
     .chat-input-row {
       display: flex;
       padding: 0.5rem 0.75rem;
-      background: rgba(30, 30, 30, 0.9);
+      background: linear-gradient(180deg, #1a1a1a, #0d0d0d);
     }
 
     .chat-actions-row {
       display: flex;
       gap: 0.75rem;
       padding: 0.5rem 0.75rem 0.75rem;
-      background: rgba(30, 30, 30, 0.9);
+      background: linear-gradient(180deg, #0d0d0d, #0a0a0a);
       justify-content: center;
     }
 
@@ -288,12 +300,12 @@
     }
 
     .chat-send-btn {
-      background: #d4af37;
-      border: none;
+      background: linear-gradient(135deg, #d4af37, #b8962e);
+      border: 1px solid #d4af37;
       border-radius: 12px;
       flex: 1;
       height: 44px;
-      color: #000;
+      color: #0d0d0d;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
@@ -301,6 +313,13 @@
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
+      box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+      transition: all 0.2s;
+    }
+
+    .chat-send-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
     }
 
     .chat-send-btn:disabled {
@@ -439,7 +458,7 @@
     .nav-tab {
       flex: 1;
       padding: 0.75rem;
-      background: rgba(80, 80, 80, 0.6);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
       border: 1px solid rgba(212, 175, 55, 0.3);
       border-radius: 8px;
       color: #ccc;
@@ -465,10 +484,16 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(30, 30, 30, 0.8);
-      border: 1px solid rgba(212, 175, 55, 0.2);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+      border: 1px solid rgba(212, 175, 55, 0.3);
       border-radius: 8px;
       padding: 0.75rem 1rem;
+      transition: all 0.2s;
+    }
+
+    .contact-card:hover {
+      border-color: #d4af37;
+      box-shadow: 0 4px 15px rgba(212, 175, 55, 0.15);
     }
 
     .contact-info {
@@ -558,12 +583,13 @@
     }
 
     .modal-content {
-      background: #1a1a1a;
-      border: 1px solid rgba(212, 175, 55, 0.3);
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+      border: 2px solid rgba(212, 175, 55, 0.4);
       border-radius: 16px;
       padding: 1.5rem;
       max-width: 400px;
       width: 100%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(212, 175, 55, 0.1);
     }
 
     .modal-header {
@@ -647,14 +673,21 @@
 
     .modal-btn {
       width: 100%;
-      background: #d4af37;
-      border: none;
-      color: #000;
+      background: linear-gradient(135deg, #d4af37, #b8962e);
+      border: 1px solid #d4af37;
+      color: #0d0d0d;
       padding: 0.75rem;
       border-radius: 8px;
       font-size: 1rem;
       font-weight: 600;
       cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+    }
+
+    .modal-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
     }
 
     .modal-btn:disabled {
