@@ -759,27 +759,6 @@
         <div id="fundServiceStatus" style="margin-top: 10px; font-size: 13px;"></div>
       </div>
       
-      <div class="info-card">
-        <div class="info-card-row">
-          <span class="info-card-label">Payment Address</span>
-        </div>
-        <div id="fundingAddress" style="font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all; color: #d4af37; padding: 10px 0;"></div>
-      </div>
-      
-      <div style="display:flex; justify-content:center; margin: 15px 0;">
-        <img id="fundingQr" alt="Funding Address QR" style="width:200px; height:200px; border-radius: 12px; background: #fff;" />
-      </div>
-      
-      <button class="btn secondary" onclick="copyFundingAddress()">Copy Address</button>
-      
-      <div class="info-card" style="margin-top: 15px;">
-        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Advanced: Verify TXID Manually</div>
-        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">If you funded from another wallet, enter the transaction ID to verify and credit your balance.</div>
-        <input id="verifyTxid" type="text" class="input" placeholder="Transaction ID (txid)" />
-        <button class="btn" onclick="verifyFundingPayment()" style="margin-top: 10px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">Verify Payment</button>
-        <div id="verifyStatus" style="margin-top: 10px; font-size: 13px;"></div>
-      </div>
-      
       <div class="overlay-actions" style="margin-top: 15px;">
         <button class="btn secondary" onclick="closeFundServiceOverlay()">Close</button>
       </div>
@@ -2526,31 +2505,16 @@
           const data = await res.json();
           if (data.success && data.paymentAddress) {
             serviceBalanceData.paymentAddress = data.paymentAddress;
-            document.getElementById('fundingAddress').textContent = data.paymentAddress;
             try {
               const amtEl = document.getElementById('fundServiceAmountSats');
               if (amtEl && !String(amtEl.value || '').trim()) {
                 amtEl.value = '1000';
               }
             } catch {}
-            
-            // Generate QR code
-            if (window.QRCode) {
-              const qrCanvas = document.createElement('canvas');
-              QRCode.toCanvas(qrCanvas, `bitcoin:${data.paymentAddress}`, { width: 200 }, (err) => {
-                if (!err) {
-                  document.getElementById('fundingQr').src = qrCanvas.toDataURL();
-                }
-              });
-            } else {
-              // Fallback: use API to generate QR
-              document.getElementById('fundingQr').src = `/api/qr?data=${encodeURIComponent('bitcoin:' + data.paymentAddress)}&size=200`;
-            }
           }
         }
       } catch (e) {
         console.error('Failed to get payment address:', e);
-        document.getElementById('fundingAddress').textContent = 'Error loading address';
       }
       
       document.getElementById('fundServiceOverlay').classList.add('active');
@@ -2558,13 +2522,87 @@
 
     window.closeFundServiceOverlay = () => {
       document.getElementById('fundServiceOverlay').classList.remove('active');
-      document.getElementById('verifyTxid').value = '';
-      document.getElementById('verifyStatus').textContent = '';
       try {
         const s = document.getElementById('fundServiceStatus');
         if (s) s.textContent = '';
       } catch {}
     };
+
+    async function sleepMs(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function pollServiceFundingCredit(accountId, txid, setStatus) {
+      const start = Date.now();
+      const maxMs = 20 * 60 * 1000;
+      const delayMs = 6000;
+
+      while (Date.now() - start < maxMs) {
+        try {
+          const res = await fetch(`/api/accounts/${accountId}/service-balance/verify-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ txid }),
+          });
+          const data = await res.json();
+
+          if (data && data.success) {
+            try {
+              localStorage.removeItem('autho_pending_service_fund_txid');
+              localStorage.removeItem('autho_pending_service_fund_account');
+            } catch {}
+            setStatus(`<span style="color: #4cd964;">✓ Funded! Credited ${Number(data.amountCredited || 0).toLocaleString()} sats</span>`);
+            try { await refreshServiceBalance(); } catch {}
+            return true;
+          }
+
+          const errText = String(data?.error || '').toLowerCase();
+
+          if (errText.includes('already been credited')) {
+            try {
+              localStorage.removeItem('autho_pending_service_fund_txid');
+              localStorage.removeItem('autho_pending_service_fund_account');
+            } catch {}
+            setStatus('<span style="color: #4cd964;">✓ Already credited</span>');
+            try { await refreshServiceBalance(); } catch {}
+            return true;
+          }
+
+          const shouldRetry = (
+            errText.includes('needs at least') ||
+            errText.includes('transaction not found')
+          );
+
+          if (!shouldRetry) {
+            setStatus(`<span style="color: #ff5757;">Funding failed: ${escapeHtml(data?.error || 'Unknown error')}</span>`);
+            return false;
+          }
+
+          setStatus('<span style="color: #d4af37;">Waiting for confirmation...</span>');
+        } catch (e) {
+          setStatus('<span style="color: #d4af37;">Waiting for confirmation...</span>');
+        }
+
+        await sleepMs(delayMs);
+      }
+
+      setStatus('<span style="color: #ff5757;">Funding sent but not confirmed yet. It will auto-credit once confirmed.</span>');
+      return false;
+    }
+
+    async function resumePendingServiceFunding() {
+      try {
+        const txid = String(localStorage.getItem('autho_pending_service_fund_txid') || '').trim();
+        const accountId = String(localStorage.getItem('autho_pending_service_fund_account') || '').trim();
+        if (!txid || !accountId) return;
+        const statusEl = document.getElementById('fundServiceStatus');
+        const setStatus = (html) => {
+          if (statusEl) statusEl.innerHTML = html;
+        };
+        setStatus('<span style="color: #d4af37;">Resuming pending service credit funding...</span>');
+        await pollServiceFundingCredit(accountId, txid, setStatus);
+      } catch {}
+    }
 
     window.fundServiceBalance = async () => {
       const statusEl = document.getElementById('fundServiceStatus');
@@ -2693,35 +2731,22 @@
           return;
         }
 
-        // Auto-verify and credit
-        setStatus(`<span style="color: #d4af37;">Sent. Verifying payment...</span><div style="margin-top:6px; font-family:'Courier New', monospace; font-size: 11px; color:#999;">TXID: ${txid}</div>`);
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        if (!accountId) {
+          setStatus('<span style="color: #ff5757;">Payment sent but account ID missing. Please sign in again.</span>');
+          return;
+        }
         try {
-          const accountId = wallet.identityAddress || wallet.paymentAddress;
-          if (!accountId) {
-            try { document.getElementById('verifyTxid').value = txid; } catch {}
-            setStatus('<span style="color: #ff5757;">Sent, but could not find your account ID for auto-credit. Use manual verify below.</span>');
-            return;
-          }
-          const res = await fetch(`/api/accounts/${accountId}/service-balance/verify-payment`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ txid }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            setStatus(`<span style="color: #4cd964;">✓ Funded! Credited ${data.amountCredited?.toLocaleString() || amountSats.toLocaleString()} sats</span>`);
-            await refreshServiceBalance();
-            setTimeout(() => {
-              closeFundServiceOverlay();
-            }, 1500);
-          } else {
-            // Fallback: prefill manual verify field
-            try { document.getElementById('verifyTxid').value = txid; } catch {}
-            setStatus(`<span style="color: #ff5757;">Sent, but auto-verify failed: ${escapeHtml(data.error || 'Unknown error')}</span>`);
-          }
-        } catch (e) {
-          try { document.getElementById('verifyTxid').value = txid; } catch {}
-          setStatus(`<span style="color: #ff5757;">Sent, but verify error: ${escapeHtml(e.message)}</span>`);
+          localStorage.setItem('autho_pending_service_fund_txid', txid);
+          localStorage.setItem('autho_pending_service_fund_account', String(accountId));
+        } catch {}
+
+        setStatus('<span style="color: #d4af37;">Payment sent. Waiting for confirmation...</span>');
+        const ok = await pollServiceFundingCredit(accountId, txid, setStatus);
+        if (ok) {
+          setTimeout(() => {
+            closeFundServiceOverlay();
+          }, 1200);
         }
 
         try {
@@ -2732,76 +2757,12 @@
       }
     };
 
-    window.copyFundingAddress = async () => {
-      const address = serviceBalanceData.paymentAddress;
-      if (!address) return;
-      
-      try {
-        await navigator.clipboard.writeText(address);
-        const btn = event.target;
-        const originalText = btn.textContent;
-        btn.textContent = 'Copied!';
-        btn.style.background = 'rgba(76, 217, 100, 0.2)';
-        btn.style.borderColor = '#4cd964';
-        btn.style.color = '#4cd964';
-        setTimeout(() => {
-          btn.textContent = originalText;
-          btn.style.background = '';
-          btn.style.borderColor = '';
-          btn.style.color = '';
-        }, 2000);
-      } catch (e) {
-        alert('Failed to copy: ' + address);
-      }
-    };
-
-    window.verifyFundingPayment = async () => {
-      const txid = document.getElementById('verifyTxid').value.trim();
-      const statusEl = document.getElementById('verifyStatus');
-      
-      if (!txid) {
-        statusEl.innerHTML = '<span style="color: #ff5757;">Please enter a transaction ID</span>';
-        return;
-      }
-      
-      if (!/^[a-fA-F0-9]{64}$/.test(txid)) {
-        statusEl.innerHTML = '<span style="color: #ff5757;">Invalid transaction ID format</span>';
-        return;
-      }
-      
-      statusEl.innerHTML = '<span style="color: #d4af37;">Verifying payment...</span>';
-      
-      try {
-        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
-        
-        const res = await fetch(`/api/accounts/${accountId}/service-balance/verify-payment`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ txid }),
-        });
-        
-        const data = await res.json();
-        
-        if (data.success) {
-          statusEl.innerHTML = `<span style="color: #4cd964;">✓ Payment verified! Credited ${data.amountCredited?.toLocaleString() || 0} sats</span>`;
-          await refreshServiceBalance();
-          setTimeout(() => {
-            closeFundServiceOverlay();
-          }, 2000);
-        } else {
-          statusEl.innerHTML = `<span style="color: #ff5757;">✗ ${data.error || 'Payment verification failed'}</span>`;
-        }
-      } catch (e) {
-        statusEl.innerHTML = `<span style="color: #ff5757;">✗ Error: ${e.message}</span>`;
-      }
-    };
-
     // Auto-refresh service balance when wallet screen loads
     const originalShowWallet = window.showWalletInfo;
     window.showWalletInfo = async () => {
       if (originalShowWallet) await originalShowWallet();
       refreshServiceBalance();
+      resumePendingServiceFunding();
     };
 
     // Initial load if wallet exists
