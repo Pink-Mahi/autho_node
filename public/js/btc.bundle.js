@@ -9285,6 +9285,160 @@ zoo`.split("\n");
     const priv = derivePrivKeyBytesFromMnemonic(mnemonic, network, account, index);
     return hex.encode(priv);
   }
+  async function deriveMessagingKeyPair(mnemonic) {
+    const seed = getSeedFromMnemonic(mnemonic);
+    const domainPrefix = new TextEncoder().encode("Autho:Messaging:v1:");
+    const combined = new Uint8Array(domainPrefix.length + seed.length);
+    combined.set(domainPrefix, 0);
+    combined.set(seed, domainPrefix.length);
+    const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", combined);
+    const messagingPrivateKey = new Uint8Array(hashBuffer);
+    const messagingPublicKey = secp256k1.getPublicKey(messagingPrivateKey, true);
+    return {
+      publicKeyHex: hex.encode(messagingPublicKey),
+      privateKeyHex: hex.encode(messagingPrivateKey)
+    };
+  }
+  function deriveMessagingKeyPairSync(mnemonic) {
+    const seed = getSeedFromMnemonic(mnemonic);
+    const domainPrefix = new TextEncoder().encode("Autho:Messaging:v1:");
+    const combined = new Uint8Array(domainPrefix.length + seed.length);
+    combined.set(domainPrefix, 0);
+    combined.set(seed, domainPrefix.length);
+    const messagingPrivateKey = sha256Sync(combined);
+    const messagingPublicKey = secp256k1.getPublicKey(messagingPrivateKey, true);
+    return {
+      publicKeyHex: hex.encode(messagingPublicKey),
+      privateKeyHex: hex.encode(messagingPrivateKey)
+    };
+  }
+  function sha256Sync(bytes) {
+    const K = [
+      1116352408,
+      1899447441,
+      3049323471,
+      3921009573,
+      961987163,
+      1508970993,
+      2453635748,
+      2870763221,
+      3624381080,
+      310598401,
+      607225278,
+      1426881987,
+      1925078388,
+      2162078206,
+      2614888103,
+      3248222580,
+      3835390401,
+      4022224774,
+      264347078,
+      604807628,
+      770255983,
+      1249150122,
+      1555081692,
+      1996064986,
+      2554220882,
+      2821834349,
+      2952996808,
+      3210313671,
+      3336571891,
+      3584528711,
+      113926993,
+      338241895,
+      666307205,
+      773529912,
+      1294757372,
+      1396182291,
+      1695183700,
+      1986661051,
+      2177026350,
+      2456956037,
+      2730485921,
+      2820302411,
+      3259730800,
+      3345764771,
+      3516065817,
+      3600352804,
+      4094571909,
+      275423344,
+      430227734,
+      506948616,
+      659060556,
+      883997877,
+      958139571,
+      1322822218,
+      1537002063,
+      1747873779,
+      1955562222,
+      2024104815,
+      2227730452,
+      2361852424,
+      2428436474,
+      2756734187,
+      3204031479,
+      3329325298
+    ];
+    const rotr2 = (x, n) => x >>> n | x << 32 - n;
+    const bitLen2 = bytes.length * 8;
+    const withOne = bytes.length + 1;
+    const padLen = withOne % 64 <= 56 ? 56 - withOne % 64 : 56 + (64 - withOne % 64);
+    const totalLen = withOne + padLen + 8;
+    const msg = new Uint8Array(totalLen);
+    msg.set(bytes, 0);
+    msg[bytes.length] = 128;
+    const view2 = new DataView(msg.buffer);
+    view2.setUint32(totalLen - 8, Math.floor(bitLen2 / 2 ** 32), false);
+    view2.setUint32(totalLen - 4, bitLen2 >>> 0, false);
+    let h0 = 1779033703, h1 = 3144134277, h2 = 1013904242, h3 = 2773480762;
+    let h4 = 1359893119, h5 = 2600822924, h6 = 528734635, h7 = 1541459225;
+    const w = new Uint32Array(64);
+    for (let i = 0; i < msg.length; i += 64) {
+      for (let t = 0; t < 16; t++)
+        w[t] = view2.getUint32(i + t * 4, false);
+      for (let t = 16; t < 64; t++) {
+        const s0 = (rotr2(w[t - 15], 7) ^ rotr2(w[t - 15], 18) ^ w[t - 15] >>> 3) >>> 0;
+        const s1 = (rotr2(w[t - 2], 17) ^ rotr2(w[t - 2], 19) ^ w[t - 2] >>> 10) >>> 0;
+        w[t] = w[t - 16] + s0 + w[t - 7] + s1 >>> 0;
+      }
+      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (let t = 0; t < 64; t++) {
+        const S1 = (rotr2(e, 6) ^ rotr2(e, 11) ^ rotr2(e, 25)) >>> 0;
+        const ch = (e & f ^ ~e & g) >>> 0;
+        const temp1 = h + S1 + ch + K[t] + w[t] >>> 0;
+        const S0 = (rotr2(a, 2) ^ rotr2(a, 13) ^ rotr2(a, 22)) >>> 0;
+        const maj = (a & b ^ a & c ^ b & c) >>> 0;
+        const temp2 = S0 + maj >>> 0;
+        h = g;
+        g = f;
+        f = e;
+        e = d + temp1 >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = temp1 + temp2 >>> 0;
+      }
+      h0 = h0 + a >>> 0;
+      h1 = h1 + b >>> 0;
+      h2 = h2 + c >>> 0;
+      h3 = h3 + d >>> 0;
+      h4 = h4 + e >>> 0;
+      h5 = h5 + f >>> 0;
+      h6 = h6 + g >>> 0;
+      h7 = h7 + h >>> 0;
+    }
+    const out = new Uint8Array(32);
+    const outView = new DataView(out.buffer);
+    outView.setUint32(0, h0, false);
+    outView.setUint32(4, h1, false);
+    outView.setUint32(8, h2, false);
+    outView.setUint32(12, h3, false);
+    outView.setUint32(16, h4, false);
+    outView.setUint32(20, h5, false);
+    outView.setUint32(24, h6, false);
+    outView.setUint32(28, h7, false);
+    return out;
+  }
   function generateMnemonic24() {
     return generateMnemonic(wordlist, 256);
   }
@@ -9397,10 +9551,13 @@ zoo`.split("\n");
     };
   }
   window.AuthoBTC = {
-    version: "1.0.0",
+    version: "1.1.0",
     getAddressFromMnemonic: (mnemonic, network, account, index) => getP2WPKHAddressFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
     getPublicKeyFromMnemonic: (mnemonic, network, account, index) => getPublicKeyFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
     getPrivateKeyFromMnemonic: (mnemonic, network, account, index) => getPrivateKeyFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
+    // Messaging keypair (separate from BTC spending key, uses domain separation)
+    deriveMessagingKeyPair: (mnemonic) => deriveMessagingKeyPair(mnemonic),
+    deriveMessagingKeyPairSync: (mnemonic) => deriveMessagingKeyPairSync(mnemonic),
     generateMnemonic24: () => generateMnemonic24(),
     buildAndSignP2WPKH: (params) => buildAndSignP2WPKH(params),
     generateSecp256k1KeyPair: () => generateSecp256k1KeyPair(),

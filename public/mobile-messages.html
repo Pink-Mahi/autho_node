@@ -1642,8 +1642,9 @@
     let currentRecipientId = null;
     let currentRecipientPublicKey = null;
     let currentItemId = null;
-    let myPrivateKey = null;
-    let myEncryptionKeyPair = null; // Derived X25519 keypair for E2E encryption
+    let myMessagingPrivateKey = null; // Messaging private key (NOT BTC spending key)
+    let myMessagingPublicKey = null;  // Messaging public key for key exchange
+    let myEncryptionKeyPair = null;   // Derived X25519 keypair for E2E encryption
     let conversations = [];
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
@@ -1902,19 +1903,23 @@
         return;
       }
       
-      myPrivateKey = wallet.privateKey;
+      // Get messaging keys from sessionStorage (derived from mnemonic, NOT BTC spending key)
+      myMessagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
+      myMessagingPublicKey = sessionStorage.getItem('autho_messaging_publicKey');
 
       const sendBtn = document.getElementById('sendBtn');
       if (sendBtn) sendBtn.disabled = true;
       
-      // Derive encryption keypair for E2E encryption with retry
-      if (myPrivateKey) {
-        myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
+      // Initialize E2E encryption with messaging key (separate from BTC key)
+      if (myMessagingPrivateKey) {
+        myEncryptionKeyPair = await initializeEncryption(myMessagingPrivateKey);
         if (myEncryptionKeyPair) {
-          console.log('E2E encryption initialized successfully');
+          console.log('E2E encryption initialized with messaging key');
         } else {
           console.error('Failed to initialize encryption after retries');
         }
+      } else {
+        console.warn('Messaging key not found - please re-login to enable E2E encryption');
       }
 
       if (sendBtn) sendBtn.disabled = false;

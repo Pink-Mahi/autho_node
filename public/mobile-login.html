@@ -532,13 +532,6 @@
     }
 
     function persistRestoredWallet(walletPayload) {
-      console.log('persistRestoredWallet called with:', { 
-        hasMnemonic: !!walletPayload.mnemonic, 
-        hasPrivateKey: !!walletPayload.privateKey,
-        hasAuthoBTC: !!window.AuthoBTC,
-        hasGetPrivateKeyFromMnemonic: !!window.AuthoBTC?.getPrivateKeyFromMnemonic
-      });
-      
       const network = walletPayload.network || 'mainnet';
       const wallet = {
         publicKey: walletPayload.publicKey,
@@ -552,22 +545,18 @@
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
       sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
       
-      // Derive privateKey from mnemonic for E2E encryption (stored in sessionStorage, cleared when browser closes)
-      if (walletPayload.mnemonic && window.AuthoBTC?.getPrivateKeyFromMnemonic) {
+      // Derive messaging keypair from mnemonic (separate from BTC key, uses domain separation)
+      // This key is used for E2E encrypted messaging, NOT for spending BTC
+      if (walletPayload.mnemonic && window.AuthoBTC?.deriveMessagingKeyPairSync) {
         try {
-          const privateKey = window.AuthoBTC.getPrivateKeyFromMnemonic(walletPayload.mnemonic, network, 0, 0);
-          console.log('Derived privateKey:', privateKey ? 'SUCCESS (length: ' + privateKey.length + ')' : 'FAILED');
-          if (privateKey) {
-            sessionStorage.setItem('autho_wallet_privateKey', privateKey);
+          const msgKeys = window.AuthoBTC.deriveMessagingKeyPairSync(walletPayload.mnemonic);
+          if (msgKeys && msgKeys.privateKeyHex && msgKeys.publicKeyHex) {
+            sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
+            sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
           }
         } catch (e) {
-          console.error('Failed to derive privateKey from mnemonic:', e);
+          console.error('Failed to derive messaging keypair:', e);
         }
-      } else if (walletPayload.privateKey) {
-        console.log('Using existing privateKey from walletPayload');
-        sessionStorage.setItem('autho_wallet_privateKey', walletPayload.privateKey);
-      } else {
-        console.warn('No mnemonic in walletPayload and AuthoBTC not available - E2E encryption will not work');
       }
     }
 
