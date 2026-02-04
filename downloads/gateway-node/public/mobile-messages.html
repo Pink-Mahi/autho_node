@@ -3938,7 +3938,7 @@
         }
         
         return `
-          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}" data-message-id="${msg.id || msg.messageId || ''}">
             ${content}
             <div class="message-meta">
               ${timeStr}
