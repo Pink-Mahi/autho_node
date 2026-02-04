@@ -70,6 +70,8 @@ const WalletAuth = {
     sessionStorage.removeItem('autho_wallet_unlocked');
     sessionStorage.removeItem('autho_wallet_unlock_time');
     sessionStorage.removeItem('autho_wallet_privateKey');
+    sessionStorage.removeItem('autho_messaging_privateKey');
+    sessionStorage.removeItem('autho_messaging_publicKey');
   },
 
   /**

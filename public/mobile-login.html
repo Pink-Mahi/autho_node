@@ -415,7 +415,7 @@
       }, 5000);
     }
 
-    function unlockWithPin() {
+    async function unlockWithPin() {
       const pin = document.getElementById('pinInput').value.trim();
       
       if (!pin) {
@@ -440,7 +440,7 @@
         // Verify PIN
         const enteredPinHash = btoa(pin);
         if (enteredPinHash === storedPinHash) {
-          unlockSuccess();
+          await unlockSuccess(pin);
         } else {
           showError('Incorrect passcode. Please try again.');
           document.getElementById('pinInput').value = '';
@@ -451,16 +451,31 @@
       }
     }
 
-    function unlockSuccess() {
+    async function unlockSuccess(pin) {
       // Set session flag
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
       sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
       
-      // Derive messaging keys from stored wallet mnemonic
       try {
-        const walletData = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
-        if (walletData.mnemonic && window.AuthoBTC?.deriveMessagingKeyPairSync) {
-          const msgKeys = window.AuthoBTC.deriveMessagingKeyPairSync(walletData.mnemonic);
+        let mnemonic = '';
+        try {
+          const walletData = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+          if (walletData && walletData.mnemonic) mnemonic = String(walletData.mnemonic || '');
+        } catch {}
+
+        if (!mnemonic) {
+          try {
+            const vaultStr = localStorage.getItem('autho_wallet_vault_local') || localStorage.getItem('autho_wallet_vault');
+            if (vaultStr && pin) {
+              const vault = JSON.parse(vaultStr);
+              const payload = await decryptWalletVault(vault, pin);
+              if (payload && payload.mnemonic) mnemonic = String(payload.mnemonic || '');
+            }
+          } catch {}
+        }
+
+        if (mnemonic && window.AuthoBTC?.deriveMessagingKeyPairSync) {
+          const msgKeys = window.AuthoBTC.deriveMessagingKeyPairSync(mnemonic);
           if (msgKeys?.privateKeyHex && msgKeys?.publicKeyHex) {
             sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
             sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
@@ -527,8 +542,22 @@
         keyMaterial,
         { name: 'AES-GCM', length: 256 },
         false,
-        ['decrypt']
+        ['encrypt', 'decrypt']
       );
+    }
+
+    async function encryptWalletVault(walletPayload, password) {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const iterations = 210000;
+      const key = await deriveVaultKey(password, salt, iterations);
+      const pt = new TextEncoder().encode(JSON.stringify(walletPayload));
+      const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, pt);
+      return {
+        v: 'AUTHO_WALLET_VAULT_V1',
+        kdf: { saltB64: b64FromBytes(salt), iterations, hash: 'SHA-256' },
+        enc: { ivB64: b64FromBytes(iv), ctB64: b64FromBytes(new Uint8Array(ct)) }
+      };
     }
 
     async function decryptWalletVault(walletVault, password) {
@@ -611,7 +640,34 @@
           localStorage.setItem('autho_wallet_vault', JSON.stringify(data.walletVault));
           const walletPayload = await decryptWalletVault(data.walletVault, password);
           persistRestoredWallet(walletPayload);
+
+          try {
+            const pinHash = localStorage.getItem('autho_wallet_pin');
+            if (pinHash) {
+              const pin = atob(pinHash);
+              const localVault = await encryptWalletVault(walletPayload, pin);
+              localStorage.setItem('autho_wallet_vault_local', JSON.stringify(localVault));
+            }
+          } catch {}
         } else {
+          const localVaultStr = localStorage.getItem('autho_wallet_vault');
+          if (localVaultStr) {
+            try {
+              const localVault = JSON.parse(localVaultStr);
+              const walletPayload = await decryptWalletVault(localVault, password);
+              persistRestoredWallet(walletPayload);
+
+              try {
+                const pinHash = localStorage.getItem('autho_wallet_pin');
+                if (pinHash) {
+                  const pin = atob(pinHash);
+                  const vaultLocal = await encryptWalletVault(walletPayload, pin);
+                  localStorage.setItem('autho_wallet_vault_local', JSON.stringify(vaultLocal));
+                }
+              } catch {}
+            } catch {}
+          }
+
           sessionStorage.setItem('autho_wallet_unlocked', 'true');
           sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
         }
@@ -673,6 +729,20 @@
         // Set new local PIN (device unlock)
         const pinHash = btoa(newPin);
         localStorage.setItem('autho_wallet_pin', pinHash);
+
+        try {
+          const walletPayload = {
+            mnemonic: normalizedSeed,
+            publicKey,
+            address,
+            paymentAddress: address,
+            network,
+            derivationPath: wallet.derivationPath || "m/84'/0'/0'/0/0",
+            createdAt: Date.now()
+          };
+          const localVault = await encryptWalletVault(walletPayload, newPin);
+          localStorage.setItem('autho_wallet_vault_local', JSON.stringify(localVault));
+        } catch {}
 
         alert('✅ Wallet recovered on this device. Your new passcode has been set. Now sign in with email+password to restore your wallet vault on this device.');
         showPinLogin();
