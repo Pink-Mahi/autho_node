@@ -2699,8 +2699,8 @@ class GatewayNode {
       try {
         const network = process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
         const paymentAddress = network === 'mainnet'
-          ? (process.env.SERVICE_FUNDING_ADDRESS_MAINNET || PREMIUM_CONFIG.sponsorAddress)
-          : (process.env.SERVICE_FUNDING_ADDRESS_TESTNET || process.env.FEE_ADDRESS_TESTNET || 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
+          ? PREMIUM_CONFIG.sponsorAddress
+          : (process.env.FEE_ADDRESS_TESTNET || 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
 
         res.json({
           success: true,
@@ -2778,8 +2778,8 @@ class GatewayNode {
         // Verify payment on blockchain
         const network = process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
         const paymentAddress = network === 'mainnet'
-          ? (process.env.SERVICE_FUNDING_ADDRESS_MAINNET || PREMIUM_CONFIG.sponsorAddress)
-          : (process.env.SERVICE_FUNDING_ADDRESS_TESTNET || process.env.FEE_ADDRESS_TESTNET || 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
+          ? PREMIUM_CONFIG.sponsorAddress
+          : (process.env.FEE_ADDRESS_TESTNET || 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
 
         const bases = this.getChainApiBases();
         let txData = null;
