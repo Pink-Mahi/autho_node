@@ -1636,6 +1636,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+  <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
     let currentConversationId = null;
@@ -1906,6 +1907,14 @@
       // Get messaging keys from sessionStorage (derived from mnemonic, NOT BTC spending key)
       myMessagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
       myMessagingPublicKey = sessionStorage.getItem('autho_messaging_publicKey');
+
+      if (!myMessagingPrivateKey && typeof WalletAuth.ensureMessagingKeys === 'function') {
+        try {
+          await WalletAuth.ensureMessagingKeys();
+        } catch {}
+        myMessagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
+        myMessagingPublicKey = sessionStorage.getItem('autho_messaging_publicKey');
+      }
 
       const sendBtn = document.getElementById('sendBtn');
       if (sendBtn) sendBtn.disabled = true;
@@ -2827,7 +2836,13 @@
       if (!encryptionInitPromise) {
         encryptionInitPromise = (async () => {
           // Use messaging keys from sessionStorage (set during login)
-          const messagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
+          let messagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
+          if (!messagingPrivateKey && typeof WalletAuth.ensureMessagingKeys === 'function') {
+            try {
+              await WalletAuth.ensureMessagingKeys();
+            } catch {}
+            messagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
+          }
           if (!messagingPrivateKey) {
             throw new Error('Messaging key not found - please log in again');
           }
@@ -3096,7 +3111,7 @@
       
       // Generate shareable link
       const baseUrl = window.location.origin;
-      const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
+      const shareUrl = `${baseUrl}/mobile-messages.html?contact=${wallet.publicKey}`;
       document.getElementById('shareLink').value = shareUrl;
       
       // Generate QR code using qrcodejs library (same as mobile-verify.html)

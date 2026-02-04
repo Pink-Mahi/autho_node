@@ -454,7 +454,12 @@
     async function unlockSuccess(pin) {
       // Set session flag
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
-      sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
+      const unlockTime = Date.now().toString();
+      sessionStorage.setItem('autho_wallet_unlock_time', unlockTime);
+      try {
+        localStorage.setItem('autho_wallet_unlocked', 'true');
+        localStorage.setItem('autho_wallet_unlock_time', unlockTime);
+      } catch {}
       
       try {
         let mnemonic = '';
@@ -586,7 +591,12 @@
       localStorage.setItem('autho_wallet', JSON.stringify(wallet));
       localStorage.setItem('autho_wallet_encrypted', b64FromBytes(new TextEncoder().encode(JSON.stringify({ createdAt: walletPayload.createdAt || Date.now() }))));
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
-      sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
+      const unlockTime = Date.now().toString();
+      sessionStorage.setItem('autho_wallet_unlock_time', unlockTime);
+      try {
+        localStorage.setItem('autho_wallet_unlocked', 'true');
+        localStorage.setItem('autho_wallet_unlock_time', unlockTime);
+      } catch {}
       
       // Derive messaging keypair from mnemonic (separate from BTC key, uses domain separation)
       // This key is used for E2E encrypted messaging, NOT for spending BTC
@@ -669,7 +679,12 @@
           }
 
           sessionStorage.setItem('autho_wallet_unlocked', 'true');
-          sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
+          const unlockTime = Date.now().toString();
+          sessionStorage.setItem('autho_wallet_unlock_time', unlockTime);
+          try {
+            localStorage.setItem('autho_wallet_unlocked', 'true');
+            localStorage.setItem('autho_wallet_unlock_time', unlockTime);
+          } catch {}
         }
 
         const returnUrl = new URLSearchParams(window.location.search).get('return') || '/m';
