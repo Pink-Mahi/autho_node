@@ -89,6 +89,57 @@ const CONFIG = {
   dataDir: './gateway-data'
 };
 
+// ============================================================
+// PREMIUM FEATURES & MONETIZATION CONFIGURATION
+// Fees are paid to the hardcoded sponsor wallet
+// ============================================================
+const PREMIUM_CONFIG = {
+  // Sponsor wallet - receives all premium fees (HARDCODED - cannot be changed)
+  sponsorAddress: '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U',
+  
+  // Minimum fee (dust limit safe)
+  minFeeSats: 1000,
+  
+  // Wallet transaction fees
+  wallet: {
+    sendFeeSats: 1000,           // Flat fee per transaction
+    sendFeePercent: 0.001,       // 0.1% of amount (whichever is higher)
+    sweepFeeSats: 500,           // Lower fee for sweep/consolidation
+  },
+  
+  // Messaging premium features
+  messaging: {
+    deleteMessageSats: 1000,     // Per message deletion
+    editMessageSats: 500,        // Per message edit
+    extendedRetentionSats: 2000, // 30-day retention (per conversation)
+    largeMediaSats: 1000,        // Files > 5MB
+    createGroupSats: 2000,       // Create private group
+    verifiedBadgeSats: 10000,    // One-time verified checkmark
+  },
+  
+  // Subscription tiers (monthly, in sats)
+  subscriptions: {
+    free: {
+      price: 0,
+      features: ['basic_messaging', 'retention_10_days', 'media_5mb'],
+    },
+    pro: {
+      price: 5000,
+      features: ['delete_messages', 'edit_messages', 'retention_30_days', 'media_25mb'],
+    },
+    business: {
+      price: 20000,
+      features: ['unlimited_groups', 'verified_badge', 'retention_90_days', 'media_100mb', 'api_access'],
+    },
+  },
+  
+  // Grace period for payment verification (seconds)
+  paymentGracePeriodSecs: 3600, // 1 hour to verify payment
+  
+  // Credit expiry (days)
+  creditExpiryDays: 365,
+};
+
 // Allow port overrides (useful if 3001 is already in use)
 // Seed nodes remain hardcoded.
 const EFFECTIVE_HTTP_PORT = (() => {
@@ -150,6 +201,15 @@ class GatewayNode {
     // UI bundle caching for public gateway mode
     this.uiBundleVersion = null;
     this.uiBundleSource = null;
+    
+    // Premium features - user credits and subscriptions
+    this.userCredits = new Map(); // accountId -> { credits: number, features: [], subscription: string, expiresAt: number }
+    this.pendingPayments = new Map(); // paymentId -> { accountId, amount, feature, createdAt, address }
+    this.paymentHistory = []; // Array of verified payments
+    
+    // Prepaid service balance - standalone (works without main node/operators)
+    this.serviceBalances = new Map(); // accountId -> { serviceBalanceSats, lastFundedAt, totalFunded, totalUsed }
+    this.servicePaymentHistory = new Map(); // txid -> { accountId, amountSats, timestamp, confirmations }
     
     // Seed health tracking - prefer healthy seeds over failing ones
     this.seedHealth = new Map(); // url -> { lastSuccess, lastFailure, failCount, latencyMs }
@@ -2123,6 +2183,851 @@ class GatewayNode {
     });
 
     // ============================================================
+    // BITCOIN CHAIN API - STANDALONE WALLET SUPPORT
+    // Gateways can check balances and broadcast transactions directly
+    // without needing operator nodes (uses mempool.space/blockstream.info)
+    // ============================================================
+
+    this.app.get('/api/chain/status', async (req, res) => {
+      try {
+        const network = process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+        const apiBase = network === 'mainnet'
+          ? 'https://blockstream.info/api'
+          : 'https://blockstream.info/testnet/api';
+
+        res.json({
+          ok: true,
+          network,
+          apiBase,
+          timestamp: Date.now(),
+          source: 'gateway',
+        });
+      } catch (error) {
+        res.status(500).json({ ok: false, error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/address/:address', async (req, res) => {
+      try {
+        const address = String(req.params.address || '').trim();
+        if (!address) {
+          return res.status(400).json({ error: 'Missing address' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/address/${address}`);
+            if (!response.ok) {
+              lastErr = { status: response.status, text: await response.text() };
+              continue;
+            }
+            return res.json(await response.json());
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/address/:address/utxo', async (req, res) => {
+      try {
+        const address = String(req.params.address || '').trim();
+        if (!address) {
+          return res.status(400).json({ error: 'Missing address' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/address/${address}/utxo`);
+            if (!response.ok) {
+              lastErr = { status: response.status, text: await response.text() };
+              continue;
+            }
+            return res.json(await response.json());
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/address/:address/txs', async (req, res) => {
+      try {
+        const address = String(req.params.address || '').trim();
+        if (!address) {
+          return res.status(400).json({ error: 'Missing address' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/address/${address}/txs`);
+            if (!response.ok) {
+              lastErr = { status: response.status, text: await response.text() };
+              continue;
+            }
+            return res.json(await response.json());
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/address/:address/txs/mempool', async (req, res) => {
+      try {
+        const address = String(req.params.address || '').trim();
+        if (!address) {
+          return res.status(400).json({ error: 'Missing address' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/address/${address}/txs/mempool`);
+            if (!response.ok) {
+              lastErr = { status: response.status, text: await response.text() };
+              continue;
+            }
+            return res.json(await response.json());
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/tx/:txid/hex', async (req, res) => {
+      try {
+        const txid = String(req.params.txid || '').trim();
+        if (!txid) {
+          return res.status(400).json({ error: 'Missing txid' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/tx/${txid}/hex`);
+            const text = await response.text();
+            if (!response.ok) {
+              lastErr = { status: response.status, text };
+              continue;
+            }
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            return res.send(text);
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/tx/:txid/status', async (req, res) => {
+      try {
+        const txid = String(req.params.txid || '').trim();
+        if (!txid) {
+          return res.status(400).json({ error: 'Missing txid' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const statusResp = await fetch(`${apiBase}/tx/${txid}/status`);
+            const statusText = await statusResp.text();
+            if (!statusResp.ok) {
+              lastErr = { status: statusResp.status, text: statusText };
+              continue;
+            }
+
+            const statusJson = JSON.parse(statusText);
+            const confirmed = Boolean(statusJson?.confirmed);
+            const blockHeight = confirmed ? Number(statusJson?.block_height || 0) : undefined;
+
+            let tipHeight = 0;
+            try {
+              const tipResp = await fetch(`${apiBase}/blocks/tip/height`);
+              const tipText = await tipResp.text();
+              if (tipResp.ok) tipHeight = Number(String(tipText || '').trim());
+            } catch {}
+
+            const confirmations = confirmed && blockHeight && tipHeight && tipHeight >= blockHeight
+              ? (tipHeight - blockHeight + 1)
+              : 0;
+
+            return res.json({
+              ok: true,
+              confirmed,
+              confirmations,
+              blockHeight: blockHeight || undefined,
+              blockHash: statusJson?.block_hash,
+              blockTime: statusJson?.block_time,
+              provider: apiBase,
+            });
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/chain/fee-estimates', async (req, res) => {
+      try {
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/fee-estimates`);
+            if (!response.ok) {
+              lastErr = { status: response.status, text: await response.text() };
+              continue;
+            }
+            return res.json(await response.json());
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).send(lastErr.text || 'Chain provider error');
+        }
+        res.status(502).json({ error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Broadcast a signed transaction to the Bitcoin network
+    this.app.post('/api/chain/tx', async (req, res) => {
+      try {
+        let txHex = '';
+        if (req.body && typeof req.body === 'object') {
+          txHex = String(req.body.txHex || '');
+        }
+        txHex = txHex.trim();
+
+        if (!txHex) {
+          return res.status(400).json({ success: false, error: 'Missing txHex' });
+        }
+
+        const bases = this.getChainApiBases();
+        let lastErr = null;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/tx`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' },
+              body: txHex,
+            });
+
+            const text = await response.text();
+            if (!response.ok) {
+              lastErr = { status: response.status, text };
+              continue;
+            }
+
+            return res.json({ success: true, txid: text.trim(), provider: apiBase });
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (lastErr?.status) {
+          return res.status(lastErr.status).json({ success: false, error: lastErr.text || 'Chain provider error' });
+        }
+        res.status(502).json({ success: false, error: 'All chain providers failed' });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // PREMIUM FEATURES API - MONETIZATION
+    // ============================================================
+
+    // Get premium features pricing and user status
+    this.app.get('/api/premium/status', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        const userStatus = account ? this.getUserPremiumStatus(account.accountId) : null;
+        
+        res.json({
+          success: true,
+          sponsorAddress: PREMIUM_CONFIG.sponsorAddress,
+          pricing: {
+            wallet: PREMIUM_CONFIG.wallet,
+            messaging: PREMIUM_CONFIG.messaging,
+            subscriptions: PREMIUM_CONFIG.subscriptions,
+          },
+          userStatus,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Calculate wallet send fee for a transaction
+    this.app.post('/api/premium/wallet/calculate-fee', async (req, res) => {
+      try {
+        const { amountSats } = req.body;
+        if (!amountSats || amountSats <= 0) {
+          return res.status(400).json({ success: false, error: 'Invalid amount' });
+        }
+
+        const fee = this.calculateWalletSendFee(amountSats);
+        res.json({
+          success: true,
+          amountSats,
+          platformFeeSats: fee,
+          sponsorAddress: PREMIUM_CONFIG.sponsorAddress,
+          totalWithFee: amountSats + fee,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Request payment for a premium feature
+    this.app.post('/api/premium/payment/request', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { feature, quantity = 1 } = req.body;
+        if (!feature) {
+          return res.status(400).json({ success: false, error: 'Feature required' });
+        }
+
+        const feeCost = this.getFeatureCost(feature);
+        if (feeCost === null) {
+          return res.status(400).json({ success: false, error: 'Invalid feature' });
+        }
+
+        const totalAmount = feeCost * quantity;
+        const paymentId = `pay_${Date.now()}_${require('crypto').randomBytes(6).toString('hex')}`;
+
+        const payment = {
+          paymentId,
+          accountId: account.accountId,
+          feature,
+          quantity,
+          amountSats: totalAmount,
+          sponsorAddress: PREMIUM_CONFIG.sponsorAddress,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + (PREMIUM_CONFIG.paymentGracePeriodSecs * 1000),
+          status: 'pending',
+        };
+
+        this.pendingPayments.set(paymentId, payment);
+
+        res.json({
+          success: true,
+          payment: {
+            paymentId,
+            amountSats: totalAmount,
+            address: PREMIUM_CONFIG.sponsorAddress,
+            expiresAt: payment.expiresAt,
+            feature,
+            quantity,
+          },
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Verify payment and grant credits
+    this.app.post('/api/premium/payment/verify', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { paymentId, txid } = req.body;
+        if (!paymentId || !txid) {
+          return res.status(400).json({ success: false, error: 'paymentId and txid required' });
+        }
+
+        const payment = this.pendingPayments.get(paymentId);
+        if (!payment) {
+          return res.status(404).json({ success: false, error: 'Payment not found' });
+        }
+
+        if (payment.accountId !== account.accountId) {
+          return res.status(403).json({ success: false, error: 'Payment belongs to different account' });
+        }
+
+        if (payment.status === 'verified') {
+          return res.status(400).json({ success: false, error: 'Payment already verified' });
+        }
+
+        // Verify the transaction on-chain
+        const verification = await this.verifyPaymentOnChain(txid, payment.amountSats, PREMIUM_CONFIG.sponsorAddress);
+        
+        if (!verification.verified) {
+          return res.status(400).json({ success: false, error: verification.reason || 'Payment not verified' });
+        }
+
+        // Grant the feature/credits
+        payment.status = 'verified';
+        payment.txid = txid;
+        payment.verifiedAt = Date.now();
+        
+        this.grantPremiumFeature(account.accountId, payment.feature, payment.quantity);
+        this.paymentHistory.push(payment);
+        this.pendingPayments.delete(paymentId);
+        this.savePremiumData();
+
+        res.json({
+          success: true,
+          message: 'Payment verified',
+          feature: payment.feature,
+          quantity: payment.quantity,
+          userStatus: this.getUserPremiumStatus(account.accountId),
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get user's premium credits and features
+    this.app.get('/api/premium/credits', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const status = this.getUserPremiumStatus(account.accountId);
+        res.json({ success: true, ...status });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Check if user can perform a premium action
+    this.app.post('/api/premium/check', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { feature } = req.body;
+        const canUse = this.canUsePremiumFeature(account.accountId, feature);
+        const cost = this.getFeatureCost(feature);
+
+        res.json({
+          success: true,
+          feature,
+          canUse,
+          cost,
+          sponsorAddress: canUse ? null : PREMIUM_CONFIG.sponsorAddress,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // PREPAID SERVICE BALANCE - STANDALONE BTC VERIFICATION
+    // Works independently without main node or operators
+    // ============================================================
+
+    // Get payment address for funding service balance
+    this.app.get('/api/service/payment-address', async (req, res) => {
+      try {
+        const network = process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+        const paymentAddress = network === 'mainnet'
+          ? PREMIUM_CONFIG.sponsorAddress
+          : (process.env.FEE_ADDRESS_TESTNET || 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
+
+        res.json({
+          success: true,
+          paymentAddress,
+          network,
+          minimumSats: 1000,
+          note: 'Send BTC to this address, then verify payment to credit your service balance',
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get service balance for account
+    this.app.get('/api/service/balance', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const balance = this.getServiceBalance(account.accountId);
+        res.json({
+          success: true,
+          accountId: account.accountId,
+          ...balance,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get premium action pricing
+    this.app.get('/api/service/pricing', async (req, res) => {
+      try {
+        res.json({
+          success: true,
+          pricing: {
+            message_delete: { sats: 50, description: 'Delete a sent message' },
+            message_edit: { sats: 25, description: 'Edit a sent message' },
+            profile_update: { sats: 100, description: 'Update account profile' },
+            username_change: { sats: 500, description: 'Change username/display name' },
+            group_create: { sats: 200, description: 'Create a group chat' },
+          },
+          network: process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+          note: 'Prices in satoshis, deducted from prepaid service balance',
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Verify BTC payment and credit service balance (standalone - no main node needed)
+    this.app.post('/api/service/verify-payment', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { txid } = req.body;
+        if (!txid || typeof txid !== 'string') {
+          return res.status(400).json({ success: false, error: 'Missing txid' });
+        }
+
+        // Check if payment already credited
+        if (this.servicePaymentHistory.has(txid)) {
+          return res.status(409).json({
+            success: false,
+            error: 'Payment already credited',
+            txid,
+          });
+        }
+
+        // Verify payment on blockchain
+        const network = process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+        const paymentAddress = network === 'mainnet'
+          ? PREMIUM_CONFIG.sponsorAddress
+          : (process.env.FEE_ADDRESS_TESTNET || 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx');
+
+        const bases = this.getChainApiBases();
+        let txData = null;
+        let amountSats = 0;
+        let confirmations = 0;
+
+        for (const apiBase of bases) {
+          try {
+            const response = await fetch(`${apiBase}/tx/${txid}`);
+            if (!response.ok) continue;
+
+            txData = await response.json();
+            
+            // Sum outputs to payment address
+            for (const vout of (txData.vout || [])) {
+              if (vout.scriptpubkey_address === paymentAddress) {
+                amountSats += vout.value || 0;
+              }
+            }
+
+            // Get confirmations
+            if (txData.status?.confirmed && txData.status?.block_height) {
+              try {
+                const tipResponse = await fetch(`${apiBase}/blocks/tip/height`);
+                if (tipResponse.ok) {
+                  const tipHeight = parseInt(await tipResponse.text());
+                  confirmations = tipHeight - txData.status.block_height + 1;
+                }
+              } catch (e) {}
+            }
+
+            break;
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!txData) {
+          return res.status(404).json({ success: false, error: 'Transaction not found on blockchain' });
+        }
+
+        if (amountSats < 1000) {
+          return res.status(400).json({
+            success: false,
+            error: `Minimum funding is 1000 sats. Found: ${amountSats} sats to ${paymentAddress}`,
+          });
+        }
+
+        // Credit the service balance
+        this.creditServiceBalance(account.accountId, amountSats, txid);
+        
+        // Record payment to prevent double-crediting
+        this.servicePaymentHistory.set(txid, {
+          accountId: account.accountId,
+          amountSats,
+          timestamp: Date.now(),
+          confirmations,
+        });
+
+        // Persist data
+        this.savePremiumData();
+
+        const newBalance = this.getServiceBalance(account.accountId);
+
+        res.json({
+          success: true,
+          accountId: account.accountId,
+          amountCredited: amountSats,
+          txid,
+          confirmations,
+          newBalance: newBalance.serviceBalanceSats,
+          message: `Successfully credited ${amountSats} sats to service balance`,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Premium action: Delete message (costs sats from service balance)
+    this.app.post('/api/service/premium/message-delete', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.body;
+        const actionCost = 50; // sats
+
+        if (!messageId) {
+          return res.status(400).json({ success: false, error: 'Missing messageId' });
+        }
+
+        const balance = this.getServiceBalance(account.accountId);
+        if (balance.serviceBalanceSats < actionCost) {
+          return res.status(402).json({
+            success: false,
+            error: 'Insufficient service balance',
+            required: actionCost,
+            available: balance.serviceBalanceSats,
+            shortfall: actionCost - balance.serviceBalanceSats,
+          });
+        }
+
+        // Perform the message deletion
+        const deleted = this.deleteMessage(messageId, account.accountId);
+        if (!deleted) {
+          return res.status(404).json({ success: false, error: 'Message not found or not authorized to delete' });
+        }
+
+        // Deduct from service balance
+        this.useServiceBalance(account.accountId, actionCost, 'message_delete', messageId);
+
+        const newBalance = this.getServiceBalance(account.accountId);
+
+        res.json({
+          success: true,
+          accountId: account.accountId,
+          messageId,
+          costSats: actionCost,
+          newBalance: newBalance.serviceBalanceSats,
+          message: 'Message deleted successfully',
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Premium action: Edit message (costs sats from service balance)
+    this.app.post('/api/service/premium/message-edit', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId, newContent } = req.body;
+        const actionCost = 25; // sats
+
+        if (!messageId || !newContent) {
+          return res.status(400).json({ success: false, error: 'Missing messageId or newContent' });
+        }
+
+        const balance = this.getServiceBalance(account.accountId);
+        if (balance.serviceBalanceSats < actionCost) {
+          return res.status(402).json({
+            success: false,
+            error: 'Insufficient service balance',
+            required: actionCost,
+            available: balance.serviceBalanceSats,
+            shortfall: actionCost - balance.serviceBalanceSats,
+          });
+        }
+
+        // Perform the message edit
+        const edited = this.editMessage(messageId, account.accountId, newContent);
+        if (!edited) {
+          return res.status(404).json({ success: false, error: 'Message not found or not authorized to edit' });
+        }
+
+        // Deduct from service balance
+        this.useServiceBalance(account.accountId, actionCost, 'message_edit', messageId);
+
+        const newBalance = this.getServiceBalance(account.accountId);
+
+        res.json({
+          success: true,
+          accountId: account.accountId,
+          messageId,
+          costSats: actionCost,
+          newBalance: newBalance.serviceBalanceSats,
+          message: 'Message edited successfully',
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Premium action: File transfer (costs sats based on tier)
+    this.app.post('/api/service/premium/file-transfer', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { tier, fileSize, fileName } = req.body;
+        
+        // File tier pricing
+        const FILE_TIERS = {
+          free: { maxSize: 1 * 1024 * 1024, cost: 0 },
+          basic: { maxSize: 25 * 1024 * 1024, cost: 500 },
+          premium: { maxSize: 100 * 1024 * 1024, cost: 2000 },
+          enterprise: { maxSize: 1024 * 1024 * 1024, cost: 10000 },
+        };
+
+        const tierInfo = FILE_TIERS[tier];
+        if (!tierInfo) {
+          return res.status(400).json({ success: false, error: 'Invalid tier' });
+        }
+
+        const actionCost = tierInfo.cost;
+
+        // Free tier doesn't need balance check
+        if (actionCost === 0) {
+          return res.json({
+            success: true,
+            accountId: account.accountId,
+            tier,
+            costSats: 0,
+            message: 'Free tier file transfer approved',
+          });
+        }
+
+        const balance = this.getServiceBalance(account.accountId);
+        if (balance.serviceBalanceSats < actionCost) {
+          return res.status(402).json({
+            success: false,
+            error: 'Insufficient service balance',
+            required: actionCost,
+            available: balance.serviceBalanceSats,
+            shortfall: actionCost - balance.serviceBalanceSats,
+          });
+        }
+
+        // Deduct from service balance
+        this.useServiceBalance(account.accountId, actionCost, 'file_transfer', `${tier}:${fileName}`);
+
+        const newBalance = this.getServiceBalance(account.accountId);
+
+        console.log(`📁 [Premium] File transfer: ${account.accountId} paid ${actionCost} sats for ${tier} tier (${fileName}, ${fileSize} bytes)`);
+
+        res.json({
+          success: true,
+          accountId: account.accountId,
+          tier,
+          fileSize,
+          fileName,
+          costSats: actionCost,
+          newBalance: newBalance.serviceBalanceSats,
+          message: `File transfer approved (${tier} tier)`,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
     // EPHEMERAL MESSAGING API ENDPOINTS
     // ============================================================
 
@@ -2222,6 +3127,16 @@ class GatewayNode {
           return res.status(401).json({ success: false, error: 'Authentication required' });
         }
         const { groupId } = req.params;
+        
+        // SECURITY: Verify user is a member of the group before returning messages
+        const group = this.getGroup(groupId);
+        if (!group) {
+          return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+        if (!group.members.includes(account.accountId)) {
+          return res.status(403).json({ success: false, error: 'Not a member of this group' });
+        }
+        
         const messages = this.getGroupMessages(groupId, account.accountId);
         res.json({ success: true, groupId, messages });
       } catch (error) {
@@ -2259,6 +3174,167 @@ class GatewayNode {
         }
         const status = this.getMessageStatus(req.params.messageId);
         res.json({ success: true, status });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
+    // PREMIUM MESSAGING FEATURES
+    // ============================================================
+
+    // Delete message (PREMIUM FEATURE - requires payment)
+    this.app.delete('/api/messages/:messageId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const message = this.getMessage(messageId);
+        
+        if (!message) {
+          return res.status(404).json({ success: false, error: 'Message not found' });
+        }
+
+        const payload = message.payload || {};
+        if (payload.senderId !== account.accountId) {
+          return res.status(403).json({ success: false, error: 'Only the sender can delete messages' });
+        }
+
+        // Check if user can use this premium feature
+        const canDelete = this.canUsePremiumFeature(account.accountId, 'delete_message');
+        if (!canDelete) {
+          return res.status(402).json({
+            success: false,
+            error: 'Premium feature required',
+            feature: 'delete_message',
+            cost: PREMIUM_CONFIG.messaging.deleteMessageSats,
+            sponsorAddress: PREMIUM_CONFIG.sponsorAddress,
+            message: 'Message deletion requires a payment of ' + PREMIUM_CONFIG.messaging.deleteMessageSats + ' sats',
+          });
+        }
+
+        // Consume the feature credit
+        this.consumePremiumFeature(account.accountId, 'delete_message');
+
+        // Create deletion event
+        const deletionEvent = {
+          eventId: this.generateEventId(),
+          eventType: 'MESSAGE_DELETED',
+          timestamp: Date.now(),
+          payload: {
+            messageId,
+            deletedBy: account.accountId,
+            originalSenderId: payload.senderId,
+            conversationId: payload.conversationId || this.getConversationId(payload.senderId, payload.recipientId),
+          },
+          signature: null,
+        };
+
+        // Remove the message and store deletion event
+        this.ephemeralEvents.delete(message.eventId);
+        this.storeEphemeralEvent(deletionEvent);
+        this.saveEphemeralLedger();
+
+        // Broadcast deletion to connected clients and peers
+        this.broadcastToLocalClients({
+          type: 'message_deleted',
+          data: deletionEvent.payload,
+        });
+        this.broadcastToGatewayPeers({
+          type: 'ephemeral_event',
+          event: deletionEvent,
+        });
+
+        res.json({ success: true, message: 'Message deleted', eventId: deletionEvent.eventId });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Edit message (PREMIUM FEATURE - requires payment)
+    this.app.put('/api/messages/:messageId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const { content, encryptedContent } = req.body;
+        
+        if (!content && !encryptedContent) {
+          return res.status(400).json({ success: false, error: 'New content required' });
+        }
+
+        const message = this.getMessage(messageId);
+        if (!message) {
+          return res.status(404).json({ success: false, error: 'Message not found' });
+        }
+
+        const payload = message.payload || {};
+        if (payload.senderId !== account.accountId) {
+          return res.status(403).json({ success: false, error: 'Only the sender can edit messages' });
+        }
+
+        // Check if user can use this premium feature
+        const canEdit = this.canUsePremiumFeature(account.accountId, 'edit_message');
+        if (!canEdit) {
+          return res.status(402).json({
+            success: false,
+            error: 'Premium feature required',
+            feature: 'edit_message',
+            cost: PREMIUM_CONFIG.messaging.editMessageSats,
+            sponsorAddress: PREMIUM_CONFIG.sponsorAddress,
+            message: 'Message editing requires a payment of ' + PREMIUM_CONFIG.messaging.editMessageSats + ' sats',
+          });
+        }
+
+        // Consume the feature credit
+        this.consumePremiumFeature(account.accountId, 'edit_message');
+
+        // Create edit event
+        const editEvent = {
+          eventId: this.generateEventId(),
+          eventType: 'MESSAGE_EDITED',
+          timestamp: Date.now(),
+          payload: {
+            messageId,
+            editedBy: account.accountId,
+            originalContent: payload.content,
+            newContent: content || null,
+            newEncryptedContent: encryptedContent || null,
+            conversationId: payload.conversationId || this.getConversationId(payload.senderId, payload.recipientId),
+            editedAt: Date.now(),
+          },
+          signature: null,
+        };
+
+        // Update the original message
+        if (content) payload.content = content;
+        if (encryptedContent) payload.encryptedContent = encryptedContent;
+        payload.edited = true;
+        payload.editedAt = Date.now();
+        message.payload = payload;
+        this.ephemeralEvents.set(message.eventId, message);
+
+        // Store edit event for history
+        this.storeEphemeralEvent(editEvent);
+        this.saveEphemeralLedger();
+
+        // Broadcast edit to connected clients and peers
+        this.broadcastToLocalClients({
+          type: 'message_edited',
+          data: editEvent.payload,
+        });
+        this.broadcastToGatewayPeers({
+          type: 'ephemeral_event',
+          event: editEvent,
+        });
+
+        res.json({ success: true, message: 'Message edited', eventId: editEvent.eventId });
       } catch (error) {
         res.status(500).json({ success: false, error: error.message });
       }
@@ -2311,107 +3387,698 @@ class GatewayNode {
       }
     });
 
-    // POST endpoints - these proxy to operators for write operations
-    // Send message
+    // ============================================================
+    // P2P MESSAGING ENDPOINTS - LOCAL HANDLING (NO OPERATOR REQUIRED)
+    // Messages are created locally and broadcast to gateway mesh
+    // ============================================================
+
+    // Send direct message (P2P - no operator needed)
     this.app.post('/api/messages/send', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { recipientId, encryptedContent, encryptedForSender, conversationId, mediaType } = req.body;
+        if (!recipientId || !encryptedContent) {
+          return res.status(400).json({ success: false, error: 'recipientId and encryptedContent required' });
+        }
+
+        // Check if blocked
+        if (this.isBlocked(recipientId, account.accountId)) {
+          return res.status(403).json({ success: false, error: 'You are blocked by this user' });
+        }
+
+        const messageId = this.generateMessageId();
+        const convId = conversationId || this.generateConversationId(account.accountId, recipientId);
+
+        const payload = {
+          messageId,
+          senderId: account.accountId,
+          recipientId,
+          encryptedContent,
+          encryptedForSender: encryptedForSender || encryptedContent,
+          conversationId: convId,
+        };
+
+        const event = this.createLocalEphemeralEvent('MESSAGE_SENT', payload, mediaType || 'TEXT');
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to create message' });
+        }
+
+        res.json({
+          success: true,
+          messageId,
+          conversationId: convId,
+          expiresAt: event.expiresAt,
+          p2p: true,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Add contact
+    // Add contact (P2P)
     this.app.post('/api/messages/contacts', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { contactId, nickname, publicKey } = req.body;
+        if (!contactId) {
+          return res.status(400).json({ success: false, error: 'contactId required' });
+        }
+
+        const payload = {
+          userId: account.accountId,
+          contactId,
+          nickname: nickname || null,
+          publicKey: publicKey || null,
+        };
+
+        const event = this.createLocalEphemeralEvent('CONTACT_ADDED', payload);
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to add contact' });
+        }
+
+        res.json({ success: true, contactId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Block user
+    // Remove contact (P2P)
+    this.app.delete('/api/messages/contacts/:contactId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { contactId } = req.params;
+        const payload = {
+          userId: account.accountId,
+          contactId,
+        };
+
+        const event = this.createLocalEphemeralEvent('CONTACT_REMOVED', payload);
+        
+        // Remove from local index
+        const userContacts = this.ephemeralContactsByUser.get(account.accountId);
+        if (userContacts) {
+          userContacts.delete(contactId);
+        }
+
+        res.json({ success: true, contactId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Update contact nickname (P2P)
+    this.app.put('/api/messages/contacts/:contactId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { contactId } = req.params;
+        const { nickname, publicKey } = req.body;
+
+        const payload = {
+          userId: account.accountId,
+          contactId,
+          nickname: nickname || null,
+          publicKey: publicKey || null,
+        };
+
+        const event = this.createLocalEphemeralEvent('CONTACT_UPDATED', payload);
+        res.json({ success: true, contactId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Unblock user (P2P)
+    this.app.delete('/api/messages/block/:blockedId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { blockedId } = req.params;
+        const payload = {
+          blockerId: account.accountId,
+          blockedId,
+        };
+
+        const event = this.createLocalEphemeralEvent('USER_UNBLOCKED', payload);
+        res.json({ success: true, blockedId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Block user (P2P)
     this.app.post('/api/messages/block', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { blockedId } = req.body;
+        if (!blockedId) {
+          return res.status(400).json({ success: false, error: 'blockedId required' });
+        }
+
+        const payload = {
+          blockerId: account.accountId,
+          blockedId,
+        };
+
+        const event = this.createLocalEphemeralEvent('USER_BLOCKED', payload);
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to block user' });
+        }
+
+        res.json({ success: true, blockedId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Create group
+    // Create group (P2P)
     this.app.post('/api/messages/groups', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { name, memberIds } = req.body;
+        if (!name) {
+          return res.status(400).json({ success: false, error: 'name required' });
+        }
+
+        const groupId = this.generateGroupId();
+        const payload = {
+          groupId,
+          name,
+          creatorId: account.accountId,
+          memberIds: [account.accountId, ...(memberIds || [])],
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_CREATED', payload);
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to create group' });
+        }
+
+        res.json({ success: true, groupId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Send group message
+    // Send group message (P2P)
     this.app.post('/api/messages/groups/:groupId/send', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId } = req.params;
+        
+        // SECURITY: Verify user is a member of the group before allowing send
+        const group = this.getGroup(groupId);
+        if (!group) {
+          return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+        if (!group.members.includes(account.accountId)) {
+          return res.status(403).json({ success: false, error: 'Not a member of this group' });
+        }
+        
+        const { encryptedContentByMember, mediaType } = req.body;
+        if (!encryptedContentByMember) {
+          return res.status(400).json({ success: false, error: 'encryptedContentByMember required' });
+        }
+
+        const messageId = this.generateMessageId();
+        const payload = {
+          messageId,
+          groupId,
+          senderId: account.accountId,
+          encryptedContentByMember,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_MESSAGE_SENT', payload, mediaType || 'TEXT');
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to send group message' });
+        }
+
+        res.json({ success: true, messageId, groupId, expiresAt: event.expiresAt, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Add group member
+    // Add group member (P2P)
     this.app.post('/api/messages/groups/:groupId/members', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId } = req.params;
+        
+        // SECURITY: Verify user is a member of the group before allowing add
+        const group = this.getGroup(groupId);
+        if (!group) {
+          return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+        if (!group.members.includes(account.accountId)) {
+          return res.status(403).json({ success: false, error: 'Not a member of this group' });
+        }
+        
+        const { memberId } = req.body;
+        if (!memberId) {
+          return res.status(400).json({ success: false, error: 'memberId required' });
+        }
+
+        const payload = {
+          groupId,
+          addedBy: account.accountId,
+          memberId,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_MEMBER_ADDED', payload);
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to add member' });
+        }
+
+        res.json({ success: true, groupId, memberId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Leave group
+    // Leave group (P2P)
     this.app.post('/api/messages/groups/:groupId/leave', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId } = req.params;
+        
+        // SECURITY: Verify user is a member of the group before allowing leave
+        const group = this.getGroup(groupId);
+        if (!group) {
+          return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+        if (!group.members.includes(account.accountId)) {
+          return res.status(403).json({ success: false, error: 'Not a member of this group' });
+        }
+        
+        const payload = {
+          groupId,
+          memberId: account.accountId,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_MEMBER_LEFT', payload);
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to leave group' });
+        }
+
+        res.json({ success: true, groupId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Mark message as viewed
+    // Mark message as viewed (P2P)
     this.app.post('/api/messages/:messageId/viewed', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const payload = {
+          messageId,
+          viewerId: account.accountId,
+          viewedAt: Date.now(),
+        };
+
+        const event = this.createLocalEphemeralEvent('MESSAGE_VIEWED', payload);
+        res.json({ success: true, messageId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Mark message as read
+    // Mark message as read (P2P)
     this.app.post('/api/messages/:messageId/read', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const payload = {
+          messageId,
+          readerId: account.accountId,
+          readAt: Date.now(),
+        };
+
+        const event = this.createLocalEphemeralEvent('MESSAGE_READ', payload);
+        res.json({ success: true, messageId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Add reaction
+    // Add reaction (P2P)
     this.app.post('/api/messages/:messageId/react', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+        if (!emoji) {
+          return res.status(400).json({ success: false, error: 'emoji required' });
+        }
+
+        const payload = {
+          messageId,
+          reactorId: account.accountId,
+          emoji,
+        };
+
+        const event = this.createLocalEphemeralEvent('REACTION_ADDED', payload);
+        res.json({ success: true, messageId, emoji, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Mute conversation
+    // Mute conversation (P2P)
     this.app.post('/api/messages/conversation/:conversationId/mute', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { conversationId } = req.params;
+        const payload = {
+          conversationId,
+          userId: account.accountId,
+          muted: true,
+        };
+
+        const event = this.createLocalEphemeralEvent('CONVERSATION_MUTED', payload);
+        res.json({ success: true, conversationId, muted: true, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Unmute conversation
+    // Unmute conversation (P2P)
     this.app.post('/api/messages/conversation/:conversationId/unmute', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { conversationId } = req.params;
+        const payload = {
+          conversationId,
+          userId: account.accountId,
+          muted: false,
+        };
+
+        const event = this.createLocalEphemeralEvent('CONVERSATION_UNMUTED', payload);
+        res.json({ success: true, conversationId, muted: false, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Mute group
+    // Mute group (P2P)
     this.app.post('/api/messages/groups/:groupId/mute', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId } = req.params;
+        const payload = {
+          groupId,
+          userId: account.accountId,
+          muted: true,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_MUTED', payload);
+        res.json({ success: true, groupId, muted: true, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Unmute group
+    // Unmute group (P2P)
     this.app.post('/api/messages/groups/:groupId/unmute', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId } = req.params;
+        const payload = {
+          groupId,
+          userId: account.accountId,
+          muted: false,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_UNMUTED', payload);
+        res.json({ success: true, groupId, muted: false, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Typing indicator
+    // Typing indicator (P2P - broadcast only, no storage)
     this.app.post('/api/messages/typing', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { conversationId, recipientId } = req.body;
+        
+        // Broadcast typing indicator without storing (ephemeral)
+        const message = {
+          type: 'typing_indicator',
+          senderId: account.accountId,
+          conversationId,
+          recipientId,
+          timestamp: Date.now(),
+        };
+
+        this.broadcastToLocalClients(message);
+        this.broadcastToGatewayPeers(message);
+
+        res.json({ success: true, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Online status heartbeat
+    // Online status heartbeat (P2P)
     this.app.post('/api/messages/online', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        // Broadcast online status
+        const message = {
+          type: 'online_status',
+          userId: account.accountId,
+          online: true,
+          timestamp: Date.now(),
+        };
+
+        this.broadcastToLocalClients(message);
+        this.broadcastToGatewayPeers(message);
+
+        res.json({ success: true, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Start conversation about item
+    // Start conversation about item (P2P)
     this.app.post('/api/messages/start-about-item', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { itemId, recipientId, encryptedContent, encryptedForSender } = req.body;
+        if (!itemId || !encryptedContent) {
+          return res.status(400).json({ success: false, error: 'itemId and encryptedContent required' });
+        }
+
+        // Recipient can be specified or we'll use a placeholder
+        // In full P2P mode, the recipient needs to be known
+        const targetRecipient = recipientId || `item_owner_${itemId}`;
+
+        if (targetRecipient === account.accountId) {
+          return res.status(400).json({ success: false, error: 'Cannot message yourself' });
+        }
+
+        if (this.isBlocked(targetRecipient, account.accountId)) {
+          return res.status(403).json({ success: false, error: 'You are blocked by this user' });
+        }
+
+        const conversationId = this.generateConversationId(account.accountId, targetRecipient, itemId);
+        const messageId = this.generateMessageId();
+
+        const payload = {
+          messageId,
+          senderId: account.accountId,
+          recipientId: targetRecipient,
+          encryptedContent,
+          encryptedForSender: encryptedForSender || encryptedContent,
+          itemId,
+          conversationId,
+        };
+
+        const event = this.createLocalEphemeralEvent('MESSAGE_SENT', payload);
+        if (!event) {
+          return res.status(500).json({ success: false, error: 'Failed to create message' });
+        }
+
+        res.json({
+          success: true,
+          messageId,
+          conversationId,
+          recipientId: targetRecipient,
+          expiresAt: event.expiresAt,
+          p2p: true,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
-    // Delete endpoints
+    // Delete message (P2P)
     this.app.delete('/api/messages/:messageId', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const payload = {
+          messageId,
+          deletedBy: account.accountId,
+        };
+
+        const event = this.createLocalEphemeralEvent('MESSAGE_DELETED', payload);
+        res.json({ success: true, messageId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
+    // Remove reaction (P2P)
     this.app.delete('/api/messages/:messageId/react', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { messageId } = req.params;
+        const { emoji } = req.body;
+
+        const payload = {
+          messageId,
+          reactorId: account.accountId,
+          emoji,
+        };
+
+        const event = this.createLocalEphemeralEvent('REACTION_REMOVED', payload);
+        res.json({ success: true, messageId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
+    // Remove group member (P2P)
     this.app.delete('/api/messages/groups/:groupId/members/:memberId', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId, memberId } = req.params;
+        const payload = {
+          groupId,
+          removedBy: account.accountId,
+          memberId,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_MEMBER_REMOVED', payload);
+        res.json({ success: true, groupId, memberId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
+    // Delete group message (P2P)
     this.app.delete('/api/messages/groups/:groupId/messages/:messageId', async (req, res) => {
-      return this.proxyApi(req, res);
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const { groupId, messageId } = req.params;
+        const payload = {
+          groupId,
+          messageId,
+          deletedBy: account.accountId,
+        };
+
+        const event = this.createLocalEphemeralEvent('GROUP_MESSAGE_DELETED', payload);
+        res.json({ success: true, groupId, messageId, p2p: true });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
     });
 
     // ============================================================
@@ -4557,6 +6224,9 @@ class GatewayNode {
     // Load communications ledger
     this.loadEphemeralLedger();
     
+    // Load premium features data
+    this.loadPremiumData();
+    
     // Start message pruning (10-day retention, hourly cleanup)
     this.startMessagePruning();
 
@@ -4973,6 +6643,17 @@ class GatewayNode {
         this.ephemeralContactsByUser.get(userId).add(contactId);
       }
     }
+    
+    // Handle contact removal
+    if (event.eventType === 'CONTACT_REMOVED' && event.payload) {
+      const { userId, contactId } = event.payload;
+      if (userId && contactId) {
+        const userContacts = this.ephemeralContactsByUser.get(userId);
+        if (userContacts) {
+          userContacts.delete(contactId);
+        }
+      }
+    }
     return true;
   }
   
@@ -5057,6 +6738,394 @@ class GatewayNode {
     } catch (e) {
       console.error('Failed to save communications ledger:', e.message);
     }
+  }
+
+  // ============================================================
+  // BITCOIN CHAIN API HELPERS
+  // ============================================================
+
+  getChainApiBases() {
+    const network = process.env.BITCOIN_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+    return network === 'mainnet'
+      ? ['https://mempool.space/api', 'https://blockstream.info/api']
+      : ['https://mempool.space/testnet/api', 'https://blockstream.info/testnet/api'];
+  }
+
+  // ============================================================
+  // PREMIUM FEATURES HELPER METHODS
+  // ============================================================
+
+  calculateWalletSendFee(amountSats) {
+    const flatFee = PREMIUM_CONFIG.wallet.sendFeeSats;
+    const percentFee = Math.floor(amountSats * PREMIUM_CONFIG.wallet.sendFeePercent);
+    return Math.max(flatFee, percentFee, PREMIUM_CONFIG.minFeeSats);
+  }
+
+  getFeatureCost(feature) {
+    const costs = {
+      // Messaging features
+      'delete_message': PREMIUM_CONFIG.messaging.deleteMessageSats,
+      'edit_message': PREMIUM_CONFIG.messaging.editMessageSats,
+      'extended_retention': PREMIUM_CONFIG.messaging.extendedRetentionSats,
+      'large_media': PREMIUM_CONFIG.messaging.largeMediaSats,
+      'create_group': PREMIUM_CONFIG.messaging.createGroupSats,
+      'verified_badge': PREMIUM_CONFIG.messaging.verifiedBadgeSats,
+      // Subscriptions
+      'subscription_pro': PREMIUM_CONFIG.subscriptions.pro.price,
+      'subscription_business': PREMIUM_CONFIG.subscriptions.business.price,
+    };
+    return costs[feature] !== undefined ? costs[feature] : null;
+  }
+
+  getUserPremiumStatus(accountId) {
+    const userCredits = this.userCredits.get(accountId) || {
+      credits: 0,
+      features: {},
+      subscription: 'free',
+      subscriptionExpiresAt: null,
+    };
+    
+    // Check if subscription is still valid
+    if (userCredits.subscriptionExpiresAt && userCredits.subscriptionExpiresAt < Date.now()) {
+      userCredits.subscription = 'free';
+      userCredits.subscriptionExpiresAt = null;
+      this.userCredits.set(accountId, userCredits);
+    }
+    
+    return {
+      accountId,
+      credits: userCredits.credits,
+      features: userCredits.features,
+      subscription: userCredits.subscription,
+      subscriptionExpiresAt: userCredits.subscriptionExpiresAt,
+      subscriptionFeatures: PREMIUM_CONFIG.subscriptions[userCredits.subscription]?.features || [],
+    };
+  }
+
+  canUsePremiumFeature(accountId, feature) {
+    const status = this.getUserPremiumStatus(accountId);
+    
+    // Check if subscription includes this feature
+    const subFeatureMap = {
+      'delete_message': 'delete_messages',
+      'edit_message': 'edit_messages',
+      'extended_retention': 'retention_30_days',
+      'large_media': 'media_25mb',
+      'create_group': 'unlimited_groups',
+      'verified_badge': 'verified_badge',
+    };
+    
+    const subFeature = subFeatureMap[feature];
+    if (subFeature && status.subscriptionFeatures.includes(subFeature)) {
+      return true;
+    }
+    
+    // Check if user has purchased this feature
+    if (status.features[feature] && status.features[feature] > 0) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  grantPremiumFeature(accountId, feature, quantity = 1) {
+    let userCredits = this.userCredits.get(accountId);
+    if (!userCredits) {
+      userCredits = {
+        credits: 0,
+        features: {},
+        subscription: 'free',
+        subscriptionExpiresAt: null,
+      };
+    }
+    
+    // Handle subscriptions
+    if (feature === 'subscription_pro' || feature === 'subscription_business') {
+      const tier = feature === 'subscription_pro' ? 'pro' : 'business';
+      userCredits.subscription = tier;
+      // 30 days subscription
+      userCredits.subscriptionExpiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
+      console.log(`⭐ [Premium] Granted ${tier} subscription to ${accountId}`);
+    } else {
+      // Grant feature credits
+      if (!userCredits.features[feature]) {
+        userCredits.features[feature] = 0;
+      }
+      userCredits.features[feature] += quantity;
+      console.log(`⭐ [Premium] Granted ${quantity}x ${feature} to ${accountId}`);
+    }
+    
+    this.userCredits.set(accountId, userCredits);
+  }
+
+  consumePremiumFeature(accountId, feature) {
+    const userCredits = this.userCredits.get(accountId);
+    if (!userCredits) return false;
+    
+    // Check subscription first (unlimited use)
+    const status = this.getUserPremiumStatus(accountId);
+    const subFeatureMap = {
+      'delete_message': 'delete_messages',
+      'edit_message': 'edit_messages',
+    };
+    
+    const subFeature = subFeatureMap[feature];
+    if (subFeature && status.subscriptionFeatures.includes(subFeature)) {
+      return true; // Subscription covers this, no consumption needed
+    }
+    
+    // Consume from credits
+    if (userCredits.features[feature] && userCredits.features[feature] > 0) {
+      userCredits.features[feature]--;
+      this.userCredits.set(accountId, userCredits);
+      this.savePremiumData();
+      return true;
+    }
+    
+    return false;
+  }
+
+  async verifyPaymentOnChain(txid, expectedAmountSats, expectedAddress) {
+    try {
+      const bases = this.getChainApiBases();
+      
+      for (const apiBase of bases) {
+        try {
+          const response = await fetch(`${apiBase}/tx/${txid}`);
+          if (!response.ok) continue;
+          
+          const tx = await response.json();
+          
+          // Check outputs for payment to sponsor address
+          let foundPayment = false;
+          let totalToAddress = 0;
+          
+          for (const vout of (tx.vout || [])) {
+            const scriptPubKeyAddress = vout.scriptpubkey_address;
+            if (scriptPubKeyAddress === expectedAddress) {
+              totalToAddress += vout.value || 0;
+            }
+          }
+          
+          if (totalToAddress >= expectedAmountSats) {
+            foundPayment = true;
+          }
+          
+          if (foundPayment) {
+            return {
+              verified: true,
+              txid,
+              amountSats: totalToAddress,
+              confirmed: tx.status?.confirmed || false,
+            };
+          }
+          
+          return {
+            verified: false,
+            reason: `Transaction does not contain payment of ${expectedAmountSats} sats to ${expectedAddress}. Found: ${totalToAddress} sats`,
+          };
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      return { verified: false, reason: 'Could not verify transaction on chain' };
+    } catch (error) {
+      return { verified: false, reason: error.message };
+    }
+  }
+
+  // ============================================================
+  // PREPAID SERVICE BALANCE MANAGEMENT
+  // Stored locally, works independently of main node / operators
+  // ============================================================
+
+  getServiceBalance(accountId) {
+    const balance = this.serviceBalances.get(accountId) || {
+      serviceBalanceSats: 0,
+      serviceBalanceLastFundedAt: null,
+      serviceBalanceTotalFundedSats: 0,
+      serviceBalanceTotalUsedSats: 0,
+    };
+    return balance;
+  }
+
+  creditServiceBalance(accountId, amountSats, txid) {
+    let balance = this.serviceBalances.get(accountId);
+    if (!balance) {
+      balance = {
+        serviceBalanceSats: 0,
+        serviceBalanceLastFundedAt: null,
+        serviceBalanceTotalFundedSats: 0,
+        serviceBalanceTotalUsedSats: 0,
+      };
+    }
+
+    balance.serviceBalanceSats += amountSats;
+    balance.serviceBalanceLastFundedAt = Date.now();
+    balance.serviceBalanceTotalFundedSats += amountSats;
+
+    this.serviceBalances.set(accountId, balance);
+    console.log(`💰 [Service] Credited ${amountSats} sats to ${accountId} (txid: ${txid}). New balance: ${balance.serviceBalanceSats} sats`);
+    
+    this.savePremiumData();
+    return balance;
+  }
+
+  useServiceBalance(accountId, amountSats, action, actionId) {
+    let balance = this.serviceBalances.get(accountId);
+    if (!balance || balance.serviceBalanceSats < amountSats) {
+      return false;
+    }
+
+    balance.serviceBalanceSats -= amountSats;
+    balance.serviceBalanceTotalUsedSats += amountSats;
+
+    this.serviceBalances.set(accountId, balance);
+    console.log(`💸 [Service] Used ${amountSats} sats from ${accountId} for ${action}:${actionId}. Remaining: ${balance.serviceBalanceSats} sats`);
+    
+    this.savePremiumData();
+    return true;
+  }
+
+  loadPremiumData() {
+    const filePath = path.join(CONFIG.dataDir, 'premium-data.json');
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        
+        // Load user credits
+        for (const [accountId, credits] of Object.entries(data.userCredits || {})) {
+          this.userCredits.set(accountId, credits);
+        }
+        
+        // Load payment history
+        this.paymentHistory = data.paymentHistory || [];
+        
+        // Load service balances (prepaid sats)
+        for (const [accountId, balance] of Object.entries(data.serviceBalances || {})) {
+          this.serviceBalances.set(accountId, balance);
+        }
+        
+        // Load service payment history (txid -> info)
+        for (const [txid, info] of Object.entries(data.servicePaymentHistory || {})) {
+          this.servicePaymentHistory.set(txid, info);
+        }
+        
+        console.log(`💰 Loaded premium data for ${this.userCredits.size} users, ${this.serviceBalances.size} service balances`);
+      }
+    } catch (e) {
+      console.error('Failed to load premium data:', e.message);
+    }
+  }
+
+  savePremiumData() {
+    const filePath = path.join(CONFIG.dataDir, 'premium-data.json');
+    try {
+      const data = {
+        version: 2,
+        savedAt: Date.now(),
+        userCredits: Object.fromEntries(this.userCredits),
+        paymentHistory: this.paymentHistory.slice(-1000), // Keep last 1000 payments
+        serviceBalances: Object.fromEntries(this.serviceBalances),
+        servicePaymentHistory: Object.fromEntries(this.servicePaymentHistory),
+      };
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    } catch (e) {
+      console.error('Failed to save premium data:', e.message);
+    }
+  }
+
+  // ============================================================
+  // P2P MESSAGING - LOCAL EVENT CREATION (NO OPERATOR REQUIRED)
+  // ============================================================
+
+  generateEventId() {
+    return `evt_${Date.now()}_${require('crypto').randomBytes(8).toString('hex')}`;
+  }
+
+  generateMessageId() {
+    return `msg_${Date.now()}_${require('crypto').randomBytes(8).toString('hex')}`;
+  }
+
+  generateConversationId(userId1, userId2, itemId = null) {
+    const sorted = [userId1, userId2].sort();
+    const base = `${sorted[0]}:${sorted[1]}`;
+    if (itemId) {
+      return `conv_item_${require('crypto').createHash('sha256').update(`${base}:${itemId}`).digest('hex').slice(0, 16)}`;
+    }
+    return `conv_${require('crypto').createHash('sha256').update(base).digest('hex').slice(0, 16)}`;
+  }
+
+  generateGroupId() {
+    return `grp_${Date.now()}_${require('crypto').randomBytes(8).toString('hex')}`;
+  }
+
+  getRetentionMs(mediaType = 'TEXT') {
+    const RETENTION_MS = {
+      TEXT: 10 * 24 * 60 * 60 * 1000,      // 10 days
+      IMAGE: 7 * 24 * 60 * 60 * 1000,      // 7 days
+      AUDIO: 5 * 24 * 60 * 60 * 1000,      // 5 days
+      VIDEO: 3 * 24 * 60 * 60 * 1000,      // 3 days
+    };
+    return RETENTION_MS[mediaType] || RETENTION_MS.TEXT;
+  }
+
+  createLocalEphemeralEvent(eventType, payload, mediaType = 'TEXT') {
+    const now = Date.now();
+    const isPermanent = eventType === 'CONTACT_ADDED' || eventType === 'CONTACT_REMOVED';
+    
+    const event = {
+      eventId: this.generateEventId(),
+      eventType,
+      payload,
+      timestamp: now,
+      expiresAt: isPermanent ? null : now + this.getRetentionMs(mediaType),
+      sourceGateway: this.gatewayId,
+    };
+
+    // Store locally
+    if (this.storeEphemeralEvent(event)) {
+      this.saveEphemeralLedger();
+      // Broadcast to all peers (operators + gateway mesh)
+      this.broadcastEphemeralEvent(event);
+      return event;
+    }
+    return null;
+  }
+
+  broadcastEphemeralEvent(event) {
+    const message = { type: 'ephemeral_event', event };
+    
+    // Broadcast to connected operators
+    this.broadcastToPeers(message);
+    
+    // Broadcast to gateway mesh peers
+    this.broadcastToGatewayPeers(message);
+    
+    // Broadcast to local WebSocket clients
+    this.broadcastToLocalClients(message);
+  }
+
+  broadcastToLocalClients(message) {
+    if (!this.wss) return;
+    const msgStr = JSON.stringify(message);
+    for (const client of this.wss.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(msgStr);
+      }
+    }
+  }
+
+  isBlocked(blockerId, blockedId) {
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.eventType === 'USER_BLOCKED' && event.payload) {
+        if (event.payload.blockerId === blockerId && event.payload.blockedId === blockedId) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   // ============================================================
@@ -5149,14 +7218,36 @@ class GatewayNode {
   }
 
   getUserContacts(userId) {
-    const contacts = [];
+    const contacts = new Map();
     const contactSet = this.ephemeralContactsByUser.get(userId);
-    if (contactSet) {
-      for (const contactId of contactSet) {
-        contacts.push({ contactId, addedAt: null });
+    if (!contactSet || contactSet.size === 0) return [];
+    
+    // Build contact details from events
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.eventType !== 'CONTACT_ADDED' && event.eventType !== 'CONTACT_UPDATED') continue;
+      
+      const payload = event.payload || {};
+      if (payload.userId !== userId) continue;
+      if (!contactSet.has(payload.contactId)) continue;
+      
+      const existing = contacts.get(payload.contactId) || {};
+      contacts.set(payload.contactId, {
+        contactId: payload.contactId,
+        nickname: payload.nickname || existing.nickname || null,
+        publicKey: payload.publicKey || existing.publicKey || null,
+        addedAt: existing.addedAt || event.timestamp,
+        updatedAt: event.timestamp,
+      });
+    }
+    
+    // Ensure all contacts in the set are included
+    for (const contactId of contactSet) {
+      if (!contacts.has(contactId)) {
+        contacts.set(contactId, { contactId, nickname: null, publicKey: null, addedAt: null });
       }
     }
-    return contacts;
+    
+    return Array.from(contacts.values());
   }
 
   getUserGroups(userId) {
@@ -5263,6 +7354,85 @@ class GatewayNode {
       }
     }
     return null;
+  }
+
+  deleteMessage(messageId, accountId) {
+    const message = this.getMessage(messageId);
+    if (!message) return false;
+    
+    // Verify ownership - only sender can delete
+    if (message.payload?.senderId !== accountId && message.payload?.from !== accountId) {
+      return false;
+    }
+    
+    // Mark as deleted (soft delete - keeps record but hides content)
+    message.payload.deleted = true;
+    message.payload.deletedAt = Date.now();
+    message.payload.content = '[Message deleted]';
+    
+    // Broadcast deletion to connected clients
+    this.broadcastToClients({
+      type: 'message_deleted',
+      messageId,
+      deletedAt: message.payload.deletedAt,
+    });
+    
+    // Broadcast to peer gateways
+    this.broadcastToPeers({
+      type: 'ephemeral_event',
+      eventType: 'MESSAGE_DELETED',
+      payload: { messageId, deletedAt: message.payload.deletedAt },
+    });
+    
+    console.log(`🗑️ [Message] Deleted message ${messageId} by ${accountId}`);
+    return true;
+  }
+
+  editMessage(messageId, accountId, newContent) {
+    const message = this.getMessage(messageId);
+    if (!message) return false;
+    
+    // Verify ownership - only sender can edit
+    if (message.payload?.senderId !== accountId && message.payload?.from !== accountId) {
+      return false;
+    }
+    
+    // Store original content and update
+    if (!message.payload.editHistory) {
+      message.payload.editHistory = [];
+    }
+    message.payload.editHistory.push({
+      content: message.payload.content,
+      editedAt: Date.now(),
+    });
+    
+    message.payload.content = newContent;
+    message.payload.edited = true;
+    message.payload.lastEditedAt = Date.now();
+    
+    // Broadcast edit to connected clients
+    this.broadcastToClients({
+      type: 'message_edited',
+      messageId,
+      newContent,
+      lastEditedAt: message.payload.lastEditedAt,
+    });
+    
+    // Broadcast to peer gateways
+    this.broadcastToPeers({
+      type: 'ephemeral_event',
+      eventType: 'MESSAGE_EDITED',
+      payload: { messageId, newContent, lastEditedAt: message.payload.lastEditedAt },
+    });
+    
+    console.log(`✏️ [Message] Edited message ${messageId} by ${accountId}`);
+    return true;
+  }
+
+  getConversationId(userId1, userId2) {
+    // Generate consistent conversation ID from two user IDs (sorted alphabetically)
+    const sorted = [userId1, userId2].sort();
+    return `conv_${sorted[0]}_${sorted[1]}`;
   }
 
   getMessageStatus(messageId) {
@@ -5627,6 +7797,30 @@ class GatewayNode {
         if (this.storeEphemeralEvent(message.event)) {
           this.broadcastToPeers(message);
           this.broadcastToGatewayPeers(message, gatewayId); // Forward to other gateways except sender
+          this.broadcastToLocalClients(message); // Notify local WebSocket clients
+        }
+        break;
+
+      case 'typing_indicator':
+        // Relay typing indicators to local clients and other gateways (not stored)
+        this.broadcastToLocalClients(message);
+        this.broadcastToGatewayPeers(message, gatewayId);
+        break;
+
+      case 'online_status':
+        // Relay online status to local clients and other gateways (not stored)
+        this.broadcastToLocalClients(message);
+        this.broadcastToGatewayPeers(message, gatewayId);
+        break;
+
+      case 'p2p_message':
+        // Direct P2P encrypted message relay
+        if (message.recipientId) {
+          // Store as ephemeral event if it has proper structure
+          if (message.event && this.storeEphemeralEvent(message.event)) {
+            this.broadcastToLocalClients({ type: 'ephemeral_event', event: message.event });
+            this.broadcastToGatewayPeers(message, gatewayId);
+          }
         }
         break;
 
