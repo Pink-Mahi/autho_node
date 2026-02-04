@@ -532,11 +532,12 @@
     }
 
     function persistRestoredWallet(walletPayload) {
+      const network = walletPayload.network || 'mainnet';
       const wallet = {
         publicKey: walletPayload.publicKey,
         address: walletPayload.address,
         paymentAddress: walletPayload.paymentAddress || walletPayload.address,
-        network: walletPayload.network || 'mainnet',
+        network: network,
         derivationPath: walletPayload.derivationPath || "m/84'/0'/0'/0/0",
       };
       localStorage.setItem('autho_wallet', JSON.stringify(wallet));
@@ -544,8 +545,17 @@
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
       sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
       
-      // Store privateKey in sessionStorage for E2E encryption (cleared when browser closes)
-      if (walletPayload.privateKey) {
+      // Derive privateKey from mnemonic for E2E encryption (stored in sessionStorage, cleared when browser closes)
+      if (walletPayload.mnemonic && window.AuthoBTC?.getPrivateKeyFromMnemonic) {
+        try {
+          const privateKey = window.AuthoBTC.getPrivateKeyFromMnemonic(walletPayload.mnemonic, network, 0, 0);
+          if (privateKey) {
+            sessionStorage.setItem('autho_wallet_privateKey', privateKey);
+          }
+        } catch (e) {
+          console.error('Failed to derive privateKey from mnemonic:', e);
+        }
+      } else if (walletPayload.privateKey) {
         sessionStorage.setItem('autho_wallet_privateKey', walletPayload.privateKey);
       }
     }

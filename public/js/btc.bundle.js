@@ -9281,6 +9281,10 @@ zoo`.split("\n");
     const pub = secp256k1.getPublicKey(priv, true);
     return hex.encode(pub);
   }
+  function getPrivateKeyFromMnemonic(mnemonic, network, account = 0, index = 0) {
+    const priv = derivePrivKeyBytesFromMnemonic(mnemonic, network, account, index);
+    return hex.encode(priv);
+  }
   function generateMnemonic24() {
     return generateMnemonic(wordlist, 256);
   }
@@ -9396,6 +9400,7 @@ zoo`.split("\n");
     version: "1.0.0",
     getAddressFromMnemonic: (mnemonic, network, account, index) => getP2WPKHAddressFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
     getPublicKeyFromMnemonic: (mnemonic, network, account, index) => getPublicKeyFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
+    getPrivateKeyFromMnemonic: (mnemonic, network, account, index) => getPrivateKeyFromMnemonic(mnemonic, network, account ?? 0, index ?? 0),
     generateMnemonic24: () => generateMnemonic24(),
     buildAndSignP2WPKH: (params) => buildAndSignP2WPKH(params),
     generateSecp256k1KeyPair: () => generateSecp256k1KeyPair(),
