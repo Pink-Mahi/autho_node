@@ -1403,6 +1403,7 @@
       <div class="media-buttons-row">
         <button class="media-btn" onclick="document.getElementById('photoInput').click()" title="Send photo">📷 Photo</button>
         <button class="media-btn" onclick="document.getElementById('videoInput').click()" title="Send video">🎥 Video</button>
+        <button class="media-btn" onclick="document.getElementById('fileInput').click()" title="Send file">📎 File</button>
         <button class="media-btn" id="audioBtn" onclick="toggleAudioRecording()" title="Record audio">🎤 Audio</button>
       </div>
       
@@ -1447,6 +1448,7 @@
       <!-- Hidden file inputs -->
       <input type="file" id="photoInput" class="hidden-input" accept="image/*" capture="environment" onchange="handlePhotoSelect(event)">
       <input type="file" id="videoInput" class="hidden-input" accept="video/*" capture="environment" onchange="handleVideoSelect(event)">
+      <input type="file" id="fileInput" class="hidden-input" onchange="handleFileSelect(event)">
     </div>
   </div>
 
@@ -1676,12 +1678,116 @@
       return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    function sha256Sync(bytes) {
+      const K = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+      ];
+      const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+
+      const bitLen = bytes.length * 8;
+      const withOne = bytes.length + 1;
+      const padLen = (withOne % 64 <= 56) ? (56 - (withOne % 64)) : (56 + (64 - (withOne % 64)));
+      const totalLen = withOne + padLen + 8;
+      const msg = new Uint8Array(totalLen);
+      msg.set(bytes, 0);
+      msg[bytes.length] = 0x80;
+      const view = new DataView(msg.buffer);
+      view.setUint32(totalLen - 8, Math.floor(bitLen / 2 ** 32), false);
+      view.setUint32(totalLen - 4, bitLen >>> 0, false);
+
+      let h0 = 0x6a09e667;
+      let h1 = 0xbb67ae85;
+      let h2 = 0x3c6ef372;
+      let h3 = 0xa54ff53a;
+      let h4 = 0x510e527f;
+      let h5 = 0x9b05688c;
+      let h6 = 0x1f83d9ab;
+      let h7 = 0x5be0cd19;
+
+      const w = new Uint32Array(64);
+      for (let i = 0; i < msg.length; i += 64) {
+        for (let t = 0; t < 16; t++) {
+          w[t] = view.getUint32(i + t * 4, false);
+        }
+        for (let t = 16; t < 64; t++) {
+          const s0 = (rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3)) >>> 0;
+          const s1 = (rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10)) >>> 0;
+          w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
+        }
+
+        let a = h0;
+        let b = h1;
+        let c = h2;
+        let d = h3;
+        let e = h4;
+        let f = h5;
+        let g = h6;
+        let h = h7;
+
+        for (let t = 0; t < 64; t++) {
+          const S1 = (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) >>> 0;
+          const ch = ((e & f) ^ (~e & g)) >>> 0;
+          const temp1 = (h + S1 + ch + K[t] + w[t]) >>> 0;
+          const S0 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) >>> 0;
+          const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+          const temp2 = (S0 + maj) >>> 0;
+
+          h = g;
+          g = f;
+          f = e;
+          e = (d + temp1) >>> 0;
+          d = c;
+          c = b;
+          b = a;
+          a = (temp1 + temp2) >>> 0;
+        }
+
+        h0 = (h0 + a) >>> 0;
+        h1 = (h1 + b) >>> 0;
+        h2 = (h2 + c) >>> 0;
+        h3 = (h3 + d) >>> 0;
+        h4 = (h4 + e) >>> 0;
+        h5 = (h5 + f) >>> 0;
+        h6 = (h6 + g) >>> 0;
+        h7 = (h7 + h) >>> 0;
+      }
+
+      const out = new Uint8Array(32);
+      const outView = new DataView(out.buffer);
+      outView.setUint32(0, h0, false);
+      outView.setUint32(4, h1, false);
+      outView.setUint32(8, h2, false);
+      outView.setUint32(12, h3, false);
+      outView.setUint32(16, h4, false);
+      outView.setUint32(20, h5, false);
+      outView.setUint32(24, h6, false);
+      outView.setUint32(28, h7, false);
+      return out;
+    }
+
+    async function sha256Bytes(bytes) {
+      try {
+        if (window.crypto && window.crypto.subtle && window.crypto.subtle.digest) {
+          const hashBuffer = await window.crypto.subtle.digest('SHA-256', bytes);
+          return new Uint8Array(hashBuffer);
+        }
+      } catch (e) {
+      }
+      return sha256Sync(bytes);
+    }
+
     // Derive X25519 keypair from wallet private key using SHA-256
     async function deriveEncryptionKeyPair(privateKeyHex) {
       // Hash the private key to get 32 bytes for X25519 seed
       const privateKeyBytes = hexToBytes(privateKeyHex);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', privateKeyBytes);
-      const seed = new Uint8Array(hashBuffer);
+      const seed = await sha256Bytes(privateKeyBytes);
       
       // Generate X25519 keypair from seed
       const keyPair = nacl.box.keyPair.fromSecretKey(seed);
@@ -1692,8 +1798,7 @@
     async function deriveEncryptionPublicKey(publicKeyHex) {
       // Hash the public key to get consistent derivation
       const publicKeyBytes = hexToBytes(publicKeyHex);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', publicKeyBytes);
-      const seed = new Uint8Array(hashBuffer);
+      const seed = await sha256Bytes(publicKeyBytes);
       
       // Generate keypair from seed and return only public key
       const keyPair = nacl.box.keyPair.fromSecretKey(seed);
@@ -1767,6 +1872,9 @@
       }
       
       myPrivateKey = wallet.privateKey;
+
+      const sendBtn = document.getElementById('sendBtn');
+      if (sendBtn) sendBtn.disabled = true;
       
       // Derive encryption keypair for E2E encryption
       if (myPrivateKey) {
@@ -1777,6 +1885,8 @@
           console.error('Failed to initialize encryption:', e);
         }
       }
+
+      if (sendBtn) sendBtn.disabled = false;
       
       await loadConversations();
       await loadContacts();
@@ -2239,8 +2349,7 @@
           timestamp: Date.now()
         });
 
-        // SECURITY: Require encryption - never send plaintext group messages
-        if (!myEncryptionKeyPair) {
+        if (!await ensureEncryptionInitialized()) {
           alert('Encryption not initialized. Please refresh the page and try again.');
           console.error('SECURITY: Attempted to send group message without encryption keys');
           return;
@@ -2656,13 +2765,46 @@
       startMessagePolling();
     }
 
-    async function generateConversationId(p1, p2, itemId) {
+    async function generateConversationId(participant1, participant2, itemId = null) {
+      const p1 = participant1.toLowerCase();
+      const p2 = participant2.toLowerCase();
       const sorted = [p1, p2].sort();
       const base = `${sorted[0]}:${sorted[1]}${itemId ? ':' + itemId : ''}`;
       const encoder = new TextEncoder();
-      const hash = await crypto.subtle.digest('SHA-256', encoder.encode(base));
-      const hashArray = Array.from(new Uint8Array(hash));
+      const digest = await sha256Bytes(encoder.encode(base));
+      const hashArray = Array.from(digest);
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+    }
+
+    let encryptionInitPromise = null;
+
+    function getServiceAccountId() {
+      const id = String(localStorage.getItem('autho_account_id') || '').trim();
+      if (id) return id;
+      const wallet = WalletAuth.getWallet();
+      return wallet?.publicKey || wallet?.identityAddress || wallet?.paymentAddress || '';
+    }
+
+    async function ensureEncryptionInitialized() {
+      if (myEncryptionKeyPair) return true;
+
+      if (!encryptionInitPromise) {
+        encryptionInitPromise = (async () => {
+          const wallet = WalletAuth.getWallet();
+          if (!wallet?.privateKey) throw new Error('Wallet not available');
+          myPrivateKey = wallet.privateKey;
+          myEncryptionKeyPair = await deriveEncryptionKeyPair(myPrivateKey);
+          return myEncryptionKeyPair;
+        })();
+      }
+
+      try {
+        await encryptionInitPromise;
+        return !!myEncryptionKeyPair;
+      } catch (e) {
+        console.error('Encryption init failed:', e);
+        return false;
+      }
     }
 
     async function loadMessages(conversationId) {
@@ -2807,8 +2949,7 @@
           timestamp: Date.now()
         });
         
-        // SECURITY: Require encryption - never send plaintext
-        if (!myEncryptionKeyPair) {
+        if (!await ensureEncryptionInitialized()) {
           alert('Encryption not initialized. Please refresh the page and try again.');
           console.error('SECURITY: Attempted to send message without encryption keys');
           return;
@@ -3307,12 +3448,11 @@
       
       // Deduct balance
       try {
-        const wallet = WalletAuth.getWallet();
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        const accountId = getServiceAccountId();
         
         const res = await fetch('/api/service/premium/file-transfer', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
           body: JSON.stringify({
             accountId,
             tier: requiredTier,
@@ -3413,6 +3553,35 @@
       event.target.value = '';
     }
 
+    async function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const tierResult = await checkFileTierAndPay(file.size, file.name);
+      if (!tierResult) {
+        event.target.value = '';
+        return;
+      }
+
+      try {
+        const data = await fileToBase64(file);
+        pendingMedia = {
+          type: 'file',
+          data,
+          name: file.name || 'File',
+          size: file.size,
+          mime: file.type || 'application/octet-stream',
+          tierCost: tierResult.cost,
+        };
+        showMediaPreview();
+      } catch (e) {
+        console.error('File processing error:', e);
+        alert('Failed to process file');
+      }
+
+      event.target.value = '';
+    }
+
     async function compressImage(file, maxSize) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -3507,7 +3676,9 @@
       const name = document.getElementById('mediaPreviewName');
       const size = document.getElementById('mediaPreviewSize');
       
-      name.textContent = pendingMedia.type.charAt(0).toUpperCase() + pendingMedia.type.slice(1);
+      name.textContent = pendingMedia.type === 'file'
+        ? (pendingMedia.name || 'File')
+        : pendingMedia.type.charAt(0).toUpperCase() + pendingMedia.type.slice(1);
       size.textContent = formatFileSize(pendingMedia.size);
       
       if (pendingMedia.type === 'image') {
@@ -3516,6 +3687,8 @@
         thumb.innerHTML = `<video src="${pendingMedia.data}" muted></video>`;
       } else if (pendingMedia.type === 'audio') {
         thumb.innerHTML = `<div style="font-size:2rem">🎵</div>`;
+      } else if (pendingMedia.type === 'file') {
+        thumb.innerHTML = `<div style="font-size:2rem">📎</div>`;
       }
       
       preview.classList.add('active');
@@ -3668,11 +3841,12 @@
           type: pendingMedia.type,
           content: pendingMedia.data,
           name: pendingMedia.name,
+          size: pendingMedia.size,
+          mime: pendingMedia.mime,
           timestamp: Date.now()
         });
         
-        // SECURITY: Require encryption - never send plaintext media
-        if (!myEncryptionKeyPair) {
+        if (!await ensureEncryptionInitialized()) {
           alert('Encryption not initialized. Please refresh the page and try again.');
           console.error('SECURITY: Attempted to send media without encryption keys');
           return;
@@ -3937,6 +4111,23 @@
                 <audio src="${parsed.content}" controls></audio>
               </div>
             `;
+          } else if (parsed.type === 'file') {
+            const fileName = escapeHtml(parsed.name || 'File');
+            const fileSize = parsed.size ? formatFileSize(parsed.size) : '';
+            content = `
+              <div class="message-media" style="padding: 0.5rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <div style="font-size:1.3rem;">📎</div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${fileName}</div>
+                    <div style="font-size:0.75rem;color:#888;">${escapeHtml(fileSize)}</div>
+                  </div>
+                </div>
+                <div style="margin-top:0.4rem;">
+                  <a href="${parsed.content}" download="${fileName}" style="color:#8b5cf6;text-decoration:underline;">Download</a>
+                </div>
+              </div>
+            `;
           } else {
             content = `<div class="message-text">${escapeHtml(parsed.content || decrypted)}</div>`;
           }
@@ -3984,11 +4175,12 @@
     // Fetch service balance
     async function fetchServiceBalance() {
       try {
-        const wallet = WalletAuth.getWallet();
-        if (!wallet) return 0;
-        
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
-        const res = await fetch(`/api/accounts/${accountId}/service-balance`);
+        const accountId = getServiceAccountId();
+        if (!accountId) return 0;
+
+        const res = await fetch(`/api/accounts/${accountId}/service-balance`, {
+          headers: WalletAuth.getAuthHeaders(),
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.success) {
@@ -4089,12 +4281,11 @@
       }
       
       try {
-        const wallet = WalletAuth.getWallet();
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        const accountId = getServiceAccountId();
         
         const res = await fetch('/api/service/premium/message-delete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
           body: JSON.stringify({
             accountId,
             messageId: selectedMessageId,
@@ -4141,12 +4332,11 @@
       }
       
       try {
-        const wallet = WalletAuth.getWallet();
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        const accountId = getServiceAccountId();
         
         const res = await fetch('/api/service/premium/message-edit', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
           body: JSON.stringify({
             accountId,
             messageId: selectedMessageId,
@@ -4181,8 +4371,25 @@
       document.querySelectorAll('.message-bubble.sent').forEach(bubble => {
         if (bubble.dataset.contextMenuAdded) return;
         bubble.dataset.contextMenuAdded = 'true';
+
+        function eventLikeFromTouch(t) {
+          return {
+            clientX: t.clientX,
+            clientY: t.clientY,
+            preventDefault() {},
+            stopPropagation() {},
+          };
+        }
         
         bubble.addEventListener('contextmenu', (e) => {
+          const messageId = bubble.dataset.messageId || bubble.closest('[data-message-id]')?.dataset.messageId;
+          const textEl = bubble.querySelector('.message-text');
+          const text = textEl ? textEl.textContent : '';
+          showMessageContextMenu(e, messageId, text, true);
+        });
+
+        bubble.addEventListener('click', (e) => {
+          if (e.target.closest('.message-media')) return;
           const messageId = bubble.dataset.messageId || bubble.closest('[data-message-id]')?.dataset.messageId;
           const textEl = bubble.querySelector('.message-text');
           const text = textEl ? textEl.textContent : '';
@@ -4196,7 +4403,8 @@
             const messageId = bubble.dataset.messageId || bubble.closest('[data-message-id]')?.dataset.messageId;
             const textEl = bubble.querySelector('.message-text');
             const text = textEl ? textEl.textContent : '';
-            showMessageContextMenu(e.touches[0], messageId, text, true);
+            const touch = e.touches && e.touches[0];
+            if (touch) showMessageContextMenu(eventLikeFromTouch(touch), messageId, text, true);
           }, 500);
         });
         
