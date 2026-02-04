@@ -929,6 +929,111 @@
       }
     }
 
+    async function autoClaimServiceCreditsFromRecentTxs() {
+      try {
+        const accountId = getServiceAccountId();
+        if (!accountId) return;
+
+        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+        const address = wallet.paymentAddress || wallet.address;
+        if (!address) return;
+
+        const now = Date.now();
+        const lastTs = Number(localStorage.getItem('autho_service_fund_autoclaim_ts') || 0);
+        if (Number.isFinite(lastTs) && lastTs > 0 && (now - lastTs) < 30_000) {
+          return;
+        }
+        localStorage.setItem('autho_service_fund_autoclaim_ts', String(now));
+
+        if (!serviceBalanceData.paymentAddress) {
+          try {
+            const res = await fetch('/api/service/payment-address');
+            if (res.ok) {
+              const data = await res.json().catch(() => ({}));
+              if (data?.success && data?.paymentAddress) {
+                serviceBalanceData.paymentAddress = String(data.paymentAddress || '').trim();
+              }
+            }
+          } catch {}
+        }
+
+        const platformAddr = String(serviceBalanceData.paymentAddress || '').trim();
+        if (!platformAddr) return;
+
+        const attemptedRaw = String(localStorage.getItem('autho_service_fund_attempted_txids') || '[]');
+        let attempted = [];
+        try {
+          const parsed = JSON.parse(attemptedRaw);
+          attempted = Array.isArray(parsed) ? parsed.map((t) => String(t || '').trim()).filter(Boolean) : [];
+        } catch {
+          attempted = [];
+        }
+        const attemptedSet = new Set(attempted);
+
+        const [confirmed, mempool] = await Promise.all([
+          withChainProvider((base) => fetchJson(`${base}/address/${address}/txs`)),
+          withChainProvider((base) => fetchJson(`${base}/address/${address}/txs/mempool`)),
+        ]);
+        const all = []
+          .concat(Array.isArray(mempool) ? mempool : [])
+          .concat(Array.isArray(confirmed) ? confirmed : []);
+
+        const seen = new Set();
+        const txids = all
+          .filter((t) => t && t.txid)
+          .map((t) => String(t.txid || '').trim())
+          .filter((id) => {
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          })
+          .slice(0, 25);
+
+        for (const txid of txids) {
+          if (!txid || attemptedSet.has(txid)) continue;
+          attemptedSet.add(txid);
+          attempted.push(txid);
+
+          // Keep list bounded
+          if (attempted.length > 100) attempted = attempted.slice(attempted.length - 100);
+          try { localStorage.setItem('autho_service_fund_attempted_txids', JSON.stringify(attempted)); } catch {}
+
+          let txData = null;
+          try {
+            txData = await withChainProvider((base) => fetchJson(`${base}/tx/${encodeURIComponent(txid)}`));
+          } catch {
+            continue;
+          }
+
+          const isConfirmed = Boolean(txData?.status?.confirmed);
+          if (!isConfirmed) continue;
+
+          let amountSats = 0;
+          try {
+            for (const vout of (txData?.vout || [])) {
+              const addr = String(vout?.scriptpubkey_address || '').trim();
+              if (addr === platformAddr) {
+                amountSats += Number(vout?.value || 0);
+              }
+            }
+          } catch {
+            amountSats = 0;
+          }
+
+          if (amountSats <= 0) continue;
+
+          // Found a confirmed payment to platform. Trigger normal pending-credit flow.
+          try {
+            localStorage.setItem('autho_pending_service_fund_txid', txid);
+            localStorage.setItem('autho_pending_service_fund_amount_sats', String(Math.floor(amountSats)));
+          } catch {}
+          try { updatePendingServiceCreditsUI(); } catch {}
+          try { await resumePendingServiceFunding(); } catch {}
+          return;
+        }
+      } catch {}
+    }
+
     window.savePayHandle = async () => {
       const statusEl = document.getElementById('payHandleStatus');
       const inputEl = document.getElementById('payHandleInput');
@@ -2494,6 +2599,14 @@
         updatePendingServiceCreditsUI();
       } catch {}
 
+      try {
+        await resumePendingServiceFunding();
+      } catch {}
+
+      try {
+        await autoClaimServiceCreditsFromRecentTxs();
+      } catch {}
+
       // Also fetch pricing
       try {
         const pricingRes = await fetch('/api/service/pricing');
@@ -2559,6 +2672,8 @@
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    let serviceFundingPollInFlight = false;
+
     async function pollServiceFundingCredit(accountId, txid, setStatus) {
       const start = Date.now();
       const maxMs = 20 * 60 * 1000;
@@ -2599,7 +2714,8 @@
 
           const shouldRetry = (
             errText.includes('needs at least') ||
-            errText.includes('transaction not found')
+            errText.includes('transaction not found') ||
+            errText.includes('account not found')
           );
 
           if (!shouldRetry) {
@@ -2607,7 +2723,11 @@
             return false;
           }
 
-          setStatus('<span style="color: #d4af37;">Waiting for confirmation...</span>');
+          if (errText.includes('account not found')) {
+            setStatus('<span style="color: #d4af37;">Waiting for account sync...</span>');
+          } else {
+            setStatus('<span style="color: #d4af37;">Waiting for confirmation...</span>');
+          }
         } catch (e) {
           setStatus('<span style="color: #d4af37;">Waiting for confirmation...</span>');
         }
@@ -2626,12 +2746,16 @@
         if (!txid) return;
         updatePendingServiceCreditsUI();
         if (!accountId) return;
+
+        if (serviceFundingPollInFlight) return;
+        serviceFundingPollInFlight = true;
         const statusEl = document.getElementById('fundServiceStatus');
         const setStatus = (html) => {
           if (statusEl) statusEl.innerHTML = html;
         };
         setStatus('<span style="color: #d4af37;">Resuming pending service credit funding...</span>');
         await pollServiceFundingCredit(accountId, txid, setStatus);
+        serviceFundingPollInFlight = false;
       } catch {}
     }
 
@@ -2805,11 +2929,16 @@
       if (originalShowWallet) await originalShowWallet();
       refreshServiceBalance();
       resumePendingServiceFunding();
+      autoClaimServiceCreditsFromRecentTxs();
     };
 
     // Initial load if wallet exists
     if (localStorage.getItem('autho_wallet')) {
-      setTimeout(refreshServiceBalance, 500);
+      setTimeout(() => {
+        try { updatePendingServiceCreditsUI(); } catch {}
+        try { refreshServiceBalance(); } catch {}
+        try { resumePendingServiceFunding(); } catch {}
+      }, 500);
     }
   </script>
 </body>
