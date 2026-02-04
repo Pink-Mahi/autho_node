@@ -456,6 +456,20 @@
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
       sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
       
+      // Derive messaging keys from stored wallet mnemonic
+      try {
+        const walletData = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+        if (walletData.mnemonic && window.AuthoBTC?.deriveMessagingKeyPairSync) {
+          const msgKeys = window.AuthoBTC.deriveMessagingKeyPairSync(walletData.mnemonic);
+          if (msgKeys?.privateKeyHex && msgKeys?.publicKeyHex) {
+            sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
+            sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to derive messaging keys on unlock:', e);
+      }
+      
       // Redirect to main app
       const returnUrl = new URLSearchParams(window.location.search).get('return') || '/m';
       window.location.href = returnUrl;
