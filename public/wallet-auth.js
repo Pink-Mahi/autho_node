@@ -46,7 +46,17 @@ const WalletAuth = {
     
     try {
       const walletData = localStorage.getItem('autho_wallet');
-      return walletData ? JSON.parse(walletData) : null;
+      const wallet = walletData ? JSON.parse(walletData) : null;
+      
+      // Include privateKey from sessionStorage if available (for E2E encryption)
+      if (wallet) {
+        const privateKey = sessionStorage.getItem('autho_wallet_privateKey');
+        if (privateKey) {
+          wallet.privateKey = privateKey;
+        }
+      }
+      
+      return wallet;
     } catch (error) {
       console.error('Error reading wallet:', error);
       return null;
@@ -59,6 +69,7 @@ const WalletAuth = {
   lock() {
     sessionStorage.removeItem('autho_wallet_unlocked');
     sessionStorage.removeItem('autho_wallet_unlock_time');
+    sessionStorage.removeItem('autho_wallet_privateKey');
   },
 
   /**

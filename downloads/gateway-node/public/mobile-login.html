@@ -543,6 +543,11 @@
       localStorage.setItem('autho_wallet_encrypted', b64FromBytes(new TextEncoder().encode(JSON.stringify({ createdAt: walletPayload.createdAt || Date.now() }))));
       sessionStorage.setItem('autho_wallet_unlocked', 'true');
       sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
+      
+      // Store privateKey in sessionStorage for E2E encryption (cleared when browser closes)
+      if (walletPayload.privateKey) {
+        sessionStorage.setItem('autho_wallet_privateKey', walletPayload.privateKey);
+      }
     }
 
     async function loginWithEmail() {
