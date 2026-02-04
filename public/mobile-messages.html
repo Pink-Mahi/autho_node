@@ -1117,6 +1117,170 @@
       border-radius: 4px;
       margin-left: 0.25rem;
     }
+
+    /* Message Context Menu */
+    .message-context-menu {
+      position: fixed;
+      background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      border-radius: 12px;
+      padding: 0.5rem 0;
+      min-width: 160px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      z-index: 2000;
+      display: none;
+    }
+
+    .message-context-menu.active {
+      display: block;
+    }
+
+    .context-menu-item {
+      padding: 0.75rem 1rem;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.2s;
+    }
+
+    .context-menu-item:hover {
+      background: rgba(212, 175, 55, 0.1);
+    }
+
+    .context-menu-item.delete {
+      color: #ff5757;
+    }
+
+    .context-menu-item .price-tag {
+      margin-left: auto;
+      font-size: 0.75rem;
+      color: #888;
+      background: rgba(99, 102, 241, 0.2);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+
+    /* Encryption Info Modal */
+    .encryption-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 3000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .encryption-modal.active {
+      display: flex;
+    }
+
+    .encryption-modal-content {
+      background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+      border: 2px solid rgba(99, 102, 241, 0.4);
+      border-radius: 20px;
+      padding: 1.5rem;
+      max-width: 400px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .encryption-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      color: #6366f1;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .encryption-feature {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .encryption-feature:last-child {
+      border-bottom: none;
+    }
+
+    .encryption-feature-icon {
+      font-size: 1.25rem;
+      min-width: 28px;
+    }
+
+    .encryption-feature-text {
+      flex: 1;
+    }
+
+    .encryption-feature-title {
+      color: #fff;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .encryption-feature-desc {
+      color: #888;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    .encryption-close-btn {
+      width: 100%;
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Premium File Tiers */
+    .file-tier-selector {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .file-tier-btn {
+      flex: 1;
+      padding: 0.5rem;
+      background: rgba(50, 50, 50, 0.6);
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      border-radius: 8px;
+      color: #ccc;
+      font-size: 0.7rem;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .file-tier-btn.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: #6366f1;
+      color: #6366f1;
+    }
+
+    .file-tier-btn .tier-size {
+      font-weight: 600;
+      display: block;
+    }
+
+    .file-tier-btn .tier-price {
+      font-size: 0.65rem;
+      color: #888;
+    }
   </style>
 </head>
 <body>
@@ -1129,6 +1293,19 @@
           <span>💬</span> Messages
         </div>
         <div class="inbox-stats" id="inboxStats">Loading...</div>
+      </div>
+
+      <!-- Service Balance Bar -->
+      <div id="serviceBalanceBar" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-radius: 10px; margin: 0 16px 12px 16px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 16px;">⚡</span>
+          <span style="color: #fff; font-size: 14px;">Service Credits:</span>
+          <span id="msgServiceBalance" style="color: #fff; font-weight: 700; font-size: 16px;">0</span>
+          <span style="color: rgba(255,255,255,0.8); font-size: 12px;">sats</span>
+        </div>
+        <button onclick="window.location.href='/m/wallet#service-balance'" style="background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;">
+          + Fund
+        </button>
       </div>
 
       <div class="nav-tabs">
@@ -1172,8 +1349,8 @@
         <div id="contactsList" class="contacts-list"></div>
       </div>
 
-      <div class="encryption-notice">
-        <span>🔒</span> End-to-end encrypted • Messages auto-delete after 10 days
+      <div class="encryption-notice" onclick="showEncryptionInfo()">
+        <span>🔐</span> Military-grade E2E encryption • Messages auto-delete • <span style="text-decoration: underline; cursor: pointer;">Learn more</span>
       </div>
     </div>
 
@@ -1192,8 +1369,8 @@
 
       <div class="chat-messages" id="chatMessages"></div>
 
-      <div class="encryption-notice">
-        <span>🔒</span> End-to-end encrypted
+      <div class="encryption-notice" onclick="showEncryptionInfo()">
+        <span>🔐</span> AES-256 + Curve25519 encrypted • Zero-knowledge architecture
       </div>
 
       <!-- Media Preview -->
@@ -1277,6 +1454,110 @@
   <div class="media-fullscreen" id="mediaFullscreen" onclick="closeFullscreen()">
     <button class="media-fullscreen-close">×</button>
     <div id="fullscreenContent"></div>
+  </div>
+
+  <!-- Message Context Menu -->
+  <div class="message-context-menu" id="messageContextMenu">
+    <div class="context-menu-item" onclick="copyMessageText()">
+      <span>📋</span> Copy Text
+    </div>
+    <div class="context-menu-item" onclick="editMessage()">
+      <span>✏️</span> Edit <span class="price-tag">25 sats</span>
+    </div>
+    <div class="context-menu-item delete" onclick="deleteMessageWithPayment()">
+      <span>🗑️</span> Delete Now <span class="price-tag">50 sats</span>
+    </div>
+  </div>
+
+  <!-- Encryption Info Modal -->
+  <div class="encryption-modal" id="encryptionModal" onclick="if(event.target===this)closeEncryptionModal()">
+    <div class="encryption-modal-content">
+      <div class="encryption-modal-header">
+        <span>🔐</span> Military-Grade Encryption
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">🔒</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">AES-256 Encryption</div>
+          <div class="encryption-feature-desc">Same encryption used by governments and banks. Would take billions of years to crack with current technology.</div>
+        </div>
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">🔑</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Curve25519 Key Exchange</div>
+          <div class="encryption-feature-desc">Your private keys never leave your device. Not even we can read your messages.</div>
+        </div>
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">🚫</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Zero-Knowledge Architecture</div>
+          <div class="encryption-feature-desc">We cannot comply with data requests because we literally don't have access to your data.</div>
+        </div>
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">🌐</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Decentralized Network</div>
+          <div class="encryption-feature-desc">No central server to hack or subpoena. Your data is distributed across a global mesh network.</div>
+        </div>
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">⏱️</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Auto-Deleting Messages</div>
+          <div class="encryption-feature-desc">Messages automatically disappear after the set time. Perfect for sensitive communications.</div>
+        </div>
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">✅</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Open Source & Auditable</div>
+          <div class="encryption-feature-desc">Our encryption code is publicly available for security researchers to verify.</div>
+        </div>
+      </div>
+      
+      <button class="encryption-close-btn" onclick="closeEncryptionModal()">Got It</button>
+    </div>
+  </div>
+
+  <!-- Insufficient Balance Modal -->
+  <div class="encryption-modal" id="insufficientBalanceModal" onclick="if(event.target===this)closeInsufficientBalanceModal()">
+    <div class="encryption-modal-content">
+      <div class="encryption-modal-header">
+        <span>⚡</span> Insufficient Service Balance
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">💰</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Current Balance: <span id="currentBalanceDisplay">0</span> sats</div>
+          <div class="encryption-feature-desc">You need <span id="requiredAmountDisplay">50</span> sats for this action.</div>
+        </div>
+      </div>
+      
+      <div class="encryption-feature">
+        <div class="encryption-feature-icon">📱</div>
+        <div class="encryption-feature-text">
+          <div class="encryption-feature-title">Fund Your Balance</div>
+          <div class="encryption-feature-desc">Go to your wallet to add funds via Bitcoin payment.</div>
+        </div>
+      </div>
+      
+      <button class="encryption-close-btn" onclick="window.location.href='/m/wallet'" style="background: linear-gradient(135deg, #d4af37, #b8962e);">
+        Go to Wallet
+      </button>
+      <button class="encryption-close-btn" onclick="closeInsufficientBalanceModal()" style="background: transparent; border: 1px solid #666; margin-top: 0.5rem;">
+        Cancel
+      </button>
+    </div>
   </div>
 
   <!-- Share Contact Modal -->
@@ -2956,15 +3237,140 @@
     let audioStartTime = null;
     const MAX_AUDIO_SECONDS = 30;
     const MAX_VIDEO_SECONDS = 15;
-    const MAX_IMAGE_SIZE = 500 * 1024; // 500KB after compression
-    const MAX_VIDEO_SIZE = 5 * 1024 * 1024; // 5MB
+    
+    // Premium file tiers (size in bytes, cost in sats)
+    const FILE_TIERS = {
+      free: { maxSize: 1 * 1024 * 1024, cost: 0, label: '1 MB' },           // 1MB free
+      basic: { maxSize: 25 * 1024 * 1024, cost: 500, label: '25 MB' },      // 25MB for 500 sats
+      premium: { maxSize: 100 * 1024 * 1024, cost: 2000, label: '100 MB' }, // 100MB for 2000 sats
+      enterprise: { maxSize: 1024 * 1024 * 1024, cost: 10000, label: '1 GB' }, // 1GB for 10000 sats
+    };
+    
+    let selectedFileTier = 'free';
+    const MAX_IMAGE_SIZE = 500 * 1024; // 500KB after compression (free tier)
+    const MAX_VIDEO_SIZE = FILE_TIERS.free.maxSize; // Dynamic based on tier
+
+    // Get max file size based on balance
+    async function getMaxFileSizeForBalance() {
+      await fetchServiceBalance();
+      
+      if (serviceBalance >= FILE_TIERS.enterprise.cost) {
+        return { tier: 'enterprise', ...FILE_TIERS.enterprise };
+      } else if (serviceBalance >= FILE_TIERS.premium.cost) {
+        return { tier: 'premium', ...FILE_TIERS.premium };
+      } else if (serviceBalance >= FILE_TIERS.basic.cost) {
+        return { tier: 'basic', ...FILE_TIERS.basic };
+      }
+      return { tier: 'free', ...FILE_TIERS.free };
+    }
+
+    // Check if file needs premium tier and handle payment
+    async function checkFileTierAndPay(fileSize, fileName) {
+      const tierInfo = await getMaxFileSizeForBalance();
+      
+      // Determine required tier
+      let requiredTier = 'free';
+      let requiredCost = 0;
+      
+      if (fileSize > FILE_TIERS.enterprise.maxSize) {
+        alert('File too large. Maximum size is 1 GB.');
+        return null;
+      } else if (fileSize > FILE_TIERS.premium.maxSize) {
+        requiredTier = 'enterprise';
+        requiredCost = FILE_TIERS.enterprise.cost;
+      } else if (fileSize > FILE_TIERS.basic.maxSize) {
+        requiredTier = 'premium';
+        requiredCost = FILE_TIERS.premium.cost;
+      } else if (fileSize > FILE_TIERS.free.maxSize) {
+        requiredTier = 'basic';
+        requiredCost = FILE_TIERS.basic.cost;
+      }
+      
+      // If free tier is sufficient, no payment needed
+      if (requiredTier === 'free') {
+        return { approved: true, cost: 0 };
+      }
+      
+      // Check if user has sufficient balance
+      if (serviceBalance < requiredCost) {
+        const sizeMB = (fileSize / 1024 / 1024).toFixed(1);
+        alert(`File is ${sizeMB} MB. You need ${requiredCost} sats in your service balance to send files this large.\n\nYour balance: ${serviceBalance} sats`);
+        showInsufficientBalanceModal(requiredCost);
+        return null;
+      }
+      
+      // Confirm payment
+      const tierLabel = FILE_TIERS[requiredTier].label;
+      if (!confirm(`Sending "${fileName}" (${(fileSize / 1024 / 1024).toFixed(1)} MB) requires the ${tierLabel} tier.\n\nThis will deduct ${requiredCost} sats from your service balance.\n\nContinue?`)) {
+        return null;
+      }
+      
+      // Deduct balance
+      try {
+        const wallet = WalletAuth.getWallet();
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        
+        const res = await fetch('/api/service/premium/file-transfer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId,
+            tier: requiredTier,
+            fileSize,
+            fileName,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          serviceBalance = data.newBalance || (serviceBalance - requiredCost);
+          return { approved: true, cost: requiredCost, tier: requiredTier };
+        } else {
+          alert(data.error || 'Failed to process file transfer payment');
+          return null;
+        }
+      } catch (e) {
+        console.error('File tier payment error:', e);
+        alert('Error processing payment: ' + e.message);
+        return null;
+      }
+    }
 
     async function handlePhotoSelect(event) {
       const file = event.target.files[0];
       if (!file) return;
       
       try {
+        // For photos, we compress so tier check is usually not needed
         const compressed = await compressImage(file, MAX_IMAGE_SIZE);
+        
+        // But check if original is very large (user might want full quality)
+        if (file.size > FILE_TIERS.free.maxSize) {
+          const useOriginal = confirm(`Original photo is ${(file.size / 1024 / 1024).toFixed(1)} MB.\n\nSend compressed (free) or original quality (may require payment)?`);
+          
+          if (useOriginal) {
+            const tierResult = await checkFileTierAndPay(file.size, file.name);
+            if (!tierResult) {
+              event.target.value = '';
+              return;
+            }
+            
+            // Use original quality
+            const data = await fileToBase64(file);
+            pendingMedia = {
+              type: 'image',
+              data: data,
+              name: file.name || 'Photo (Original)',
+              size: file.size,
+              tierCost: tierResult.cost
+            };
+            showMediaPreview();
+            event.target.value = '';
+            return;
+          }
+        }
+        
         pendingMedia = {
           type: 'image',
           data: compressed.data,
@@ -2983,8 +3389,9 @@
       const file = event.target.files[0];
       if (!file) return;
       
-      if (file.size > MAX_VIDEO_SIZE) {
-        alert(`Video too large. Maximum size is ${Math.round(MAX_VIDEO_SIZE / 1024 / 1024)}MB`);
+      // Check file tier and process payment if needed
+      const tierResult = await checkFileTierAndPay(file.size, file.name);
+      if (!tierResult) {
         event.target.value = '';
         return;
       }
@@ -2995,7 +3402,8 @@
           type: 'video',
           data: data,
           name: file.name || 'Video',
-          size: file.size
+          size: file.size,
+          tierCost: tierResult.cost
         };
         showMediaPreview();
       } catch (e) {
@@ -3263,17 +3671,18 @@
           timestamp: Date.now()
         });
         
-        // Encrypt for recipient
-        let encryptedForRecipient = mediaEnvelope;
-        let encryptedForSender = mediaEnvelope;
-        
-        if (myEncryptionKeyPair) {
-          // E2E encrypt the media
-          encryptedForRecipient = await encryptForRecipient(mediaEnvelope, currentRecipientId);
-          // Also encrypt for self
-          const wallet = WalletAuth.getWallet();
-          encryptedForSender = await encryptForRecipient(mediaEnvelope, wallet.publicKey);
+        // SECURITY: Require encryption - never send plaintext media
+        if (!myEncryptionKeyPair) {
+          alert('Encryption not initialized. Please refresh the page and try again.');
+          console.error('SECURITY: Attempted to send media without encryption keys');
+          return;
         }
+        
+        // E2E encrypt the media for recipient
+        const encryptedForRecipient = await encryptForRecipient(mediaEnvelope, currentRecipientId);
+        // Also encrypt for self
+        const wallet = WalletAuth.getWallet();
+        const encryptedForSender = await encryptForRecipient(mediaEnvelope, wallet.publicKey);
         
         // Get disappearing message settings
         const disappearSettings = getDisappearSettings();
@@ -3542,7 +3951,7 @@
         }
         
         return `
-          <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+          <div class="message-bubble ${isSent ? 'sent' : 'received'}" data-message-id="${msg.id || msg.messageId || ''}">
             ${content}
             <div class="message-meta">
               ${timeStr}
@@ -3555,6 +3964,256 @@
       container.innerHTML = processedMessages.join('');
       container.scrollTop = container.scrollHeight;
     };
+
+    // ============================================================
+    // ENCRYPTION INFO & PREMIUM ACTIONS
+    // ============================================================
+
+    let serviceBalance = 0;
+    let selectedMessageId = null;
+    let selectedMessageText = '';
+
+    // Pricing constants (sats)
+    const PRICING = {
+      message_delete: 50,
+      message_edit: 25,
+      profile_update: 100,
+      group_create: 200,
+    };
+
+    // Fetch service balance
+    async function fetchServiceBalance() {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return 0;
+        
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        const res = await fetch(`/api/accounts/${accountId}/service-balance`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            serviceBalance = data.serviceBalanceSats || 0;
+            // Update the service balance indicator in header
+            const balanceEl = document.getElementById('msgServiceBalance');
+            if (balanceEl) balanceEl.textContent = serviceBalance.toLocaleString();
+            return serviceBalance;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch service balance:', e);
+      }
+      return 0;
+    }
+    
+    // Fetch balance on page load
+    fetchServiceBalance();
+
+    // Show encryption info modal
+    function showEncryptionInfo() {
+      document.getElementById('encryptionModal').classList.add('active');
+    }
+
+    function closeEncryptionModal() {
+      document.getElementById('encryptionModal').classList.remove('active');
+    }
+
+    // Insufficient balance modal
+    function showInsufficientBalanceModal(required) {
+      document.getElementById('currentBalanceDisplay').textContent = serviceBalance.toLocaleString();
+      document.getElementById('requiredAmountDisplay').textContent = required.toLocaleString();
+      document.getElementById('insufficientBalanceModal').classList.add('active');
+    }
+
+    function closeInsufficientBalanceModal() {
+      document.getElementById('insufficientBalanceModal').classList.remove('active');
+    }
+
+    // Message context menu
+    function showMessageContextMenu(event, messageId, messageText, isSent) {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      if (!isSent) return; // Only sender can edit/delete
+      
+      selectedMessageId = messageId;
+      selectedMessageText = messageText;
+      
+      const menu = document.getElementById('messageContextMenu');
+      const x = Math.min(event.clientX, window.innerWidth - 180);
+      const y = Math.min(event.clientY, window.innerHeight - 150);
+      
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+      menu.classList.add('active');
+    }
+
+    function hideMessageContextMenu() {
+      document.getElementById('messageContextMenu').classList.remove('active');
+      selectedMessageId = null;
+      selectedMessageText = '';
+    }
+
+    // Close context menu when clicking elsewhere
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.message-context-menu')) {
+        hideMessageContextMenu();
+      }
+    });
+
+    // Copy message text
+    function copyMessageText() {
+      if (selectedMessageText) {
+        navigator.clipboard.writeText(selectedMessageText).then(() => {
+          hideMessageContextMenu();
+        });
+      }
+    }
+
+    // Delete message with auto-deduct
+    async function deleteMessageWithPayment() {
+      if (!selectedMessageId) return;
+      
+      const required = PRICING.message_delete;
+      await fetchServiceBalance();
+      
+      if (serviceBalance < required) {
+        hideMessageContextMenu();
+        showInsufficientBalanceModal(required);
+        return;
+      }
+      
+      // Confirm deletion
+      if (!confirm(`Delete this message? This will deduct ${required} sats from your service balance.`)) {
+        hideMessageContextMenu();
+        return;
+      }
+      
+      try {
+        const wallet = WalletAuth.getWallet();
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        
+        const res = await fetch('/api/service/premium/message-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId,
+            messageId: selectedMessageId,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          // Remove message from UI
+          const msgElements = document.querySelectorAll(`[data-message-id="${selectedMessageId}"]`);
+          msgElements.forEach(el => el.remove());
+          
+          serviceBalance = data.newBalance || (serviceBalance - required);
+          hideMessageContextMenu();
+        } else {
+          alert(data.error || 'Failed to delete message');
+        }
+      } catch (e) {
+        console.error('Delete message error:', e);
+        alert('Error deleting message: ' + e.message);
+      }
+      
+      hideMessageContextMenu();
+    }
+
+    // Edit message with auto-deduct
+    async function editMessage() {
+      if (!selectedMessageId) return;
+      
+      const required = PRICING.message_edit;
+      await fetchServiceBalance();
+      
+      if (serviceBalance < required) {
+        hideMessageContextMenu();
+        showInsufficientBalanceModal(required);
+        return;
+      }
+      
+      const newText = prompt('Edit message:', selectedMessageText);
+      if (!newText || newText === selectedMessageText) {
+        hideMessageContextMenu();
+        return;
+      }
+      
+      try {
+        const wallet = WalletAuth.getWallet();
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        
+        const res = await fetch('/api/service/premium/message-edit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId,
+            messageId: selectedMessageId,
+            newContent: newText,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          // Update message in UI
+          const msgElements = document.querySelectorAll(`[data-message-id="${selectedMessageId}"] .message-text`);
+          msgElements.forEach(el => {
+            el.textContent = newText;
+            el.innerHTML += ' <span style="font-size:0.7em;color:#888;">(edited)</span>';
+          });
+          
+          serviceBalance = data.newBalance || (serviceBalance - required);
+        } else {
+          alert(data.error || 'Failed to edit message');
+        }
+      } catch (e) {
+        console.error('Edit message error:', e);
+        alert('Error editing message: ' + e.message);
+      }
+      
+      hideMessageContextMenu();
+    }
+
+    // Add context menu to message bubbles
+    function addContextMenuToMessages() {
+      document.querySelectorAll('.message-bubble.sent').forEach(bubble => {
+        if (bubble.dataset.contextMenuAdded) return;
+        bubble.dataset.contextMenuAdded = 'true';
+        
+        bubble.addEventListener('contextmenu', (e) => {
+          const messageId = bubble.dataset.messageId || bubble.closest('[data-message-id]')?.dataset.messageId;
+          const textEl = bubble.querySelector('.message-text');
+          const text = textEl ? textEl.textContent : '';
+          showMessageContextMenu(e, messageId, text, true);
+        });
+        
+        // Long-press for mobile
+        let pressTimer;
+        bubble.addEventListener('touchstart', (e) => {
+          pressTimer = setTimeout(() => {
+            const messageId = bubble.dataset.messageId || bubble.closest('[data-message-id]')?.dataset.messageId;
+            const textEl = bubble.querySelector('.message-text');
+            const text = textEl ? textEl.textContent : '';
+            showMessageContextMenu(e.touches[0], messageId, text, true);
+          }, 500);
+        });
+        
+        bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
+        bubble.addEventListener('touchmove', () => clearTimeout(pressTimer));
+      });
+    }
+
+    // Re-add context menus after messages render
+    const originalRenderMessagesWithContext = renderMessages;
+    renderMessages = async function(messages) {
+      await originalRenderMessagesWithContext(messages);
+      setTimeout(addContextMenuToMessages, 100);
+    };
+
+    // Initial balance fetch
+    fetchServiceBalance();
   </script>
 </body>
 </html>

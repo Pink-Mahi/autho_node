@@ -596,6 +596,57 @@
 
       <button class="btn secondary" onclick="refreshBalance()">Refresh Balance</button>
 
+      <!-- Service Balance Section -->
+      <div class="wallet-card" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
+        <div class="wallet-card-title" style="color: rgba(255,255,255,0.8);">⚡ Prepaid Service Balance</div>
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px;">
+          <span id="serviceBalanceSats" style="font-size: 28px; font-weight: 700; color: #fff;">0</span>
+          <span style="font-size: 14px; color: rgba(255,255,255,0.8);">sats</span>
+        </div>
+        <div style="font-size: 12px; color: rgba(255,255,255,0.7);">
+          Use for premium features: message editing, deletion, and more
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-row">
+          <span class="info-card-label">Total Funded</span>
+          <span class="info-card-value" id="serviceTotalFunded">0 sats</span>
+        </div>
+        <div class="info-card-row">
+          <span class="info-card-label">Total Used</span>
+          <span class="info-card-value" id="serviceTotalUsed">0 sats</span>
+        </div>
+        <div class="info-card-row">
+          <span class="info-card-label">Last Funded</span>
+          <span class="info-card-value" id="serviceLastFunded">Never</span>
+        </div>
+      </div>
+
+      <button class="btn secondary" onclick="refreshServiceBalance()">Refresh Service Balance</button>
+      <button class="btn" onclick="showFundServiceBalance()" style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">Fund Service Balance</button>
+
+      <!-- Premium Actions Pricing -->
+      <div class="info-card" id="premiumPricingCard">
+        <div style="font-weight:600; color:#d4af37; margin-bottom: 12px;">💎 Premium Action Pricing</div>
+        <div class="info-card-row">
+          <span class="info-card-label">Delete Message</span>
+          <span class="info-card-value" id="priceDeleteMessage">50 sats</span>
+        </div>
+        <div class="info-card-row">
+          <span class="info-card-label">Edit Message</span>
+          <span class="info-card-value" id="priceEditMessage">25 sats</span>
+        </div>
+        <div class="info-card-row">
+          <span class="info-card-label">Profile Update</span>
+          <span class="info-card-value" id="priceProfileUpdate">100 sats</span>
+        </div>
+        <div class="info-card-row">
+          <span class="info-card-label">Create Group</span>
+          <span class="info-card-value" id="priceCreateGroup">200 sats</span>
+        </div>
+      </div>
+
       <div class="info-card" id="recentTxsCard" style="display:none;">
         <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Recent Transactions</div>
         <div id="recentTxsList" style="color:#999; font-size: 13px;">Loading...</div>
@@ -689,6 +740,39 @@
       <div id="qrReader" style="display:none;"></div>
       <div class="overlay-actions">
         <button class="btn secondary" onclick="closeQrScanner()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fund Service Balance Overlay -->
+  <div id="fundServiceOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="Fund Service Balance">
+    <div class="overlay-card">
+      <div class="overlay-title">⚡ Fund Service Balance</div>
+      <div class="overlay-subtitle">Send BTC to the address below to add funds to your prepaid service balance. Minimum: 1,000 sats.</div>
+      
+      <div class="info-card">
+        <div class="info-card-row">
+          <span class="info-card-label">Payment Address</span>
+        </div>
+        <div id="fundingAddress" style="font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all; color: #d4af37; padding: 10px 0;"></div>
+      </div>
+      
+      <div style="display:flex; justify-content:center; margin: 15px 0;">
+        <img id="fundingQr" alt="Funding Address QR" style="width:200px; height:200px; border-radius: 12px; background: #fff;" />
+      </div>
+      
+      <button class="btn secondary" onclick="copyFundingAddress()">Copy Address</button>
+      
+      <div class="info-card" style="margin-top: 15px;">
+        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Verify Payment</div>
+        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">After sending BTC, enter your transaction ID to verify and credit your balance.</div>
+        <input id="verifyTxid" type="text" class="input" placeholder="Transaction ID (txid)" />
+        <button class="btn" onclick="verifyFundingPayment()" style="margin-top: 10px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">Verify Payment</button>
+        <div id="verifyStatus" style="margin-top: 10px; font-size: 13px;"></div>
+      </div>
+      
+      <div class="overlay-actions" style="margin-top: 15px;">
+        <button class="btn secondary" onclick="closeFundServiceOverlay()">Close</button>
       </div>
     </div>
   </div>
@@ -2352,6 +2436,187 @@
         }
       }
     };
+
+    // ============================================================
+    // SERVICE BALANCE FUNCTIONS
+    // ============================================================
+
+    let serviceBalanceData = {
+      balance: 0,
+      totalFunded: 0,
+      totalUsed: 0,
+      lastFunded: null,
+      paymentAddress: null,
+    };
+
+    window.refreshServiceBalance = async () => {
+      try {
+        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        if (!accountId) {
+          console.log('No wallet found for service balance');
+          return;
+        }
+
+        const res = await fetch(`/api/accounts/${accountId}/service-balance`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            serviceBalanceData.balance = data.serviceBalanceSats || 0;
+            serviceBalanceData.totalFunded = data.serviceBalanceTotalFundedSats || 0;
+            serviceBalanceData.totalUsed = data.serviceBalanceTotalUsedSats || 0;
+            serviceBalanceData.lastFunded = data.serviceBalanceLastFundedAt;
+            updateServiceBalanceUI();
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch service balance:', e);
+      }
+
+      // Also fetch pricing
+      try {
+        const pricingRes = await fetch('/api/service/pricing');
+        if (pricingRes.ok) {
+          const pricingData = await pricingRes.json();
+          if (pricingData.success && pricingData.pricing) {
+            const p = pricingData.pricing;
+            document.getElementById('priceDeleteMessage').textContent = (p.message_delete?.sats || 50) + ' sats';
+            document.getElementById('priceEditMessage').textContent = (p.message_edit?.sats || 25) + ' sats';
+            document.getElementById('priceProfileUpdate').textContent = (p.profile_update?.sats || 100) + ' sats';
+            document.getElementById('priceCreateGroup').textContent = (p.group_create?.sats || 200) + ' sats';
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch pricing:', e);
+      }
+    };
+
+    function updateServiceBalanceUI() {
+      document.getElementById('serviceBalanceSats').textContent = serviceBalanceData.balance.toLocaleString();
+      document.getElementById('serviceTotalFunded').textContent = serviceBalanceData.totalFunded.toLocaleString() + ' sats';
+      document.getElementById('serviceTotalUsed').textContent = serviceBalanceData.totalUsed.toLocaleString() + ' sats';
+      
+      if (serviceBalanceData.lastFunded) {
+        const date = new Date(serviceBalanceData.lastFunded);
+        document.getElementById('serviceLastFunded').textContent = date.toLocaleDateString();
+      } else {
+        document.getElementById('serviceLastFunded').textContent = 'Never';
+      }
+    }
+
+    window.showFundServiceBalance = async () => {
+      try {
+        const res = await fetch('/api/service/payment-address');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.paymentAddress) {
+            serviceBalanceData.paymentAddress = data.paymentAddress;
+            document.getElementById('fundingAddress').textContent = data.paymentAddress;
+            
+            // Generate QR code
+            if (window.QRCode) {
+              const qrCanvas = document.createElement('canvas');
+              QRCode.toCanvas(qrCanvas, `bitcoin:${data.paymentAddress}`, { width: 200 }, (err) => {
+                if (!err) {
+                  document.getElementById('fundingQr').src = qrCanvas.toDataURL();
+                }
+              });
+            } else {
+              // Fallback: use API to generate QR
+              document.getElementById('fundingQr').src = `/api/qr?data=${encodeURIComponent('bitcoin:' + data.paymentAddress)}&size=200`;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to get payment address:', e);
+        document.getElementById('fundingAddress').textContent = 'Error loading address';
+      }
+      
+      document.getElementById('fundServiceOverlay').classList.add('active');
+    };
+
+    window.closeFundServiceOverlay = () => {
+      document.getElementById('fundServiceOverlay').classList.remove('active');
+      document.getElementById('verifyTxid').value = '';
+      document.getElementById('verifyStatus').textContent = '';
+    };
+
+    window.copyFundingAddress = async () => {
+      const address = serviceBalanceData.paymentAddress;
+      if (!address) return;
+      
+      try {
+        await navigator.clipboard.writeText(address);
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.style.background = 'rgba(76, 217, 100, 0.2)';
+        btn.style.borderColor = '#4cd964';
+        btn.style.color = '#4cd964';
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = '';
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 2000);
+      } catch (e) {
+        alert('Failed to copy: ' + address);
+      }
+    };
+
+    window.verifyFundingPayment = async () => {
+      const txid = document.getElementById('verifyTxid').value.trim();
+      const statusEl = document.getElementById('verifyStatus');
+      
+      if (!txid) {
+        statusEl.innerHTML = '<span style="color: #ff5757;">Please enter a transaction ID</span>';
+        return;
+      }
+      
+      if (!/^[a-fA-F0-9]{64}$/.test(txid)) {
+        statusEl.innerHTML = '<span style="color: #ff5757;">Invalid transaction ID format</span>';
+        return;
+      }
+      
+      statusEl.innerHTML = '<span style="color: #d4af37;">Verifying payment...</span>';
+      
+      try {
+        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        
+        const res = await fetch(`/api/accounts/${accountId}/service-balance/verify-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ txid }),
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+          statusEl.innerHTML = `<span style="color: #4cd964;">✓ Payment verified! Credited ${data.amountCredited?.toLocaleString() || 0} sats</span>`;
+          await refreshServiceBalance();
+          setTimeout(() => {
+            closeFundServiceOverlay();
+          }, 2000);
+        } else {
+          statusEl.innerHTML = `<span style="color: #ff5757;">✗ ${data.error || 'Payment verification failed'}</span>`;
+        }
+      } catch (e) {
+        statusEl.innerHTML = `<span style="color: #ff5757;">✗ Error: ${e.message}</span>`;
+      }
+    };
+
+    // Auto-refresh service balance when wallet screen loads
+    const originalShowWallet = window.showWalletInfo;
+    window.showWalletInfo = async () => {
+      if (originalShowWallet) await originalShowWallet();
+      refreshServiceBalance();
+    };
+
+    // Initial load if wallet exists
+    if (localStorage.getItem('autho_wallet')) {
+      setTimeout(refreshServiceBalance, 500);
+    }
   </script>
 </body>
 </html>
