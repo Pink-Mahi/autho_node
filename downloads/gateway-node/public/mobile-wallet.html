@@ -603,6 +603,9 @@
           <span id="serviceBalanceSats" style="font-size: 28px; font-weight: 700; color: #fff;">0</span>
           <span style="font-size: 14px; color: rgba(255,255,255,0.8);">sats</span>
         </div>
+        <div id="servicePendingCredits" style="display:none; margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.95);">
+          Pending: <span id="servicePendingCreditsAmount">0</span> sats
+        </div>
         <div style="font-size: 12px; color: rgba(255,255,255,0.7);">
           Use for premium features: message editing, deletion, and more
         </div>
@@ -2443,10 +2446,30 @@
       paymentAddress: null,
     };
 
+    function getServiceAccountId() {
+      const id = String(localStorage.getItem('autho_account_id') || '').trim();
+      return id || '';
+    }
+
+    function updatePendingServiceCreditsUI() {
+      try {
+        const txid = String(localStorage.getItem('autho_pending_service_fund_txid') || '').trim();
+        const amount = Number(localStorage.getItem('autho_pending_service_fund_amount_sats') || 0);
+        const card = document.getElementById('servicePendingCredits');
+        const amtEl = document.getElementById('servicePendingCreditsAmount');
+        if (!card || !amtEl) return;
+        if (txid) {
+          amtEl.textContent = Number.isFinite(amount) && amount > 0 ? amount.toLocaleString() : '...';
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      } catch {}
+    }
+
     window.refreshServiceBalance = async () => {
       try {
-        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
+        const accountId = getServiceAccountId();
         if (!accountId) {
           console.log('No wallet found for service balance');
           return;
@@ -2466,6 +2489,10 @@
       } catch (e) {
         console.error('Failed to fetch service balance:', e);
       }
+
+      try {
+        updatePendingServiceCreditsUI();
+      } catch {}
 
       // Also fetch pricing
       try {
@@ -2549,6 +2576,7 @@
           if (data && data.success) {
             try {
               localStorage.removeItem('autho_pending_service_fund_txid');
+              localStorage.removeItem('autho_pending_service_fund_amount_sats');
               localStorage.removeItem('autho_pending_service_fund_account');
             } catch {}
             setStatus(`<span style="color: #4cd964;">✓ Funded! Credited ${Number(data.amountCredited || 0).toLocaleString()} sats</span>`);
@@ -2561,6 +2589,7 @@
           if (errText.includes('already been credited')) {
             try {
               localStorage.removeItem('autho_pending_service_fund_txid');
+              localStorage.removeItem('autho_pending_service_fund_amount_sats');
               localStorage.removeItem('autho_pending_service_fund_account');
             } catch {}
             setStatus('<span style="color: #4cd964;">✓ Already credited</span>');
@@ -2593,8 +2622,10 @@
     async function resumePendingServiceFunding() {
       try {
         const txid = String(localStorage.getItem('autho_pending_service_fund_txid') || '').trim();
-        const accountId = String(localStorage.getItem('autho_pending_service_fund_account') || '').trim();
-        if (!txid || !accountId) return;
+        const accountId = getServiceAccountId();
+        if (!txid) return;
+        updatePendingServiceCreditsUI();
+        if (!accountId) return;
         const statusEl = document.getElementById('fundServiceStatus');
         const setStatus = (html) => {
           if (statusEl) statusEl.innerHTML = html;
@@ -2611,6 +2642,20 @@
       };
 
       try {
+        const existingTxid = String(localStorage.getItem('autho_pending_service_fund_txid') || '').trim();
+        if (existingTxid) {
+          updatePendingServiceCreditsUI();
+          setStatus('<span style="color: #d4af37;">A funding transaction is already pending confirmation. Please wait...</span>');
+          await resumePendingServiceFunding();
+          return;
+        }
+
+        const serviceAccountId = getServiceAccountId();
+        if (!serviceAccountId) {
+          setStatus('<span style="color: #ff5757;">Account not found. Please sign in / create an account first, then fund service credits.</span>');
+          return;
+        }
+
         setStatus('<span style="color: #d4af37;">Preparing payment...</span>');
 
         // Ensure we have the service payment address
@@ -2731,18 +2776,15 @@
           return;
         }
 
-        const accountId = wallet.identityAddress || wallet.paymentAddress;
-        if (!accountId) {
-          setStatus('<span style="color: #ff5757;">Payment sent but account ID missing. Please sign in again.</span>');
-          return;
-        }
         try {
           localStorage.setItem('autho_pending_service_fund_txid', txid);
-          localStorage.setItem('autho_pending_service_fund_account', String(accountId));
+          localStorage.setItem('autho_pending_service_fund_amount_sats', String(amountSats));
         } catch {}
 
+        updatePendingServiceCreditsUI();
+
         setStatus('<span style="color: #d4af37;">Payment sent. Waiting for confirmation...</span>');
-        const ok = await pollServiceFundingCredit(accountId, txid, setStatus);
+        const ok = await pollServiceFundingCredit(serviceAccountId, txid, setStatus);
         if (ok) {
           setTimeout(() => {
             closeFundServiceOverlay();
