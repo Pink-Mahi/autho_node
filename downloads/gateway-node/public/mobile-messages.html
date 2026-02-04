@@ -1831,6 +1831,23 @@
       });
     }
 
+    async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes) {
+      if (!myEncryptionKeyPair) {
+        throw new Error('Encryption keys not initialized');
+      }
+
+      const nonce = nacl.randomBytes(24);
+      const messageBytes = nacl.util.decodeUTF8(plaintext);
+      const encrypted = nacl.box(messageBytes, nonce, recipientEncPubKeyBytes, myEncryptionKeyPair.secretKey);
+
+      return JSON.stringify({
+        v: 1,
+        n: nacl.util.encodeBase64(nonce),
+        c: nacl.util.encodeBase64(encrypted),
+        s: bytesToHex(myEncryptionKeyPair.publicKey),
+      });
+    }
+
     // Decrypt message from sender
     async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
       if (!myEncryptionKeyPair) {
@@ -2404,14 +2421,21 @@
         
         for (const memberId of currentGroupMembers) {
           try {
-            const encrypted = await encryptForRecipient(messageEnvelope, memberId);
+            const wallet = WalletAuth.getWallet();
+            const isMe = wallet && memberId === wallet.publicKey;
+            const encrypted = isMe
+              ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
+              : await encryptForRecipient(messageEnvelope, memberId);
             encryptedContentByMember[memberId] = encrypted;
           } catch (e) {
             console.error('SECURITY: Failed to encrypt for member:', memberId, e);
-            // SECURITY: Do NOT send if encryption fails for any member
-            alert(`Failed to encrypt message for a group member. Message not sent.`);
-            return;
           }
+        }
+        
+        // SECURITY: Do NOT send if encryption fails for any member
+        if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
+          alert(`Failed to encrypt message for a group member. Message not sent.`);
+          return;
         }
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
@@ -3014,7 +3038,7 @@
         const encryptedForRecipient = await encryptForRecipient(messageEnvelope, currentRecipientId);
         // Also encrypt for self (so we can read our own sent messages)
         const wallet = WalletAuth.getWallet();
-        const encryptedForSender = await encryptForRecipient(messageEnvelope, wallet.publicKey);
+        const encryptedForSender = await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey);
         
         // Get disappearing message settings
         const disappearSettings = getDisappearSettings();
@@ -3911,7 +3935,7 @@
         const encryptedForRecipient = await encryptForRecipient(mediaEnvelope, currentRecipientId);
         // Also encrypt for self
         const wallet = WalletAuth.getWallet();
-        const encryptedForSender = await encryptForRecipient(mediaEnvelope, wallet.publicKey);
+        const encryptedForSender = await encryptForEncryptionPublicKey(mediaEnvelope, myEncryptionKeyPair.publicKey);
         
         // Get disappearing message settings
         const disappearSettings = getDisappearSettings();
