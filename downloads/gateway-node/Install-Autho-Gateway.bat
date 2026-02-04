@@ -11,7 +11,7 @@ echo  ========================================
 echo.
 
 :: Check for Node.js
-echo [1/5] Checking for Node.js...
+echo [1/6] Checking for Node.js...
 where node >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -40,13 +40,13 @@ if !NODE_MAJOR! LSS 18 (
 echo  [OK] Node.js found
 
 :: Create install directory
-echo [2/5] Creating installation folder...
+echo [2/6] Creating installation folder...
 set INSTALL_DIR=%USERPROFILE%\autho-gateway-node
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 echo  [OK] Install folder: %INSTALL_DIR%
 
 :: Download files
-echo [3/5] Downloading gateway files...
+echo [3/6] Downloading gateway files...
 powershell -Command "& {$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri 'https://autho.pinkmahi.com/downloads/gateway-node/gateway-package.js' -OutFile '%INSTALL_DIR%\gateway-package.js' -UseBasicParsing}"
 if %ERRORLEVEL% NEQ 0 (
     echo  ERROR: Failed to download gateway-package.js
@@ -58,13 +58,13 @@ powershell -Command "& {$ProgressPreference='SilentlyContinue'; if (-not (Test-P
 echo  [OK] Files downloaded
 
 :: Install npm dependencies
-echo [4/5] Installing dependencies (this may take a minute)...
+echo [4/6] Installing dependencies (this may take a minute)...
 cd /d "%INSTALL_DIR%"
 call npm install --silent 2>nul
 echo  [OK] Dependencies installed
 
 :: Install cloudflared for public gateway mode
-echo [5/5] Setting up public gateway support...
+echo [5/6] Setting up public gateway support...
 where cloudflared >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo  Installing Cloudflare Tunnel...
@@ -78,37 +78,71 @@ if %ERRORLEVEL% NEQ 0 (
     echo  [OK] Cloudflare Tunnel already installed
 )
 
+:: Create Autho icon (Black background, Gold "A")
+echo [6/6] Creating shortcuts with Autho branding...
+powershell -ExecutionPolicy Bypass -Command ^
+"Add-Type -AssemblyName System.Drawing; ^
+$ico = '%INSTALL_DIR%\autho.ico'; ^
+$bmp = New-Object System.Drawing.Bitmap(256,256); ^
+$g = [System.Drawing.Graphics]::FromImage($bmp); ^
+$g.SmoothingMode = 'AntiAlias'; ^
+$g.Clear([System.Drawing.Color]::FromArgb(20,20,20)); ^
+$gold = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,215,0)); ^
+$font = New-Object System.Drawing.Font('Arial',180,[System.Drawing.FontStyle]::Bold); ^
+$sf = New-Object System.Drawing.StringFormat; ^
+$sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'; ^
+$g.DrawString('A',$font,$gold,[System.Drawing.RectangleF]::new(0,0,256,256),$sf); ^
+$g.Dispose(); ^
+$bmp.Save($ico,[System.Drawing.Imaging.ImageFormat]::Icon); ^
+$bmp.Dispose()"
+
 :: Create start scripts
 echo @echo off > "%INSTALL_DIR%\Start Gateway.bat"
+echo title Autho Gateway Node >> "%INSTALL_DIR%\Start Gateway.bat"
 echo cd /d "%%~dp0" >> "%INSTALL_DIR%\Start Gateway.bat"
+echo echo Starting Autho Gateway... >> "%INSTALL_DIR%\Start Gateway.bat"
+echo echo. >> "%INSTALL_DIR%\Start Gateway.bat"
+echo echo Once started, open: http://localhost:3001 >> "%INSTALL_DIR%\Start Gateway.bat"
+echo echo. >> "%INSTALL_DIR%\Start Gateway.bat"
 echo node gateway-package.js >> "%INSTALL_DIR%\Start Gateway.bat"
 echo pause >> "%INSTALL_DIR%\Start Gateway.bat"
 
 echo @echo off > "%INSTALL_DIR%\Start Gateway (Public).bat"
+echo title Autho Gateway Node (Public) >> "%INSTALL_DIR%\Start Gateway (Public).bat"
 echo cd /d "%%~dp0" >> "%INSTALL_DIR%\Start Gateway (Public).bat"
 echo set GATEWAY_AUTO_PUBLIC=true >> "%INSTALL_DIR%\Start Gateway (Public).bat"
+echo echo Starting Autho Gateway in PUBLIC mode... >> "%INSTALL_DIR%\Start Gateway (Public).bat"
+echo echo. >> "%INSTALL_DIR%\Start Gateway (Public).bat"
+echo echo Your gateway will be accessible from the internet! >> "%INSTALL_DIR%\Start Gateway (Public).bat"
+echo echo. >> "%INSTALL_DIR%\Start Gateway (Public).bat"
 echo node gateway-package.js >> "%INSTALL_DIR%\Start Gateway (Public).bat"
 echo pause >> "%INSTALL_DIR%\Start Gateway (Public).bat"
 
-:: Create desktop shortcuts
-echo Creating desktop shortcuts...
+:: Create desktop shortcuts with Autho icon
 set DESKTOP=%USERPROFILE%\Desktop
+set ICON=%INSTALL_DIR%\autho.ico
 
-powershell -Command "& {$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\Autho Gateway.lnk'); $s.TargetPath = '%INSTALL_DIR%\Start Gateway.bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Start Autho Gateway (Private Mode)'; $s.Save()}"
+:: Private Gateway shortcut
+powershell -Command "& {$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\Autho Gateway.lnk'); $s.TargetPath = '%INSTALL_DIR%\Start Gateway.bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Start Autho Gateway (Private Mode)'; $s.IconLocation = '%ICON%,0'; $s.Save()}"
 
-powershell -Command "& {$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\Autho Gateway (Public).lnk'); $s.TargetPath = '%INSTALL_DIR%\Start Gateway (Public).bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Start Autho Gateway (Public Mode)'; $s.Save()}"
+:: Public Gateway shortcut
+powershell -Command "& {$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\Autho Gateway (Public).lnk'); $s.TargetPath = '%INSTALL_DIR%\Start Gateway (Public).bat'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Start Autho Gateway (Public Mode - Share with the world)'; $s.IconLocation = '%ICON%,0'; $s.Save()}"
 
-echo  [OK] Desktop shortcuts created
+:: Open Autho in Browser shortcut
+powershell -Command "& {$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%DESKTOP%\Open Autho.lnk'); $s.TargetPath = 'http://localhost:3001'; $s.Description = 'Open Autho Gateway in your browser'; $s.IconLocation = '%ICON%,0'; $s.Save()}"
+
+echo  [OK] Desktop shortcuts created with Autho icon
 
 echo.
 echo  ========================================
 echo     INSTALLATION COMPLETE!
 echo  ========================================
 echo.
-echo  Two shortcuts have been added to your desktop:
+echo  Three shortcuts have been added to your desktop:
 echo.
 echo    [Autho Gateway]          - Run locally on your PC
 echo    [Autho Gateway (Public)] - Share with the world
+echo    [Open Autho]             - Open in your browser
 echo.
 echo  Would you like to start the gateway now?
 echo.
@@ -117,6 +151,8 @@ if %ERRORLEVEL% EQU 1 (
     echo.
     echo  Starting Autho Gateway...
     start "" "%INSTALL_DIR%\Start Gateway.bat"
+    timeout /t 3 /nobreak >nul
+    start http://localhost:3001
 )
 
 echo.

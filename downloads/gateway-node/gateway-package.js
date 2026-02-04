@@ -1953,6 +1953,69 @@ class GatewayNode {
       res.send(this.generateQrDashboardHtml());
     });
 
+    // ============================================================
+    // GATEWAY DOWNLOAD ENDPOINTS - P2P software distribution
+    // Users can download gateway files from any running gateway
+    // ============================================================
+
+    // Serve gateway download files
+    this.app.get('/downloads/gateway-node/:filename', (req, res) => {
+      const { filename } = req.params;
+      const allowedFiles = [
+        'gateway-package.js',
+        'package.json',
+        'gateway.env',
+        'Install-Autho-Gateway.bat',
+        'install.sh',
+        'README.md'
+      ];
+      
+      if (!allowedFiles.includes(filename)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      
+      // Serve from own installation directory or bundled files
+      const localPath = path.join(__dirname, filename);
+      if (fs.existsSync(localPath)) {
+        return res.sendFile(localPath);
+      }
+      
+      // Fallback: proxy from operator if we don't have the file locally
+      this.proxyDownload(req, res, filename);
+    });
+
+    // List available gateway download files
+    this.app.get('/downloads/gateway-node', (req, res) => {
+      res.json({
+        success: true,
+        files: [
+          { name: 'Install-Autho-Gateway.bat', description: 'Windows installer (double-click to install)', platform: 'windows' },
+          { name: 'install.sh', description: 'Linux/Mac installer script', platform: 'unix' },
+          { name: 'gateway-package.js', description: 'Gateway node source code', platform: 'all' },
+          { name: 'package.json', description: 'Node.js dependencies', platform: 'all' },
+          { name: 'gateway.env', description: 'Configuration template', platform: 'all' },
+          { name: 'README.md', description: 'Documentation', platform: 'all' },
+        ],
+        quickInstall: {
+          windows: 'powershell -Command "irm ' + (this.publicHttpUrl || `http://localhost:${EFFECTIVE_HTTP_PORT}`) + '/downloads/gateway-node/Install-Autho-Gateway.bat -OutFile Install.bat; .\\Install.bat"',
+          unix: 'curl -sSL ' + (this.publicHttpUrl || `http://localhost:${EFFECTIVE_HTTP_PORT}`) + '/downloads/gateway-node/install.sh | bash',
+        },
+        source: this.gatewayId,
+        timestamp: Date.now()
+      });
+    });
+
+    // Gateway install page
+    this.app.get('/install/gateway', (req, res) => {
+      const publicDir = path.join(__dirname, 'public');
+      const fp = path.join(publicDir, 'install-gateway.html');
+      if (fs.existsSync(fp)) {
+        return res.sendFile(fp);
+      }
+      // Fallback: serve inline install page
+      res.send(this.generateInstallPage());
+    });
+
     // Registry endpoints
     this.app.get('/api/registry/state', (req, res) => {
       const cacheKey = 'registry_state';
@@ -2058,6 +2121,302 @@ class GatewayNode {
         warning: 'This gateway node is pre-configured to connect only to autho.pinkmahi.com'
       });
     });
+
+    // ============================================================
+    // EPHEMERAL MESSAGING API ENDPOINTS
+    // ============================================================
+
+    // Get user's conversations
+    this.app.get('/api/messages/conversations', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const conversations = this.getUserConversations(account.accountId);
+        res.json({ success: true, conversations });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get messages in a conversation
+    this.app.get('/api/messages/conversation/:conversationId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const { conversationId } = req.params;
+        const messages = this.getConversationMessages(conversationId, account.accountId);
+        res.json({ success: true, conversationId, messages });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get contacts
+    this.app.get('/api/messages/contacts', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const contacts = this.getUserContacts(account.accountId);
+        res.json({ success: true, contacts });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get messaging stats
+    this.app.get('/api/messages/stats', (req, res) => {
+      res.json({
+        success: true,
+        stats: {
+          totalEvents: this.ephemeralEvents.size,
+          totalContacts: this.ephemeralContactsByUser.size,
+        }
+      });
+    });
+
+    // Get user's groups
+    this.app.get('/api/messages/groups', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const groups = this.getUserGroups(account.accountId);
+        res.json({ success: true, groups });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get group details
+    this.app.get('/api/messages/groups/:groupId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const group = this.getGroup(req.params.groupId);
+        if (!group) {
+          return res.status(404).json({ success: false, error: 'Group not found' });
+        }
+        if (!group.members.includes(account.accountId)) {
+          return res.status(403).json({ success: false, error: 'Not a member of this group' });
+        }
+        res.json({ success: true, group });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get group messages
+    this.app.get('/api/messages/groups/:groupId/messages', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const { groupId } = req.params;
+        const messages = this.getGroupMessages(groupId, account.accountId);
+        res.json({ success: true, groupId, messages });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get message details
+    this.app.get('/api/messages/:messageId', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const message = this.getMessage(req.params.messageId);
+        if (!message) {
+          return res.status(404).json({ success: false, error: 'Message not found' });
+        }
+        const payload = message.payload || {};
+        if (payload.senderId !== account.accountId && payload.recipientId !== account.accountId) {
+          return res.status(403).json({ success: false, error: 'Not authorized' });
+        }
+        res.json({ success: true, message });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get message status
+    this.app.get('/api/messages/:messageId/status', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const status = this.getMessageStatus(req.params.messageId);
+        res.json({ success: true, status });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get message reactions
+    this.app.get('/api/messages/:messageId/reactions', (req, res) => {
+      try {
+        const reactions = this.getReactions(req.params.messageId);
+        res.json({ success: true, reactions });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get typing users
+    this.app.get('/api/messages/conversation/:conversationId/typing', (req, res) => {
+      try {
+        const typingUsers = this.getTypingUsers(req.params.conversationId);
+        res.json({ success: true, typingUsers });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Get user online status
+    this.app.get('/api/messages/user/:userId/online', (req, res) => {
+      try {
+        const isOnline = this.isUserOnline(req.params.userId);
+        const lastSeen = this.getUserLastSeen(req.params.userId);
+        res.json({ success: true, isOnline, lastSeen });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Search messages
+    this.app.get('/api/messages/search', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const query = req.query.q || '';
+        const limit = parseInt(req.query.limit) || 50;
+        const messages = this.searchMessages(account.accountId, query, limit);
+        res.json({ success: true, messages });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // POST endpoints - these proxy to operators for write operations
+    // Send message
+    this.app.post('/api/messages/send', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Add contact
+    this.app.post('/api/messages/contacts', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Block user
+    this.app.post('/api/messages/block', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Create group
+    this.app.post('/api/messages/groups', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Send group message
+    this.app.post('/api/messages/groups/:groupId/send', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Add group member
+    this.app.post('/api/messages/groups/:groupId/members', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Leave group
+    this.app.post('/api/messages/groups/:groupId/leave', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Mark message as viewed
+    this.app.post('/api/messages/:messageId/viewed', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Mark message as read
+    this.app.post('/api/messages/:messageId/read', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Add reaction
+    this.app.post('/api/messages/:messageId/react', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Mute conversation
+    this.app.post('/api/messages/conversation/:conversationId/mute', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Unmute conversation
+    this.app.post('/api/messages/conversation/:conversationId/unmute', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Mute group
+    this.app.post('/api/messages/groups/:groupId/mute', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Unmute group
+    this.app.post('/api/messages/groups/:groupId/unmute', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Typing indicator
+    this.app.post('/api/messages/typing', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Online status heartbeat
+    this.app.post('/api/messages/online', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Start conversation about item
+    this.app.post('/api/messages/start-about-item', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // Delete endpoints
+    this.app.delete('/api/messages/:messageId', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    this.app.delete('/api/messages/:messageId/react', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    this.app.delete('/api/messages/groups/:groupId/members/:memberId', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    this.app.delete('/api/messages/groups/:groupId/messages/:messageId', async (req, res) => {
+      return this.proxyApi(req, res);
+    });
+
+    // ============================================================
+    // END EPHEMERAL MESSAGING API
+    // ============================================================
 
     this.app.use('/api', (req, res) => {
       Promise.resolve(this.proxyApi(req, res)).catch((e) => {
@@ -3051,7 +3410,6 @@ class GatewayNode {
   /**
    * Generate QR Code Dashboard HTML - self-contained page for retail display
    * Shows gateway's public URL QR code + active operator QR codes
-   * Uses project's qr.bundle.js served from /js/qr.bundle.js
    */
   generateQrDashboardHtml() {
     const publicStatus = this.getPublicAccessStatus();
@@ -3279,11 +3637,18 @@ class GatewayNode {
     const peerGateways = ${JSON.stringify(peerGateways.filter(g => g.publicUrl).map(g => ({ url: g.publicUrl, name: g.gatewayId })))};
     const mainUrl = ${JSON.stringify(publicStatus.url || '')};
 
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
     function createQrCard(name, url, type) {
       const card = document.createElement('div');
       card.className = 'qr-card';
       const canvas = document.createElement('canvas');
-      card.innerHTML = \`<h3>\${name}</h3><div class="qr-container"></div><span class="type-badge \${type}">\${type}</span>\`;
+      // SECURITY: Escape HTML to prevent XSS from malicious peer data
+      card.innerHTML = \`<h3>\${escapeHtml(name)}</h3><div class="qr-container"></div><span class="type-badge \${escapeHtml(type)}">\${escapeHtml(type)}</span>\`;
       card.querySelector('.qr-container').appendChild(canvas);
       QRCode.toCanvas(canvas, url, { width: 150, margin: 2, color: { dark: '#1a1a2e', light: '#ffffff' } });
       return card;
@@ -4191,6 +4556,9 @@ class GatewayNode {
     
     // Load communications ledger
     this.loadEphemeralLedger();
+    
+    // Start message pruning (10-day retention, hourly cleanup)
+    this.startMessagePruning();
 
     // Start HTTP server
     this.app.listen(EFFECTIVE_HTTP_PORT, () => {
@@ -4365,6 +4733,9 @@ class GatewayNode {
     this.saveCachedSeeds();
     console.log('💾 Saved cached seeds');
     
+    // Stop message pruning timer
+    this.stopMessagePruning();
+    
     // Save communications ledger
     this.saveEphemeralLedger();
     console.log(`💾 Saved ${this.ephemeralEvents.size} communications ledger events`);
@@ -4529,6 +4900,61 @@ class GatewayNode {
   // ============================================================
   // COMMUNICATIONS LEDGER METHODS (ephemeral messages backup)
   // ============================================================
+
+  // Message retention: 10 days default (same as operator nodes)
+  static MESSAGE_RETENTION_MS = 10 * 24 * 60 * 60 * 1000;
+  
+  /**
+   * Prune expired messages from the ephemeral store
+   * Runs automatically every hour
+   */
+  pruneExpiredMessages() {
+    const now = Date.now();
+    let prunedCount = 0;
+    
+    for (const [eventId, event] of this.ephemeralEvents.entries()) {
+      // Skip permanent events (contacts)
+      if (event.eventType === 'CONTACT_ADDED') continue;
+      
+      // Remove expired events
+      if (event.expiresAt && event.expiresAt <= now) {
+        this.ephemeralEvents.delete(eventId);
+        prunedCount++;
+      }
+    }
+    
+    if (prunedCount > 0) {
+      console.log(`🧹 [Ephemeral] Pruned ${prunedCount} expired messages`);
+      this.saveEphemeralLedger();
+    }
+    
+    return prunedCount;
+  }
+
+  /**
+   * Start automatic pruning loop (runs every hour)
+   */
+  startMessagePruning() {
+    // Run immediately on startup
+    this.pruneExpiredMessages();
+    
+    // Then run every hour
+    this.messagePruneTimer = setInterval(() => {
+      this.pruneExpiredMessages();
+    }, 60 * 60 * 1000); // 1 hour
+    
+    console.log('🧹 [Ephemeral] Message pruning started (10-day retention, hourly cleanup)');
+  }
+
+  /**
+   * Stop automatic pruning
+   */
+  stopMessagePruning() {
+    if (this.messagePruneTimer) {
+      clearInterval(this.messagePruneTimer);
+      this.messagePruneTimer = null;
+    }
+  }
   
   storeEphemeralEvent(event) {
     if (!event || !event.eventId) return false;
@@ -4633,6 +5059,363 @@ class GatewayNode {
     }
   }
 
+  // ============================================================
+  // MESSAGING API HELPER METHODS
+  // ============================================================
+
+  async getAccountFromSession(req) {
+    const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
+    if (!sessionToken) return null;
+    
+    // Try to get account from local cache or proxy to operator
+    try {
+      for (const operatorUrl of this.operatorUrls) {
+        const response = await fetch(`${operatorUrl}/api/auth/verify-session`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-session-token': sessionToken,
+          },
+          body: JSON.stringify({ sessionToken }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.account) {
+            return data.account;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Session verification error:', e.message);
+    }
+    return null;
+  }
+
+  getUserConversations(userId) {
+    const conversations = new Map();
+    const now = Date.now();
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.expiresAt && event.expiresAt <= now) continue;
+      if (event.eventType !== 'MESSAGE_SENT') continue;
+      
+      const payload = event.payload || {};
+      if (payload.senderId !== userId && payload.recipientId !== userId) continue;
+      
+      const convId = payload.conversationId;
+      if (!convId) continue;
+      
+      const existing = conversations.get(convId);
+      if (!existing || event.timestamp > existing.lastMessageAt) {
+        const otherUserId = payload.senderId === userId ? payload.recipientId : payload.senderId;
+        conversations.set(convId, {
+          conversationId: convId,
+          participantId: otherUserId,
+          lastMessageAt: event.timestamp,
+          itemId: payload.itemId,
+        });
+      }
+    }
+    
+    return Array.from(conversations.values())
+      .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  }
+
+  getConversationMessages(conversationId, userId) {
+    const messages = [];
+    const now = Date.now();
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.expiresAt && event.expiresAt <= now) continue;
+      if (event.eventType !== 'MESSAGE_SENT') continue;
+      
+      const payload = event.payload || {};
+      if (payload.conversationId !== conversationId) continue;
+      if (payload.senderId !== userId && payload.recipientId !== userId) continue;
+      
+      messages.push({
+        messageId: payload.messageId,
+        senderId: payload.senderId,
+        recipientId: payload.recipientId,
+        encryptedContent: payload.senderId === userId ? payload.encryptedForSender : payload.encryptedContent,
+        timestamp: event.timestamp,
+        expiresAt: event.expiresAt,
+        itemId: payload.itemId,
+        replyToMessageId: payload.replyToMessageId,
+      });
+    }
+    
+    return messages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  getUserContacts(userId) {
+    const contacts = [];
+    const contactSet = this.ephemeralContactsByUser.get(userId);
+    if (contactSet) {
+      for (const contactId of contactSet) {
+        contacts.push({ contactId, addedAt: null });
+      }
+    }
+    return contacts;
+  }
+
+  getUserGroups(userId) {
+    const groups = [];
+    const groupMap = new Map();
+    const now = Date.now();
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.expiresAt && event.expiresAt <= now) continue;
+      
+      if (event.eventType === 'GROUP_CREATED') {
+        const payload = event.payload || {};
+        groupMap.set(payload.groupId, {
+          groupId: payload.groupId,
+          name: payload.name,
+          creatorId: payload.creatorId,
+          members: payload.initialMembers || [payload.creatorId],
+          admins: [payload.creatorId],
+          createdAt: event.timestamp,
+        });
+      } else if (event.eventType === 'GROUP_MEMBER_ADDED') {
+        const payload = event.payload || {};
+        const group = groupMap.get(payload.groupId);
+        if (group && !group.members.includes(payload.memberId)) {
+          group.members.push(payload.memberId);
+        }
+      } else if (event.eventType === 'GROUP_LEFT' || event.eventType === 'GROUP_MEMBER_REMOVED') {
+        const payload = event.payload || {};
+        const group = groupMap.get(payload.groupId);
+        if (group) {
+          group.members = group.members.filter(m => m !== payload.memberId);
+        }
+      }
+    }
+    
+    for (const group of groupMap.values()) {
+      if (group.members.includes(userId)) {
+        groups.push(group);
+      }
+    }
+    
+    return groups;
+  }
+
+  getGroup(groupId) {
+    const now = Date.now();
+    let group = null;
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.expiresAt && event.expiresAt <= now) continue;
+      
+      if (event.eventType === 'GROUP_CREATED' && event.payload?.groupId === groupId) {
+        const payload = event.payload;
+        group = {
+          groupId: payload.groupId,
+          name: payload.name,
+          creatorId: payload.creatorId,
+          members: payload.initialMembers || [payload.creatorId],
+          admins: [payload.creatorId],
+          createdAt: event.timestamp,
+        };
+      } else if (event.eventType === 'GROUP_MEMBER_ADDED' && event.payload?.groupId === groupId && group) {
+        if (!group.members.includes(event.payload.memberId)) {
+          group.members.push(event.payload.memberId);
+        }
+      } else if ((event.eventType === 'GROUP_LEFT' || event.eventType === 'GROUP_MEMBER_REMOVED') && 
+                 event.payload?.groupId === groupId && group) {
+        group.members = group.members.filter(m => m !== event.payload.memberId);
+      }
+    }
+    
+    return group;
+  }
+
+  getGroupMessages(groupId, userId) {
+    const messages = [];
+    const now = Date.now();
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.expiresAt && event.expiresAt <= now) continue;
+      if (event.eventType !== 'GROUP_MESSAGE_SENT') continue;
+      
+      const payload = event.payload || {};
+      if (payload.groupId !== groupId) continue;
+      
+      messages.push({
+        messageId: payload.messageId,
+        groupId: payload.groupId,
+        senderId: payload.senderId,
+        encryptedContent: payload.encryptedContentByMember?.[userId],
+        timestamp: event.timestamp,
+        expiresAt: event.expiresAt,
+        replyToMessageId: payload.replyToMessageId,
+      });
+    }
+    
+    return messages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  getMessage(messageId) {
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.payload?.messageId === messageId) {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  getMessageStatus(messageId) {
+    const event = this.getMessage(messageId);
+    if (!event) return { delivered: false, read: false };
+    return {
+      delivered: true,
+      read: event.payload?.readAt ? true : false,
+      readAt: event.payload?.readAt,
+    };
+  }
+
+  getReactions(messageId) {
+    const reactions = [];
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.eventType === 'MESSAGE_REACTION_ADDED' && event.payload?.messageId === messageId) {
+        reactions.push({
+          userId: event.payload.userId,
+          emoji: event.payload.emoji,
+          timestamp: event.timestamp,
+        });
+      }
+    }
+    return reactions;
+  }
+
+  getTypingUsers(conversationId) {
+    // Typing indicators are very short-lived, gateway doesn't track them locally
+    return [];
+  }
+
+  isUserOnline(userId) {
+    // Online status is maintained by operators, gateway doesn't track
+    return false;
+  }
+
+  getUserLastSeen(userId) {
+    // Last seen is maintained by operators
+    return null;
+  }
+
+  searchMessages(userId, query, limit) {
+    // Gateway has encrypted messages, cannot search content
+    // Return recent messages for the user instead
+    const messages = [];
+    const now = Date.now();
+    
+    for (const event of this.ephemeralEvents.values()) {
+      if (event.expiresAt && event.expiresAt <= now) continue;
+      if (event.eventType !== 'MESSAGE_SENT') continue;
+      
+      const payload = event.payload || {};
+      if (payload.senderId !== userId && payload.recipientId !== userId) continue;
+      
+      messages.push({
+        messageId: payload.messageId,
+        senderId: payload.senderId,
+        recipientId: payload.recipientId,
+        conversationId: payload.conversationId,
+        timestamp: event.timestamp,
+        expiresAt: event.expiresAt,
+      });
+      
+      if (messages.length >= limit) break;
+    }
+    
+    return messages.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit);
+  }
+
+  // ============================================================
+  // GATEWAY DOWNLOAD HELPER METHODS
+  // ============================================================
+
+  async proxyDownload(req, res, filename) {
+    // Try to fetch from operators
+    for (const operatorUrl of this.operatorUrls) {
+      try {
+        const response = await fetch(`${operatorUrl}/downloads/gateway-node/${filename}`);
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') || 'application/octet-stream';
+          res.setHeader('Content-Type', contentType);
+          const buffer = await response.arrayBuffer();
+          return res.send(Buffer.from(buffer));
+        }
+      } catch (e) {
+        // Try next operator
+      }
+    }
+    res.status(404).json({ error: 'File not available' });
+  }
+
+  generateInstallPage() {
+    const baseUrl = this.publicHttpUrl || `http://localhost:${EFFECTIVE_HTTP_PORT}`;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Install Autho Gateway</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { max-width: 600px; padding: 40px; text-align: center; }
+    h1 { font-size: 2.5rem; margin-bottom: 10px; }
+    h1 span { color: #ffd700; }
+    p { color: #888; margin-bottom: 30px; }
+    .download-btn { display: inline-block; background: linear-gradient(135deg, #ffd700, #ffaa00); color: #000; font-weight: bold; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-size: 1.1rem; margin: 10px; transition: transform 0.2s; }
+    .download-btn:hover { transform: scale(1.05); }
+    .download-btn.secondary { background: #333; color: #fff; }
+    .code-block { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: left; font-family: monospace; font-size: 0.85rem; overflow-x: auto; }
+    .code-block code { color: #ffd700; }
+    .section { margin: 30px 0; }
+    h3 { color: #ffd700; margin-bottom: 10px; }
+    .source-info { margin-top: 40px; padding-top: 20px; border-top: 1px solid #333; color: #666; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1><span>A</span>utho Gateway</h1>
+    <p>Run your own Autho gateway node and help decentralize the network</p>
+    
+    <div class="section">
+      <h3>🪟 Windows</h3>
+      <a href="${baseUrl}/downloads/gateway-node/Install-Autho-Gateway.bat" class="download-btn" download>Download Installer</a>
+      <div class="code-block">
+        <code>powershell -Command "irm ${baseUrl}/downloads/gateway-node/Install-Autho-Gateway.bat -OutFile Install.bat; .\\Install.bat"</code>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>🐧 Linux / 🍎 Mac</h3>
+      <a href="${baseUrl}/downloads/gateway-node/install.sh" class="download-btn secondary" download>Download Script</a>
+      <div class="code-block">
+        <code>curl -sSL ${baseUrl}/downloads/gateway-node/install.sh | bash</code>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h3>📦 Manual Install</h3>
+      <p style="font-size: 0.9rem; margin-bottom: 10px;">Download individual files:</p>
+      <a href="${baseUrl}/downloads/gateway-node/gateway-package.js" class="download-btn secondary" style="padding: 10px 20px; font-size: 0.9rem;" download>gateway-package.js</a>
+      <a href="${baseUrl}/downloads/gateway-node/package.json" class="download-btn secondary" style="padding: 10px 20px; font-size: 0.9rem;" download>package.json</a>
+    </div>
+    
+    <div class="source-info">
+      Served from gateway: ${this.gatewayId}<br>
+      ${this.publicHttpUrl ? 'Public URL: ' + this.publicHttpUrl : 'Running locally'}
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
   // ==================== GATEWAY-TO-GATEWAY MESH ====================
 
   async registerAsPublicGateway() {
@@ -4643,6 +5426,9 @@ class GatewayNode {
 
     console.log(`📢 Registering as public gateway: ${this.gatewayId}`);
     
+    // Build WebSocket URL - cloudflare tunnels use same URL for WS
+    const wsUrl = this.publicHttpUrl.replace('https://', 'wss://').replace('http://', 'ws://');
+    
     for (const operatorUrl of this.operatorUrls) {
       try {
         const response = await fetch(`${operatorUrl}/api/network/gateways/register`, {
@@ -4651,13 +5437,30 @@ class GatewayNode {
           body: JSON.stringify({
             gatewayId: this.gatewayId,
             httpUrl: this.publicHttpUrl,
-            wsUrl: this.publicHttpUrl.replace('https://', 'wss://').replace('http://', 'ws://') + `:${EFFECTIVE_WS_PORT}`,
+            wsUrl: wsUrl,
             version: '1.0.6',
           }),
         });
         
         if (response.ok) {
+          const data = await response.json();
           console.log(`✅ Registered with operator: ${operatorUrl}`);
+          
+          // Connect to peer gateways returned by operator
+          if (data.peerGateways && Array.isArray(data.peerGateways)) {
+            console.log(`📡 Received ${data.peerGateways.length} peer gateways from operator`);
+            for (const peer of data.peerGateways) {
+              if (peer.gatewayId !== this.gatewayId && peer.wsUrl) {
+                // Add to discovered list if not already there
+                const exists = this.discoveredGateways.some(g => g.gatewayId === peer.gatewayId);
+                if (!exists) {
+                  this.discoveredGateways.push(peer);
+                }
+              }
+            }
+            // Trigger connection to new peers
+            this.connectToGatewayPeers();
+          }
           return;
         }
       } catch (error) {
@@ -4772,10 +5575,42 @@ class GatewayNode {
           gatewayId: this.gatewayId,
           timestamp: Date.now()
         }));
+        // Send ephemeral sync request to get their messages
+        ws.send(JSON.stringify({
+          type: 'ephemeral_sync_request',
+          since: this.getLatestEphemeralTimestamp() - (24 * 60 * 60 * 1000), // Last 24 hours
+          limit: 500,
+          gatewayId: this.gatewayId
+        }));
         break;
 
       case 'gateway_handshake_ack':
         console.log(`✓ Gateway handshake acknowledged by: ${message.gatewayId}`);
+        // Request ephemeral sync from the peer
+        ws.send(JSON.stringify({
+          type: 'ephemeral_sync_request',
+          since: this.getLatestEphemeralTimestamp() - (24 * 60 * 60 * 1000),
+          limit: 500,
+          gatewayId: this.gatewayId
+        }));
+        break;
+
+      case 'ephemeral_sync_request':
+        // Respond with our ephemeral events
+        this.handleEphemeralSyncRequest(message, ws);
+        break;
+
+      case 'ephemeral_sync_response':
+        // Import events from peer gateway
+        if (Array.isArray(message.events)) {
+          let imported = 0;
+          for (const event of message.events) {
+            if (this.storeEphemeralEvent(event)) imported++;
+          }
+          if (imported > 0) {
+            console.log(`📥 [Ephemeral] Imported ${imported} events from gateway ${gatewayId}`);
+          }
+        }
         break;
 
       case 'registry_update':

@@ -1958,6 +1958,13 @@
           timestamp: Date.now()
         });
 
+        // SECURITY: Require encryption - never send plaintext group messages
+        if (!myEncryptionKeyPair) {
+          alert('Encryption not initialized. Please refresh the page and try again.');
+          console.error('SECURITY: Attempted to send group message without encryption keys');
+          return;
+        }
+
         // Encrypt message for each group member
         const encryptedContentByMember = {};
         
@@ -1966,9 +1973,10 @@
             const encrypted = await encryptForRecipient(messageEnvelope, memberId);
             encryptedContentByMember[memberId] = encrypted;
           } catch (e) {
-            console.error('Failed to encrypt for member:', memberId, e);
-            // Use plaintext as fallback if encryption fails
-            encryptedContentByMember[memberId] = messageEnvelope;
+            console.error('SECURITY: Failed to encrypt for member:', memberId, e);
+            // SECURITY: Do NOT send if encryption fails for any member
+            alert(`Failed to encrypt message for a group member. Message not sent.`);
+            return;
           }
         }
 
@@ -2518,17 +2526,18 @@
           timestamp: Date.now()
         });
         
-        // Encrypt for recipient
-        let encryptedForRecipient = messageEnvelope;
-        let encryptedForSender = messageEnvelope;
-        
-        if (myEncryptionKeyPair) {
-          // E2E encrypt the message
-          encryptedForRecipient = await encryptForRecipient(messageEnvelope, currentRecipientId);
-          // Also encrypt for self (so we can read our own sent messages)
-          const wallet = WalletAuth.getWallet();
-          encryptedForSender = await encryptForRecipient(messageEnvelope, wallet.publicKey);
+        // SECURITY: Require encryption - never send plaintext
+        if (!myEncryptionKeyPair) {
+          alert('Encryption not initialized. Please refresh the page and try again.');
+          console.error('SECURITY: Attempted to send message without encryption keys');
+          return;
         }
+        
+        // E2E encrypt the message for recipient
+        const encryptedForRecipient = await encryptForRecipient(messageEnvelope, currentRecipientId);
+        // Also encrypt for self (so we can read our own sent messages)
+        const wallet = WalletAuth.getWallet();
+        const encryptedForSender = await encryptForRecipient(messageEnvelope, wallet.publicKey);
         
         // Get disappearing message settings
         const disappearSettings = getDisappearSettings();
