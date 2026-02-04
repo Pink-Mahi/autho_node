@@ -2826,9 +2826,12 @@
 
       if (!encryptionInitPromise) {
         encryptionInitPromise = (async () => {
-          const wallet = WalletAuth.getWallet();
-          if (!wallet?.privateKey) throw new Error('Wallet not available');
-          myPrivateKey = wallet.privateKey;
+          // Use messaging keys from sessionStorage (set during login)
+          const messagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
+          if (!messagingPrivateKey) {
+            throw new Error('Messaging key not found - please log in again');
+          }
+          myPrivateKey = messagingPrivateKey;
           // Use the robust initialization with nacl waiting and retries
           myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
           return myEncryptionKeyPair;
