@@ -2885,9 +2885,22 @@ class GatewayNode {
         }
 
         // Perform the message deletion
+        const message = this.getMessage(messageId);
+        if (!message) {
+          console.log(`❌ [Delete] Message not found: ${messageId}`);
+          return res.status(404).json({ success: false, error: `Message not found: ${messageId}` });
+        }
+        
+        // Check ownership
+        const senderId = message.payload?.senderId || message.payload?.from;
+        if (senderId !== account.accountId) {
+          console.log(`❌ [Delete] Not authorized: sender=${senderId}, requester=${account.accountId}`);
+          return res.status(403).json({ success: false, error: 'Not authorized to delete this message' });
+        }
+        
         const deleted = this.deleteMessage(messageId, account.accountId);
         if (!deleted) {
-          return res.status(404).json({ success: false, error: 'Message not found or not authorized to delete' });
+          return res.status(500).json({ success: false, error: 'Failed to delete message' });
         }
 
         // Deduct from service balance

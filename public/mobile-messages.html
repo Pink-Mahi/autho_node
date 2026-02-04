@@ -1863,6 +1863,37 @@
       }
     }
 
+    // Wait for nacl library to be available
+    async function waitForNacl(maxWaitMs = 5000) {
+      const start = Date.now();
+      while (!window.nacl || !window.nacl.box) {
+        if (Date.now() - start > maxWaitMs) {
+          throw new Error('NaCl library failed to load');
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      return true;
+    }
+
+    // Initialize encryption with retry
+    async function initializeEncryption(privateKey, retries = 3) {
+      for (let i = 0; i < retries; i++) {
+        try {
+          await waitForNacl();
+          const keyPair = await deriveEncryptionKeyPair(privateKey);
+          if (keyPair && keyPair.secretKey && keyPair.publicKey) {
+            return keyPair;
+          }
+        } catch (e) {
+          console.warn(`Encryption init attempt ${i + 1} failed:`, e.message);
+          if (i < retries - 1) {
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
+      }
+      return null;
+    }
+
     // Initialize
     document.addEventListener('DOMContentLoaded', async () => {
       const wallet = WalletAuth.getWallet();
@@ -1876,13 +1907,13 @@
       const sendBtn = document.getElementById('sendBtn');
       if (sendBtn) sendBtn.disabled = true;
       
-      // Derive encryption keypair for E2E encryption
+      // Derive encryption keypair for E2E encryption with retry
       if (myPrivateKey) {
-        try {
-          myEncryptionKeyPair = await deriveEncryptionKeyPair(myPrivateKey);
-          console.log('E2E encryption initialized');
-        } catch (e) {
-          console.error('Failed to initialize encryption:', e);
+        myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
+        if (myEncryptionKeyPair) {
+          console.log('E2E encryption initialized successfully');
+        } else {
+          console.error('Failed to initialize encryption after retries');
         }
       }
 
@@ -2793,7 +2824,8 @@
           const wallet = WalletAuth.getWallet();
           if (!wallet?.privateKey) throw new Error('Wallet not available');
           myPrivateKey = wallet.privateKey;
-          myEncryptionKeyPair = await deriveEncryptionKeyPair(myPrivateKey);
+          // Use the robust initialization with nacl waiting and retries
+          myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
           return myEncryptionKeyPair;
         })();
       }
@@ -2803,6 +2835,7 @@
         return !!myEncryptionKeyPair;
       } catch (e) {
         console.error('Encryption init failed:', e);
+        encryptionInitPromise = null; // Reset so we can retry
         return false;
       }
     }
@@ -4263,7 +4296,12 @@
 
     // Delete message with auto-deduct
     async function deleteMessageWithPayment() {
-      if (!selectedMessageId) return;
+      console.log('Delete requested for messageId:', selectedMessageId);
+      
+      if (!selectedMessageId) {
+        alert('No message selected. Please tap on a message first.');
+        return;
+      }
       
       const required = PRICING.message_delete;
       await fetchServiceBalance();
@@ -4282,6 +4320,7 @@
       
       try {
         const accountId = getServiceAccountId();
+        console.log('Deleting message:', { messageId: selectedMessageId, accountId });
         
         const res = await fetch('/api/service/premium/message-delete', {
           method: 'POST',
@@ -4293,6 +4332,7 @@
         });
         
         const data = await res.json();
+        console.log('Delete response:', data);
         
         if (data.success) {
           // Remove message from UI
