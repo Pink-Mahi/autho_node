@@ -748,7 +748,16 @@
   <div id="fundServiceOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="Fund Service Balance">
     <div class="overlay-card">
       <div class="overlay-title">⚡ Fund Service Balance</div>
-      <div class="overlay-subtitle">Send BTC to the address below to add funds to your prepaid service balance. Minimum: 1,000 sats.</div>
+      <div class="overlay-subtitle">Enter the amount of sats to prepay as service credits. We'll send it automatically from your wallet. Minimum: 1,000 sats.</div>
+      
+      <div class="info-card">
+        <div class="info-card-row">
+          <span class="info-card-label">Amount (sats)</span>
+        </div>
+        <input id="fundServiceAmountSats" type="number" inputmode="numeric" class="input" placeholder="1000" />
+        <button class="btn" onclick="fundServiceBalance()" style="margin-top: 10px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">Fund Service Balance</button>
+        <div id="fundServiceStatus" style="margin-top: 10px; font-size: 13px;"></div>
+      </div>
       
       <div class="info-card">
         <div class="info-card-row">
@@ -764,8 +773,8 @@
       <button class="btn secondary" onclick="copyFundingAddress()">Copy Address</button>
       
       <div class="info-card" style="margin-top: 15px;">
-        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Verify Payment</div>
-        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">After sending BTC, enter your transaction ID to verify and credit your balance.</div>
+        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Advanced: Verify TXID Manually</div>
+        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">If you funded from another wallet, enter the transaction ID to verify and credit your balance.</div>
         <input id="verifyTxid" type="text" class="input" placeholder="Transaction ID (txid)" />
         <button class="btn" onclick="verifyFundingPayment()" style="margin-top: 10px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">Verify Payment</button>
         <div id="verifyStatus" style="margin-top: 10px; font-size: 13px;"></div>
@@ -1438,6 +1447,12 @@
       }
 
       return { address: text, amountSats: null };
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = String(text ?? '');
+      return div.innerHTML;
     }
 
     function formatSatPerVb(rate) {
@@ -2512,6 +2527,12 @@
           if (data.success && data.paymentAddress) {
             serviceBalanceData.paymentAddress = data.paymentAddress;
             document.getElementById('fundingAddress').textContent = data.paymentAddress;
+            try {
+              const amtEl = document.getElementById('fundServiceAmountSats');
+              if (amtEl && !String(amtEl.value || '').trim()) {
+                amtEl.value = '1000';
+              }
+            } catch {}
             
             // Generate QR code
             if (window.QRCode) {
@@ -2539,6 +2560,176 @@
       document.getElementById('fundServiceOverlay').classList.remove('active');
       document.getElementById('verifyTxid').value = '';
       document.getElementById('verifyStatus').textContent = '';
+      try {
+        const s = document.getElementById('fundServiceStatus');
+        if (s) s.textContent = '';
+      } catch {}
+    };
+
+    window.fundServiceBalance = async () => {
+      const statusEl = document.getElementById('fundServiceStatus');
+      const setStatus = (html) => {
+        if (statusEl) statusEl.innerHTML = html;
+      };
+
+      try {
+        setStatus('<span style="color: #d4af37;">Preparing payment...</span>');
+
+        // Ensure we have the service payment address
+        if (!serviceBalanceData.paymentAddress) {
+          await window.showFundServiceBalance();
+        }
+        const toAddress = String(serviceBalanceData.paymentAddress || '').trim();
+        if (!toAddress) {
+          setStatus('<span style="color: #ff5757;">Could not load service payment address</span>');
+          return;
+        }
+
+        // Read amount
+        const amtRaw = String(document.getElementById('fundServiceAmountSats')?.value || '').trim();
+        const amountSats = parseSatsFromInput(amtRaw);
+        if (!Number.isFinite(amountSats) || amountSats <= 0) {
+          setStatus('<span style="color: #ff5757;">Enter a valid sats amount</span>');
+          return;
+        }
+        if (amountSats < 1000) {
+          setStatus('<span style="color: #ff5757;">Minimum is 1,000 sats</span>');
+          return;
+        }
+
+        const wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
+        const fromAddress = wallet.paymentAddress || wallet.address;
+        if (!fromAddress) {
+          setStatus('<span style="color: #ff5757;">No wallet address found</span>');
+          return;
+        }
+
+        if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
+          setStatus('<span style="color: #ff5757;">Signing library not loaded</span>');
+          return;
+        }
+
+        const vaultStr = localStorage.getItem('autho_wallet_vault');
+        if (!vaultStr) {
+          setStatus('<span style="color: #ff5757;">Wallet vault missing. Please sign in again.</span>');
+          return;
+        }
+
+        let vault;
+        try {
+          vault = JSON.parse(vaultStr);
+        } catch {
+          setStatus('<span style="color: #ff5757;">Wallet vault is corrupted. Please sign in again.</span>');
+          return;
+        }
+
+        const getSecret = (attempt) => {
+          const label = attempt > 1
+            ? 'Unlock failed. Enter your wallet passcode again:'
+            : 'Enter your wallet passcode to fund service credits:';
+          return prompt(label);
+        };
+
+        const secret1 = getSecret(1);
+        if (!secret1) {
+          setStatus('');
+          return;
+        }
+
+        setStatus('<span style="color: #d4af37;">Fetching UTXOs...</span>');
+        const utxosRaw = await withChainProvider((base) => fetchJson(`${base}/address/${fromAddress}/utxo`));
+        const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
+        const spendable = utxos
+          .filter((u) => u && u.txid && (u.status?.confirmed === true))
+          .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
+
+        if (spendable.length === 0) {
+          setStatus('<span style="color: #ff5757;">No confirmed funds available yet.</span>');
+          return;
+        }
+
+        setStatus('<span style="color: #d4af37;">Getting fee estimates...</span>');
+        const feeRate = await getRecommendedFeeRate(walletFeePriority, withChainProvider);
+
+        setStatus('<span style="color: #d4af37;">Unlocking vault...</span>');
+        let payload;
+        try {
+          payload = await decryptWalletVault(vault, secret1);
+        } catch {
+          const secret2 = getSecret(2);
+          if (!secret2) {
+            setStatus('');
+            return;
+          }
+          try {
+            payload = await decryptWalletVault(vault, secret2);
+          } catch {
+            setStatus('<span style="color: #ff5757;">Incorrect passcode</span>');
+            return;
+          }
+        }
+
+        const mnemonic = String(payload?.mnemonic || '');
+        if (!mnemonic) {
+          setStatus('<span style="color: #ff5757;">Mnemonic missing in vault</span>');
+          return;
+        }
+
+        setStatus('<span style="color: #d4af37;">Signing transaction locally...</span>');
+        const network = getWalletNetworkName();
+        const signed = window.AuthoBTC.buildAndSignP2WPKH({
+          mnemonic,
+          toAddress,
+          amountSats,
+          utxos: spendable,
+          feeRateSatPerVb: feeRate,
+          network,
+        });
+
+        setStatus('<span style="color: #d4af37;">Broadcasting...</span>');
+        const txid = await withChainProvider((base) => broadcastTx(base, signed.txHex));
+        if (!txid || !/^[a-fA-F0-9]{64}$/.test(txid)) {
+          setStatus('<span style="color: #ff5757;">Broadcast returned an invalid txid</span>');
+          return;
+        }
+
+        // Auto-verify and credit
+        setStatus(`<span style="color: #d4af37;">Sent. Verifying payment...</span><div style="margin-top:6px; font-family:'Courier New', monospace; font-size: 11px; color:#999;">TXID: ${txid}</div>`);
+        try {
+          const accountId = wallet.identityAddress || wallet.paymentAddress;
+          if (!accountId) {
+            try { document.getElementById('verifyTxid').value = txid; } catch {}
+            setStatus('<span style="color: #ff5757;">Sent, but could not find your account ID for auto-credit. Use manual verify below.</span>');
+            return;
+          }
+          const res = await fetch(`/api/accounts/${accountId}/service-balance/verify-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ txid }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            setStatus(`<span style="color: #4cd964;">✓ Funded! Credited ${data.amountCredited?.toLocaleString() || amountSats.toLocaleString()} sats</span>`);
+            await refreshServiceBalance();
+            setTimeout(() => {
+              closeFundServiceOverlay();
+            }, 1500);
+          } else {
+            // Fallback: prefill manual verify field
+            try { document.getElementById('verifyTxid').value = txid; } catch {}
+            setStatus(`<span style="color: #ff5757;">Sent, but auto-verify failed: ${escapeHtml(data.error || 'Unknown error')}</span>`);
+          }
+        } catch (e) {
+          try { document.getElementById('verifyTxid').value = txid; } catch {}
+          setStatus(`<span style="color: #ff5757;">Sent, but verify error: ${escapeHtml(e.message)}</span>`);
+        }
+
+        try {
+          await refreshBalance();
+        } catch {}
+      } catch (e) {
+        setStatus(`<span style="color: #ff5757;">Funding failed: ${escapeHtml(e?.message || String(e))}</span>`);
+      }
     };
 
     window.copyFundingAddress = async () => {
