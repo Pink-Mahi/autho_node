@@ -1891,31 +1891,33 @@
         const nonce = nacl.util.decodeBase64(envelope.n);
         const ciphertext = nacl.util.decodeBase64(envelope.c);
 
-        let senderEncPubKey = null;
+        const candidateSenderKeys = [];
+
         const sHex = String(envelope.s || '').trim().toLowerCase();
         if (/^[0-9a-f]{64}$/.test(sHex)) {
-          senderEncPubKey = hexToBytes(sHex);
-        } else {
-          const sid = String(senderPublicKeyHex || '').trim();
-          if (sid) {
-            try {
-              senderEncPubKey = await getRecipientEncryptionPublicKeyBytes(sid);
-            } catch {}
+          try {
+            const k = hexToBytes(sHex);
+            if (k && k.length === 32) candidateSenderKeys.push(k);
+          } catch {}
+        }
+
+        const sid = String(senderPublicKeyHex || '').trim();
+        if (sid) {
+          try {
+            const k = await getRecipientEncryptionPublicKeyBytes(sid);
+            if (k && k.length === 32) candidateSenderKeys.push(k);
+          } catch {}
+        }
+
+        // Decrypt using NaCl box.open; try all candidates
+        for (const senderEncPubKey of candidateSenderKeys) {
+          const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
+          if (decrypted) {
+            return nacl.util.encodeUTF8(decrypted);
           }
         }
 
-        if (!senderEncPubKey || senderEncPubKey.length !== 32) {
-          return null;
-        }
-        
-        // Decrypt using NaCl box.open
-        const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
-        
-        if (!decrypted) {
-          return null; // Decryption failed
-        }
-        
-        return nacl.util.encodeUTF8(decrypted);
+        return null;
       } catch (e) {
         console.error('Decryption error:', e);
         return null;
