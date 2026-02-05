@@ -1645,6 +1645,7 @@
     let myMessagingPrivateKey = null; // Messaging private key (NOT BTC spending key)
     let myMessagingPublicKey = null;  // Messaging public key for key exchange
     let myEncryptionKeyPair = null;   // Derived X25519 keypair for E2E encryption
+    const recipientEncryptionKeyCache = new Map();
     let conversations = [];
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
@@ -1795,15 +1796,51 @@
       return keyPair;
     }
 
-    // Derive public encryption key from account's public key (for recipient)
-    async function deriveEncryptionPublicKey(publicKeyHex) {
-      // Hash the public key to get consistent derivation
-      const publicKeyBytes = hexToBytes(publicKeyHex);
-      const seed = await sha256Bytes(publicKeyBytes);
-      
-      // Generate keypair from seed and return only public key
-      const keyPair = nacl.box.keyPair.fromSecretKey(seed);
-      return keyPair.publicKey;
+    async function publishMyEncryptionPublicKey() {
+      try {
+        if (!myEncryptionKeyPair) return;
+        await fetch('/api/messages/keys', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders(),
+          },
+          body: JSON.stringify({ encryptionPublicKeyHex: bytesToHex(myEncryptionKeyPair.publicKey) }),
+        });
+      } catch (e) {
+      }
+    }
+
+    async function getRecipientEncryptionPublicKeyBytes(recipientId) {
+      const id = String(recipientId || '').trim();
+      if (!id) throw new Error('Missing recipient id');
+
+      const cached = recipientEncryptionKeyCache.get(id);
+      if (cached && cached.bytes && cached.bytes.length === 32) return cached.bytes;
+
+      const r = await fetch(`/api/messages/keys/${encodeURIComponent(id)}`, {
+        headers: {
+          ...WalletAuth.getAuthHeaders(),
+        },
+      });
+
+      if (!r.ok) {
+        throw new Error('Recipient messaging key not found');
+      }
+
+      const data = await r.json();
+      const keyHex = String(data?.encryptionPublicKeyHex || '').trim().toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(keyHex)) {
+        throw new Error('Invalid recipient messaging key');
+      }
+
+      const bytes = hexToBytes(keyHex);
+      if (!bytes || bytes.length !== 32) {
+        throw new Error('Invalid recipient messaging key');
+      }
+
+      recipientEncryptionKeyCache.set(id, { bytes, updatedAt: Number(data?.updatedAt || Date.now()) });
+      return bytes;
     }
 
     // Encrypt message for recipient (and self)
@@ -1812,23 +1849,8 @@
         throw new Error('Encryption keys not initialized');
       }
       
-      // Get recipient's encryption public key
-      const recipientEncPubKey = await deriveEncryptionPublicKey(recipientPublicKeyHex);
-      
-      // Generate random nonce (24 bytes for XSalsa20)
-      const nonce = nacl.randomBytes(24);
-      
-      // Encrypt using NaCl box (Curve25519 + XSalsa20-Poly1305)
-      const messageBytes = nacl.util.decodeUTF8(plaintext);
-      const encrypted = nacl.box(messageBytes, nonce, recipientEncPubKey, myEncryptionKeyPair.secretKey);
-      
-      // Return as base64 encoded JSON
-      return JSON.stringify({
-        v: 1, // Version for future compatibility
-        n: nacl.util.encodeBase64(nonce),
-        c: nacl.util.encodeBase64(encrypted),
-        s: bytesToHex(myEncryptionKeyPair.publicKey) // Sender's encryption public key
-      });
+      const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(recipientPublicKeyHex);
+      return encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes);
     }
 
     async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes) {
@@ -1850,11 +1872,14 @@
 
     // Decrypt message from sender
     async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
-      if (!myEncryptionKeyPair) {
-        throw new Error('Encryption keys not initialized');
-      }
-      
       try {
+        if (!myEncryptionKeyPair) {
+          const ok = await ensureEncryptionInitialized();
+          if (!ok || !myEncryptionKeyPair) {
+            throw new Error('Encryption keys not initialized');
+          }
+        }
+
         const envelope = JSON.parse(encryptedJson);
         
         // Check if this is actually encrypted (v1 format)
@@ -1865,7 +1890,23 @@
         
         const nonce = nacl.util.decodeBase64(envelope.n);
         const ciphertext = nacl.util.decodeBase64(envelope.c);
-        const senderEncPubKey = hexToBytes(envelope.s);
+
+        let senderEncPubKey = null;
+        const sHex = String(envelope.s || '').trim().toLowerCase();
+        if (/^[0-9a-f]{64}$/.test(sHex)) {
+          senderEncPubKey = hexToBytes(sHex);
+        } else {
+          const sid = String(senderPublicKeyHex || '').trim();
+          if (sid) {
+            try {
+              senderEncPubKey = await getRecipientEncryptionPublicKeyBytes(sid);
+            } catch {}
+          }
+        }
+
+        if (!senderEncPubKey || senderEncPubKey.length !== 32) {
+          return null;
+        }
         
         // Decrypt using NaCl box.open
         const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
@@ -1940,6 +1981,7 @@
         myEncryptionKeyPair = await initializeEncryption(myMessagingPrivateKey);
         if (myEncryptionKeyPair) {
           console.log('E2E encryption initialized with messaging key');
+          await publishMyEncryptionPublicKey();
         } else {
           console.error('Failed to initialize encryption after retries');
         }
@@ -2872,6 +2914,7 @@
           myPrivateKey = messagingPrivateKey;
           // Use the robust initialization with nacl waiting and retries
           myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
+          await publishMyEncryptionPublicKey();
           return myEncryptionKeyPair;
         })();
       }
@@ -2991,6 +3034,16 @@
         
         // Check for v1 encrypted format
         if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
+          await ensureEncryptionInitialized();
+          const decrypted = await decryptFromSender(encryptedContent, senderId);
+          if (decrypted) {
+            return decrypted;
+          }
+          return '[Could not decrypt]';
+        }
+
+        if (parsed.v === 1 && parsed.n && parsed.c && !parsed.s) {
+          await ensureEncryptionInitialized();
           const decrypted = await decryptFromSender(encryptedContent, senderId);
           if (decrypted) {
             return decrypted;

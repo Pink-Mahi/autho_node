@@ -1236,6 +1236,14 @@ class GatewayNode {
     const originalUrl = String(req.originalUrl || '');
     const isAuthEndpoint = originalUrl.startsWith('/api/auth/');
 
+    const isMessagingKeyEndpoint = originalUrl.startsWith('/api/messages/keys');
+    const isMessagingKeyLookup = isMessagingKeyEndpoint && req.method === 'GET';
+    const isMessagingKeyPublish = isMessagingKeyEndpoint && req.method === 'POST';
+
+    const isMessagingVaultEndpoint = originalUrl.startsWith('/api/messages/vault');
+    const isMessagingVaultLookup = isMessagingVaultEndpoint && req.method === 'GET';
+    const isMessagingVaultPublish = isMessagingVaultEndpoint && req.method === 'POST';
+
     if (!isAuthEndpoint) {
       try {
         await this.assertSyncedForQuorum('', isWrite);
@@ -1249,6 +1257,8 @@ class GatewayNode {
       }
     }
 
+    const publishResults = [];
+
     for (const operatorUrl of this.operatorUrls) {
       try {
         if (isWrite && !isAuthEndpoint) {
@@ -1260,6 +1270,42 @@ class GatewayNode {
         const ct = (contentType || '').toLowerCase();
         if (originalUrl.startsWith('/api/') && ct.includes('text/html')) {
           errors.push({ operatorUrl, status: resp.status, error: 'Unexpected HTML response for API request' });
+          continue;
+        }
+
+        if (isMessagingKeyLookup && resp.status === 404) {
+          errors.push({ operatorUrl, status: resp.status });
+          continue;
+        }
+
+        if (isMessagingVaultLookup && resp.status === 404) {
+          errors.push({ operatorUrl, status: resp.status });
+          continue;
+        }
+
+        if (isMessagingKeyPublish) {
+          if (resp.status >= 200 && resp.status <= 299) {
+            publishResults.push({ operatorUrl, status: resp.status });
+            continue;
+          }
+          if (resp.status >= 500 && resp.status <= 599) {
+            errors.push({ operatorUrl, status: resp.status });
+            continue;
+          }
+          errors.push({ operatorUrl, status: resp.status, body: buf ? buf.toString('utf8').slice(0, 500) : undefined });
+          continue;
+        }
+
+        if (isMessagingVaultPublish) {
+          if (resp.status >= 200 && resp.status <= 299) {
+            publishResults.push({ operatorUrl, status: resp.status });
+            continue;
+          }
+          if (resp.status >= 500 && resp.status <= 599) {
+            errors.push({ operatorUrl, status: resp.status });
+            continue;
+          }
+          errors.push({ operatorUrl, status: resp.status, body: buf ? buf.toString('utf8').slice(0, 500) : undefined });
           continue;
         }
 
@@ -1284,6 +1330,20 @@ class GatewayNode {
           return;
         }
         errors.push({ operatorUrl, error: e?.message || String(e) });
+      }
+    }
+
+    if (isMessagingKeyPublish) {
+      if (publishResults.length > 0) {
+        res.json({ success: true, replicatedTo: publishResults.map(r => r.operatorUrl) });
+        return;
+      }
+    }
+
+    if (isMessagingVaultPublish) {
+      if (publishResults.length > 0) {
+        res.json({ success: true, replicatedTo: publishResults.map(r => r.operatorUrl) });
+        return;
       }
     }
 

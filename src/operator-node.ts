@@ -111,6 +111,8 @@ export class OperatorNode extends EventEmitter {
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
   private operatorApplyChallenges: Map<string, { challengeId: string; accountId: string; nonce: string; createdAt: number; expiresAt: number; used: boolean }> = new Map();
 
+  private messagingEncryptionKeyRegistry: Map<string, { encryptionPublicKeyHex: string; updatedAt: number }> = new Map();
+
   // Decentralized consensus components
   private consensusNode?: ConsensusNode;
   private stateProviderAdapter?: StateProviderAdapter;
@@ -154,12 +156,50 @@ export class OperatorNode extends EventEmitter {
       dataDir: path.join(this.config.dataDir, 'messaging'),
     });
 
+    // Replicate messaging encryption public keys across operator peers
+    this.ephemeralStore.on(EphemeralEventType.MESSAGING_KEY_PUBLISHED, (event: EphemeralEvent) => {
+      try {
+        this.applyMessagingKeyPublishedEvent(event);
+      } catch {}
+    });
+
+    // Rehydrate key registry from persisted message ledger on startup
+    try {
+      this.rebuildMessagingKeyRegistryFromLedger();
+    } catch {}
+
     this.setupMiddleware();
     this.setupRoutes();
 
     this.startOperatorHeartbeat();
     this.initializeConsensus();
     this.initializePeerResilience();
+  }
+
+  private applyMessagingKeyPublishedEvent(event: EphemeralEvent): void {
+    const p: any = event?.payload || {};
+    const accountId = String(p?.accountId || '').trim();
+    const walletAddress = String(p?.walletAddress || '').trim();
+    const encryptionPublicKeyHex = String(p?.encryptionPublicKeyHex || '').trim().toLowerCase();
+    const updatedAt = Number(p?.updatedAt || event?.timestamp || Date.now());
+
+    if (!accountId) return;
+    if (!/^[0-9a-f]{64}$/.test(encryptionPublicKeyHex)) return;
+
+    this.messagingEncryptionKeyRegistry.set(accountId, { encryptionPublicKeyHex, updatedAt });
+    if (walletAddress) {
+      this.messagingEncryptionKeyRegistry.set(walletAddress, { encryptionPublicKeyHex, updatedAt });
+    }
+  }
+
+  private rebuildMessagingKeyRegistryFromLedger(): void {
+    if (!this.ephemeralStore) return;
+    const events = this.ephemeralStore.getAllEvents();
+    for (const e of events) {
+      if (e?.eventType === EphemeralEventType.MESSAGING_KEY_PUBLISHED) {
+        this.applyMessagingKeyPublishedEvent(e);
+      }
+    }
   }
 
   /**
@@ -3839,6 +3879,159 @@ export class OperatorNode extends EventEmitter {
     // ============================================================
     // EPHEMERAL MESSAGING API - Encrypted, auto-deleting messages
     // ============================================================
+
+    this.app.post('/api/messages/keys', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const encryptionPublicKeyHex = String(req.body?.encryptionPublicKeyHex || '').trim().toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(encryptionPublicKeyHex)) {
+          res.status(400).json({ success: false, error: 'Invalid encryptionPublicKeyHex' });
+          return;
+        }
+
+        const now = Date.now();
+        this.messagingEncryptionKeyRegistry.set(account.accountId, { encryptionPublicKeyHex, updatedAt: now });
+
+        let walletAddress = '';
+        try {
+          const fullAccount: any = this.state.accounts.get(account.accountId);
+          walletAddress = String(fullAccount?.walletAddress || fullAccount?.identityAddress || '').trim();
+          if (walletAddress) {
+            this.messagingEncryptionKeyRegistry.set(walletAddress, { encryptionPublicKeyHex, updatedAt: now });
+          }
+        } catch {}
+
+        try {
+          const expiresAt = now + (10 * 365 * 24 * 60 * 60 * 1000);
+          const event = await this.ephemeralStore!.appendEvent(
+            EphemeralEventType.MESSAGING_KEY_PUBLISHED,
+            {
+              accountId: account.accountId,
+              walletAddress,
+              encryptionPublicKeyHex,
+              updatedAt: now,
+            },
+            expiresAt
+          );
+
+          this.broadcastEphemeralEvent(event);
+        } catch {}
+
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || 'Failed to publish key' });
+      }
+    });
+
+    this.app.get('/api/messages/keys/:id', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const id = String(req.params.id || '').trim();
+        if (!id) {
+          res.status(400).json({ success: false, error: 'id required' });
+          return;
+        }
+
+        const rec = this.messagingEncryptionKeyRegistry.get(id);
+        if (!rec) {
+          res.status(404).json({ success: false, error: 'Messaging key not found' });
+          return;
+        }
+
+        res.json({ success: true, encryptionPublicKeyHex: rec.encryptionPublicKeyHex, updatedAt: rec.updatedAt });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || 'Failed to get key' });
+      }
+    });
+
+    // Publish encrypted messaging vault blob (for multi-device + history sync)
+    this.app.post('/api/messages/vault', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const vaultEpoch = String(req.body?.vaultEpoch || '').trim();
+        const vaultVersion = Number(req.body?.vaultVersion || 0);
+        const kdf = req.body?.kdf;
+        const enc = req.body?.enc;
+
+        if (!vaultEpoch) {
+          res.status(400).json({ success: false, error: 'vaultEpoch required' });
+          return;
+        }
+        if (!Number.isFinite(vaultVersion) || vaultVersion < 0) {
+          res.status(400).json({ success: false, error: 'vaultVersion required' });
+          return;
+        }
+        if (!kdf || !enc) {
+          res.status(400).json({ success: false, error: 'kdf and enc required' });
+          return;
+        }
+
+        const updatedAt = Date.now();
+        const payload = {
+          accountId: account.accountId,
+          vaultEpoch,
+          vaultVersion,
+          updatedAt,
+          kdf,
+          enc,
+        };
+
+        const expiresAt = updatedAt + (100 * 365 * 24 * 60 * 60 * 1000);
+        const event = await this.ephemeralStore!.appendEvent(
+          EphemeralEventType.MESSAGING_VAULT_PUBLISHED,
+          payload,
+          expiresAt
+        );
+
+        this.broadcastEphemeralEvent(event);
+
+        res.json({ success: true, eventId: event.eventId, expiresAt: event.expiresAt });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || 'Failed to publish vault' });
+      }
+    });
+
+    // Get latest encrypted messaging vault blob for current user
+    this.app.get('/api/messages/vault', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const event = this.ephemeralStore!.getLatestMessagingVault(account.accountId);
+        if (!event) {
+          res.status(404).json({ success: false, error: 'Vault not found' });
+          return;
+        }
+
+        res.json({
+          success: true,
+          eventId: event.eventId,
+          timestamp: event.timestamp,
+          expiresAt: event.expiresAt,
+          vault: event.payload,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || 'Failed to get vault' });
+      }
+    });
 
     // Send a message (E2E encrypted - platform never sees content)
     this.app.post('/api/messages/send', async (req: Request, res: Response) => {

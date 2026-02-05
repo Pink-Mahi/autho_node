@@ -65,6 +65,8 @@ export enum EphemeralEventType {
   MESSAGE_VIEWED = 'MESSAGE_VIEWED',  // For disappearing messages - starts the timer
   MESSAGE_DELIVERED = 'MESSAGE_DELIVERED',  // Message reached recipient's device
   MESSAGE_REACTION = 'MESSAGE_REACTION',    // Emoji reaction to a message
+  MESSAGING_KEY_PUBLISHED = 'MESSAGING_KEY_PUBLISHED',
+  MESSAGING_VAULT_PUBLISHED = 'MESSAGING_VAULT_PUBLISHED',
   CONTACT_ADDED = 'CONTACT_ADDED',
   CONTACT_REMOVED = 'CONTACT_REMOVED',
   CONTACT_BLOCKED = 'CONTACT_BLOCKED',
@@ -108,6 +110,15 @@ export interface MessagePayload {
   selfDestructAfter?: number; // Custom expiry time in ms (0 = use default, undefined = use media type default)
   viewedAt?: number;          // Timestamp when recipient viewed (for disappearing messages)
   expiresAfterView?: boolean; // If true, timer starts on view; if false/undefined, starts on send
+}
+
+export interface MessagingVaultPayload {
+  accountId: string;
+  vaultEpoch: string;
+  vaultVersion: number;
+  updatedAt: number;
+  kdf: any;
+  enc: any;
 }
 
 export interface ContactPayload {
@@ -238,6 +249,7 @@ export class EphemeralEventStore extends EventEmitter {
   private contactsByUser: Map<string, Set<string>> = new Map();
   private blockedByUser: Map<string, Set<string>> = new Map();
   private conversationsByUser: Map<string, Set<string>> = new Map();
+  private messagingVaultByAccount: Map<string, EphemeralEvent> = new Map();
   
   // Group chat storage
   private groups: Map<string, GroupPayload> = new Map();           // groupId -> group data
@@ -508,6 +520,33 @@ export class EphemeralEventStore extends EventEmitter {
         this.conversationsByUser.get(payload.recipientId)!.add(payload.conversationId);
         break;
       }
+
+      case EphemeralEventType.MESSAGING_VAULT_PUBLISHED: {
+        const payload = event.payload as MessagingVaultPayload;
+        const accountId = String(payload?.accountId || '').trim();
+        if (!accountId) break;
+
+        const existing = this.messagingVaultByAccount.get(accountId);
+        if (!existing) {
+          this.messagingVaultByAccount.set(accountId, event);
+          break;
+        }
+
+        const eP = existing.payload as Partial<MessagingVaultPayload>;
+        const oldEpoch = String(eP?.vaultEpoch || '').trim();
+        const newEpoch = String(payload?.vaultEpoch || '').trim();
+        const oldVersion = Number(eP?.vaultVersion || 0);
+        const newVersion = Number(payload?.vaultVersion || 0);
+
+        const shouldReplace = (oldEpoch && newEpoch && oldEpoch === newEpoch)
+          ? (newVersion > oldVersion || (newVersion === oldVersion && event.timestamp > existing.timestamp))
+          : (event.timestamp >= existing.timestamp);
+
+        if (shouldReplace) {
+          this.messagingVaultByAccount.set(accountId, event);
+        }
+        break;
+      }
       
       case EphemeralEventType.CONTACT_ADDED: {
         const payload = event.payload as ContactPayload;
@@ -594,6 +633,15 @@ export class EphemeralEventStore extends EventEmitter {
         break;
       }
     }
+  }
+
+  getLatestMessagingVault(accountId: string): EphemeralEvent | null {
+    const id = String(accountId || '').trim();
+    if (!id) return null;
+    const event = this.messagingVaultByAccount.get(id);
+    if (!event) return null;
+    if (event.expiresAt <= Date.now()) return null;
+    return event;
   }
 
   /**
@@ -895,6 +943,18 @@ export class EphemeralEventStore extends EventEmitter {
           this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
           this.messagesByUser.get(payload.senderId)?.delete(eventId);
           this.messagesByUser.get(payload.recipientId)?.delete(eventId);
+        } else if (event.eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
+          const payload = event.payload as GroupMessagePayload;
+          this.messagesByGroup.get(payload.groupId)?.delete(eventId);
+        } else if (event.eventType === EphemeralEventType.MESSAGING_VAULT_PUBLISHED) {
+          const payload = event.payload as MessagingVaultPayload;
+          const accountId = String(payload?.accountId || '').trim();
+          if (accountId) {
+            const current = this.messagingVaultByAccount.get(accountId);
+            if (current?.eventId === eventId) {
+              this.messagingVaultByAccount.delete(accountId);
+            }
+          }
         }
         
         this.events.delete(eventId);
@@ -989,6 +1049,7 @@ export class EphemeralEventStore extends EventEmitter {
     // Emit event for real-time delivery
     this.emit('event', event);
     this.emit('imported', event);
+    this.emit(event.eventType, event);
 
     return true;
   }
@@ -1123,6 +1184,7 @@ export class EphemeralEventStore extends EventEmitter {
     try {
       // Try new file first
       let filePath = this.persistPath;
+      const persistPath = this.persistPath;
       
       // Fall back to legacy file if new one doesn't exist
       const legacyPath = path.join(this.dataDir, 'ephemeral-messages.json');
@@ -1134,14 +1196,34 @@ export class EphemeralEventStore extends EventEmitter {
       
       const raw = fs.readFileSync(filePath, 'utf8');
       const data = JSON.parse(raw);
+
+      let expiredFound = false;
       
       // Load events
       for (const event of data.events || []) {
         // Skip expired events
-        if (event.expiresAt <= Date.now()) continue;
+        if (event.expiresAt <= Date.now()) {
+          expiredFound = true;
+          continue;
+        }
         
         this.events.set(event.eventId, event);
         this.indexEvent(event);
+      }
+
+      // If we encountered expired events on disk (or loaded from legacy file), compact into the new persistPath.
+      // This ensures expired messages are physically removed from disk and we migrate to the current file name.
+      const loadedFromLegacy = filePath !== persistPath;
+      if (expiredFound || loadedFromLegacy) {
+        try {
+          const messageData = {
+            version: 2,
+            ledgerType: 'messages',
+            events: Array.from(this.events.values()),
+            lastPersisted: Date.now(),
+          };
+          fs.writeFileSync(persistPath, JSON.stringify(messageData, null, 2));
+        } catch {}
       }
       
       // Migration: if legacy file had contacts, load them too

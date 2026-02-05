@@ -159,6 +159,8 @@ const WalletAuth = {
     sessionStorage.removeItem('autho_messaging_privateKey');
     sessionStorage.removeItem('autho_messaging_publicKey');
     try {
+      localStorage.removeItem('autho_session_id');
+      localStorage.removeItem('autho_account_id');
       localStorage.removeItem('autho_wallet_unlocked');
       localStorage.removeItem('autho_wallet_unlock_time');
     } catch {}
@@ -233,19 +235,16 @@ const WalletAuth = {
    * Get authentication headers for API requests
    */
   getAuthHeaders() {
-    const wallet = this.getWallet();
-    if (!wallet) {
-      return {};
-    }
     let sessionId = '';
     try {
       sessionId = String(localStorage.getItem('autho_session_id') || '').trim();
     } catch {}
+
+    const wallet = this.getWallet();
     return {
       'Content-Type': 'application/json',
-      ...(sessionId ? { 'Authorization': `Bearer ${sessionId}` } : {}),
-      'X-Wallet-Address': wallet.address || wallet.publicKey,
-      'X-Public-Key': wallet.publicKey
+      ...(sessionId ? { 'Authorization': `Bearer ${sessionId}`, 'X-Session-Token': sessionId } : {}),
+      ...(wallet ? { 'X-Wallet-Address': wallet.address || wallet.publicKey, 'X-Public-Key': wallet.publicKey } : {}),
     };
   },
 
