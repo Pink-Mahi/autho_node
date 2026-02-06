@@ -67,6 +67,10 @@ export enum EventType {
   ACCOUNT_RECOVERY_TOTP_RESET = 'ACCOUNT_RECOVERY_TOTP_RESET',
   ACCOUNT_PAY_HANDLE_SET = 'ACCOUNT_PAY_HANDLE_SET',
 
+  // Service balance (prepaid credits)
+  ACCOUNT_SERVICE_BALANCE_FUNDED = 'ACCOUNT_SERVICE_BALANCE_FUNDED',
+  ACCOUNT_SERVICE_BALANCE_USED = 'ACCOUNT_SERVICE_BALANCE_USED',
+
   // Account role applications / invites
   ACCOUNT_ROLE_APPLICATION_SUBMITTED = 'ACCOUNT_ROLE_APPLICATION_SUBMITTED',
   ACCOUNT_ROLE_APPLICATION_REVIEWED = 'ACCOUNT_ROLE_APPLICATION_REVIEWED',
@@ -859,6 +863,20 @@ export interface ItemImageTombstonedPayload extends BaseEventPayload {
   approvedBy: string[];  // operator IDs who voted approve
 }
 
+export interface AccountServiceBalanceFundedPayload extends BaseEventPayload {
+  type: EventType.ACCOUNT_SERVICE_BALANCE_FUNDED;
+  accountId: string;
+  amountSats: number;
+  txid?: string; // Optional Bitcoin transaction ID for on-chain funding
+}
+
+export interface AccountServiceBalanceUsedPayload extends BaseEventPayload {
+  type: EventType.ACCOUNT_SERVICE_BALANCE_USED;
+  accountId: string;
+  amountSats: number;
+  purpose: string; // e.g., 'file_transfer', 'premium_feature'
+}
+
 export type EventPayload =
   | ItemRegisteredPayload
   | VerificationRequestCreatedPayload
@@ -932,6 +950,8 @@ export type EventPayload =
   | ItemImageTombstoneProposedPayload
   | ItemImageTombstoneVotedPayload
   | ItemImageTombstonedPayload
+  | AccountServiceBalanceFundedPayload
+  | AccountServiceBalanceUsedPayload
   | NetworkOperatorAnnouncedPayload
   | NetworkOperatorDeannouncedPayload
   | NetworkGatewayAnnouncedPayload

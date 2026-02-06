@@ -215,6 +215,11 @@ export interface AccountState {
   verifierRevokedAt?: number;
   verifierReactivatedAt?: number;
   verifierFrozen?: boolean;
+  // Prepaid service balance for premium ledger operations
+  serviceBalanceSats?: number;
+  serviceBalanceLastFundedAt?: number;
+  serviceBalanceTotalFundedSats?: number;
+  serviceBalanceTotalUsedSats?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -744,6 +749,14 @@ export class StateBuilder {
 
       case EventType.ITEM_IMAGE_TOMBSTONED:
         this.applyImageTombstoned(state, event);
+        break;
+
+      case EventType.ACCOUNT_SERVICE_BALANCE_FUNDED:
+        this.applyAccountServiceBalanceFunded(state, event);
+        break;
+
+      case EventType.ACCOUNT_SERVICE_BALANCE_USED:
+        this.applyAccountServiceBalanceUsed(state, event);
         break;
     }
 
@@ -2060,5 +2073,41 @@ export class StateBuilder {
     }
 
     return item;
+  }
+
+  // Prepaid service balance handlers
+  private applyAccountServiceBalanceFunded(state: RegistryState, event: Event): void {
+    const payload = event.payload as any;
+    const accountId = String(payload.accountId || '').trim();
+    if (!accountId) return;
+
+    const account = state.accounts.get(accountId);
+    if (!account) return;
+
+    const amountSats = Math.floor(Number(payload.amountSats || 0));
+    if (amountSats <= 0) return;
+
+    // Update service balance
+    account.serviceBalanceSats = (account.serviceBalanceSats || 0) + amountSats;
+    account.serviceBalanceLastFundedAt = payload.timestamp;
+    account.serviceBalanceTotalFundedSats = (account.serviceBalanceTotalFundedSats || 0) + amountSats;
+    account.updatedAt = payload.timestamp;
+  }
+
+  private applyAccountServiceBalanceUsed(state: RegistryState, event: Event): void {
+    const payload = event.payload as any;
+    const accountId = String(payload.accountId || '').trim();
+    if (!accountId) return;
+
+    const account = state.accounts.get(accountId);
+    if (!account) return;
+
+    const amountSats = Math.floor(Number(payload.amountSats || 0));
+    if (amountSats <= 0) return;
+
+    // Deduct from service balance (allow negative for edge cases, but normally should be checked before)
+    account.serviceBalanceSats = (account.serviceBalanceSats || 0) - amountSats;
+    account.serviceBalanceTotalUsedSats = (account.serviceBalanceTotalUsedSats || 0) + amountSats;
+    account.updatedAt = payload.timestamp;
   }
 }
