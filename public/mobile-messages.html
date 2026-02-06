@@ -1977,18 +1977,12 @@
 
       const sendBtn = document.getElementById('sendBtn');
       if (sendBtn) sendBtn.disabled = true;
-      
-      // Initialize E2E encryption with messaging key (separate from BTC key)
-      if (myMessagingPrivateKey) {
-        myEncryptionKeyPair = await initializeEncryption(myMessagingPrivateKey);
-        if (myEncryptionKeyPair) {
-          console.log('E2E encryption initialized with messaging key');
-          await publishMyEncryptionPublicKey();
-        } else {
-          console.error('Failed to initialize encryption after retries');
-        }
-      } else {
-        console.warn('Messaging key not found - please re-login to enable E2E encryption');
+
+      if (!await ensureEncryptionInitialized()) {
+        WalletAuth.lock();
+        alert('Messaging encryption key missing. Please log in again.');
+        WalletAuth.requireAuth();
+        return;
       }
 
       if (sendBtn) sendBtn.disabled = false;
@@ -2455,7 +2449,9 @@
         });
 
         if (!await ensureEncryptionInitialized()) {
-          alert('Encryption not initialized. Please refresh the page and try again.');
+          WalletAuth.lock();
+          alert('Encryption not initialized. Please log in again.');
+          WalletAuth.requireAuth();
           console.error('SECURITY: Attempted to send group message without encryption keys');
           return;
         }
@@ -3036,7 +3032,8 @@
         
         // Check for v1 encrypted format
         if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
-          await ensureEncryptionInitialized();
+          const ok = await ensureEncryptionInitialized();
+          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
           const decrypted = await decryptFromSender(encryptedContent, senderId);
           if (decrypted) {
             return decrypted;
@@ -3045,7 +3042,8 @@
         }
 
         if (parsed.v === 1 && parsed.n && parsed.c && !parsed.s) {
-          await ensureEncryptionInitialized();
+          const ok = await ensureEncryptionInitialized();
+          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
           const decrypted = await decryptFromSender(encryptedContent, senderId);
           if (decrypted) {
             return decrypted;
@@ -3084,7 +3082,9 @@
         });
         
         if (!await ensureEncryptionInitialized()) {
-          alert('Encryption not initialized. Please refresh the page and try again.');
+          WalletAuth.lock();
+          alert('Encryption not initialized. Please log in again.');
+          WalletAuth.requireAuth();
           console.error('SECURITY: Attempted to send message without encryption keys');
           return;
         }
@@ -3131,7 +3131,14 @@
         }
       } catch (error) {
         console.error('Send error:', error);
-        alert('Failed to send message');
+        const errorMsg = error?.message || '';
+        if (errorMsg.includes('recipient') || errorMsg.includes('Recipient') || errorMsg.includes('not found')) {
+          alert('Cannot send: The recipient has not set up messaging yet. Ask them to log in first.');
+        } else if (errorMsg.includes('not initialized')) {
+          alert('Encryption error. Please refresh and try again.');
+        } else {
+          alert('Failed to send message: ' + errorMsg);
+        }
       } finally {
         sendBtn.disabled = false;
       }
