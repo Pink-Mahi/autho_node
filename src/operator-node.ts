@@ -6652,7 +6652,7 @@ export class OperatorNode extends EventEmitter {
         clearTimeout(timeout);
         
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as { success?: boolean; encryptionPublicKeyHex?: string; updatedAt?: number };
           if (data.success && data.encryptionPublicKeyHex) {
             console.log(`[Messaging] Fetched key for ${accountId.substring(0, 12)}... from peer ${peerId.substring(0, 12)}...`);
             // Store in local registry for future lookups
