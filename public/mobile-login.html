@@ -484,6 +484,8 @@
           if (msgKeys?.privateKeyHex && msgKeys?.publicKeyHex) {
             sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
             sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
+            // Publish messaging key to network immediately (like Signal does)
+            publishMessagingKey(msgKeys.publicKeyHex);
           }
         }
       } catch (e) {
@@ -606,6 +608,8 @@
           if (msgKeys && msgKeys.privateKeyHex && msgKeys.publicKeyHex) {
             sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
             sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
+            // Publish messaging key to network immediately (like Signal does)
+            publishMessagingKey(msgKeys.publicKeyHex);
           }
         } catch (e) {
           console.error('Failed to derive messaging keypair:', e);
@@ -769,6 +773,27 @@
 
     function forgotPin() {
       alert('If you forgot your wallet passcode on this device, use "Sign In with Email" (recommended) or recover with your seed phrase to set a new passcode.');
+    }
+
+    // Publish messaging public key to operator nodes (Signal-style immediate registration)
+    async function publishMessagingKey(publicKeyHex) {
+      try {
+        const sessionId = localStorage.getItem('autho_session_id');
+        const accountId = localStorage.getItem('autho_account_id');
+        if (!sessionId || !publicKeyHex) return;
+        
+        await fetch('/api/messages/keys', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionId}`,
+            'X-Account-Id': accountId || ''
+          },
+          body: JSON.stringify({ encryptionPublicKeyHex: publicKeyHex })
+        });
+      } catch (e) {
+        console.log('Messaging key publish (best effort):', e.message);
+      }
     }
 
     // Handle Enter key on PIN input
