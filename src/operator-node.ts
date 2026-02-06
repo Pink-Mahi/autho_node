@@ -3942,10 +3942,15 @@ export class OperatorNode extends EventEmitter {
 
     this.app.get('/api/messages/keys/:id', async (req: Request, res: Response) => {
       try {
-        const account = await this.getAccountFromSession(req);
-        if (!account) {
-          res.status(401).json({ success: false, error: 'Authentication required' });
-          return;
+        // Allow operator-to-operator requests without authentication (for cross-operator key lookup)
+        const isInternalRequest = req.headers['x-internal-request'] === 'operator-to-operator';
+        
+        if (!isInternalRequest) {
+          const account = await this.getAccountFromSession(req);
+          if (!account) {
+            res.status(401).json({ success: false, error: 'Authentication required' });
+            return;
+          }
         }
 
         const id = String(req.params.id || '').trim();
@@ -3956,8 +3961,9 @@ export class OperatorNode extends EventEmitter {
 
         let rec: { encryptionPublicKeyHex: string; updatedAt: number; } | undefined | null = this.messagingEncryptionKeyRegistry.get(id);
         
-        // If not found locally, try to fetch from peer operators
-        if (!rec) {
+        // If not found locally and this is a client request, try to fetch from peer operators
+        // Don't recurse if this is already an internal request
+        if (!rec && !isInternalRequest) {
           rec = await this.fetchEncryptionKeyFromNetwork(id);
         }
         
