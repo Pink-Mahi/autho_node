@@ -3942,7 +3942,13 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const rec = this.messagingEncryptionKeyRegistry.get(id);
+        let rec: { encryptionPublicKeyHex: string; updatedAt: number; } | undefined | null = this.messagingEncryptionKeyRegistry.get(id);
+        
+        // If not found locally, try to fetch from peer operators
+        if (!rec) {
+          rec = await this.fetchEncryptionKeyFromNetwork(id);
+        }
+        
         if (!rec) {
           res.status(404).json({ success: false, error: 'Messaging key not found' });
           return;
@@ -6605,6 +6611,65 @@ export class OperatorNode extends EventEmitter {
     const msg = { type: 'registry_update', data, timestamp: Date.now() };
     this.broadcastToGateways(msg);
     this.broadcastToOperatorPeers(msg);
+  }
+
+  /**
+   * Fetch encryption key from peer operators when not found locally
+   * This enables cross-operator messaging when key gossip hasn't propagated yet
+   */
+  private async fetchEncryptionKeyFromNetwork(accountId: string): Promise<{ encryptionPublicKeyHex: string; updatedAt: number } | null> {
+    if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
+      return null;
+    }
+
+    // Try each connected peer
+    const peers = Array.from(this.operatorPeerConnections.entries());
+    const timeoutMs = 3000;
+
+    for (const [peerId, peer] of peers) {
+      try {
+        // Extract HTTP URL from WebSocket URL (ws:// -> http://, wss:// -> https://)
+        let httpUrl = peer.wsUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
+        if (httpUrl.endsWith('/ws')) {
+          httpUrl = httpUrl.slice(0, -3); // Remove /ws suffix
+        }
+
+        const fetchUrl = `${httpUrl}/api/messages/keys/${encodeURIComponent(accountId)}`;
+        
+        // Use internal authentication - operators trust each other
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        
+        const response = await fetch(fetchUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Internal-Request': 'operator-to-operator',
+          },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.encryptionPublicKeyHex) {
+            console.log(`[Messaging] Fetched key for ${accountId.substring(0, 12)}... from peer ${peerId.substring(0, 12)}...`);
+            // Store in local registry for future lookups
+            this.messagingEncryptionKeyRegistry.set(accountId, {
+              encryptionPublicKeyHex: data.encryptionPublicKeyHex,
+              updatedAt: data.updatedAt || Date.now(),
+            });
+            return { encryptionPublicKeyHex: data.encryptionPublicKeyHex, updatedAt: data.updatedAt || Date.now() };
+          }
+        }
+      } catch (e) {
+        // Peer might be unreachable, try next
+        console.log(`[Messaging] Failed to fetch key from peer ${peerId.substring(0, 12)}...:`, (e as Error).message);
+      }
+    }
+
+    return null;
   }
 
   private startPeerDiscovery(): void {
