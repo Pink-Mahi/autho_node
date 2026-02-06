@@ -379,6 +379,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <script src="/js/btc.bundle.js"></script>
   <script>
     let walletData = null;
@@ -484,6 +485,8 @@
           if (msgKeys?.privateKeyHex && msgKeys?.publicKeyHex) {
             sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
             sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
+            // Publish X25519 encryption key to network immediately (like Signal does)
+            publishMessagingKey(msgKeys.privateKeyHex);
           }
         }
       } catch (e) {
@@ -606,6 +609,8 @@
           if (msgKeys && msgKeys.privateKeyHex && msgKeys.publicKeyHex) {
             sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
             sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
+            // Publish X25519 encryption key to network immediately (like Signal does)
+            publishMessagingKey(msgKeys.privateKeyHex);
           }
         } catch (e) {
           console.error('Failed to derive messaging keypair:', e);
@@ -769,6 +774,58 @@
 
     function forgotPin() {
       alert('If you forgot your wallet passcode on this device, use "Sign In with Email" (recommended) or recover with your seed phrase to set a new passcode.');
+    }
+
+    // Derive X25519 encryption public key from messaging private key
+    async function deriveX25519PublicKey(privateKeyHex) {
+      try {
+        // Wait for nacl to load
+        let attempts = 0;
+        while (!window.nacl || !window.nacl.box) {
+          if (attempts++ > 50) return null;
+          await new Promise(r => setTimeout(r, 100));
+        }
+        // Convert hex to bytes
+        const privateKeyBytes = new Uint8Array(privateKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+        // SHA-256 hash to get 32-byte seed for X25519
+        const hashBuffer = await crypto.subtle.digest('SHA-256', privateKeyBytes);
+        const seed = new Uint8Array(hashBuffer);
+        // Derive X25519 keypair
+        const keyPair = nacl.box.keyPair.fromSecretKey(seed);
+        // Return public key as hex
+        return Array.from(keyPair.publicKey).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) {
+        console.error('Failed to derive X25519 key:', e);
+        return null;
+      }
+    }
+
+    // Publish messaging public key to operator nodes (Signal-style immediate registration)
+    async function publishMessagingKey(privateKeyHex) {
+      try {
+        const sessionId = localStorage.getItem('autho_session_id');
+        const accountId = localStorage.getItem('autho_account_id');
+        if (!sessionId || !privateKeyHex) return;
+        
+        // Derive the X25519 encryption public key from the private key
+        const encryptionPublicKeyHex = await deriveX25519PublicKey(privateKeyHex);
+        if (!encryptionPublicKeyHex) {
+          console.log('Could not derive X25519 key, will publish on messages page');
+          return;
+        }
+        
+        await fetch('/api/messages/keys', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionId}`,
+            'X-Account-Id': accountId || ''
+          },
+          body: JSON.stringify({ encryptionPublicKeyHex })
+        });
+      } catch (e) {
+        console.log('Messaging key publish (best effort):', e.message);
+      }
     }
 
     // Handle Enter key on PIN input
