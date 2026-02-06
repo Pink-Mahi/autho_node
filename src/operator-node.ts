@@ -4387,6 +4387,79 @@ export class OperatorNode extends EventEmitter {
     });
 
     // ============================================================
+    // PREMIUM SERVICE ENDPOINTS
+    // ============================================================
+
+    // Premium action: File transfer (costs sats based on tier)
+    this.app.post('/api/service/premium/file-transfer', async (req: Request, res: Response) => {
+      try {
+        const { accountId, tier, fileSize, fileName } = req.body;
+        
+        // File tier costs (must match client-side FILE_TIERS)
+        const tierCosts: Record<string, number> = {
+          free: 0,
+          basic: 500,      // 25 MB
+          premium: 2000,   // 100 MB
+          enterprise: 10000, // 1 GB
+        };
+        
+        const actionCost = tierCosts[tier] || 0;
+
+        if (!accountId || !tier) {
+          res.status(400).json({ success: false, error: 'Missing required fields: accountId, tier' });
+          return;
+        }
+
+        // Free tier doesn't require payment
+        if (tier === 'free' || actionCost === 0) {
+          res.json({
+            success: true,
+            accountId: String(accountId),
+            tier,
+            costSats: 0,
+            message: 'Free tier - no payment required',
+          });
+          return;
+        }
+
+        // For premium tiers, check account balance and deduct
+        const account = this.state.accounts.get(String(accountId));
+        if (!account) {
+          res.status(404).json({ success: false, error: 'Account not found' });
+          return;
+        }
+
+        const currentBalance = (account as any).serviceBalanceSats || 0;
+        if (currentBalance < actionCost) {
+          res.status(402).json({
+            success: false,
+            error: 'Insufficient service balance',
+            required: actionCost,
+            available: currentBalance,
+            shortfall: actionCost - currentBalance,
+          });
+          return;
+        }
+
+        // For autho_node, just log the usage (balance tracking handled by main node)
+        console.log(`[Premium] File transfer: ${tier} tier, ${actionCost} sats for account ${accountId}`);
+
+        res.json({
+          success: true,
+          accountId: String(accountId),
+          tier,
+          fileName: fileName || 'file',
+          fileSize: fileSize || 0,
+          costSats: actionCost,
+          newBalance: currentBalance - actionCost,
+          message: `File transfer approved (${tier} tier)`,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
     // GROUP CHAT ENDPOINTS
     // ============================================================
 
