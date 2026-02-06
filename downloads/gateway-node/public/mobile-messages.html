@@ -3618,6 +3618,9 @@
       }
     }
 
+    let pendingPhotoFile = null;
+    let pendingPhotoCompressed = null;
+    
     async function handlePhotoSelect(event) {
       const file = event.target.files[0];
       if (!file) return;
@@ -3626,32 +3629,16 @@
         // For photos, we compress so tier check is usually not needed
         const compressed = await compressImage(file, MAX_IMAGE_SIZE);
         
-        // But check if original is very large (user might want full quality)
+        // If original is large, show quality choice modal
         if (file.size > FILE_TIERS.free.maxSize) {
-          const useOriginal = confirm(`Original photo is ${(file.size / 1024 / 1024).toFixed(1)} MB.\n\nSend compressed (free) or original quality (may require payment)?`);
-          
-          if (useOriginal) {
-            const tierResult = await checkFileTierAndPay(file.size, file.name);
-            if (!tierResult) {
-              event.target.value = '';
-              return;
-            }
-            
-            // Use original quality
-            const data = await fileToBase64(file);
-            pendingMedia = {
-              type: 'image',
-              data: data,
-              name: file.name || 'Photo (Original)',
-              size: file.size,
-              tierCost: tierResult.cost
-            };
-            showMediaPreview();
-            event.target.value = '';
-            return;
-          }
+          pendingPhotoFile = file;
+          pendingPhotoCompressed = compressed;
+          showPhotoQualityModal(file, compressed);
+          event.target.value = '';
+          return;
         }
         
+        // Small file - just use compressed
         pendingMedia = {
           type: 'image',
           data: compressed.data,
@@ -3664,6 +3651,89 @@
         alert('Failed to process photo');
       }
       event.target.value = ''; // Reset input
+    }
+    
+    function showPhotoQualityModal(file, compressed) {
+      const originalMB = (file.size / 1024 / 1024).toFixed(1);
+      const compressedKB = Math.round(compressed.size / 1024);
+      
+      // Determine cost for original
+      let originalCost = 0;
+      if (file.size > FILE_TIERS.premium.maxSize) {
+        originalCost = FILE_TIERS.enterprise.cost;
+      } else if (file.size > FILE_TIERS.basic.maxSize) {
+        originalCost = FILE_TIERS.premium.cost;
+      } else if (file.size > FILE_TIERS.free.maxSize) {
+        originalCost = FILE_TIERS.basic.cost;
+      }
+      
+      const modal = document.createElement('div');
+      modal.id = 'photoQualityModal';
+      modal.className = 'modal active';
+      modal.innerHTML = `
+        <div class="modal-content" style="max-width: 340px;">
+          <h3 style="margin-bottom: 12px;">📷 Photo Quality</h3>
+          <p style="font-size: 14px; color: #666; margin-bottom: 16px;">
+            Original: ${originalMB} MB<br>
+            Compressed: ${compressedKB} KB
+          </p>
+          <button id="sendCompressedBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 10px; padding: 14px;">
+            ✓ Send Compressed (FREE)
+          </button>
+          <button id="sendOriginalBtn" class="btn btn-secondary" style="width: 100%; margin-bottom: 10px; padding: 14px;">
+            Send Original (${originalCost} sats)
+          </button>
+          <button id="cancelPhotoBtn" class="btn" style="width: 100%; padding: 12px; background: #f5f5f5; color: #666;">
+            Cancel
+          </button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      document.getElementById('sendCompressedBtn').onclick = () => {
+        closePhotoQualityModal();
+        pendingMedia = {
+          type: 'image',
+          data: pendingPhotoCompressed.data,
+          name: pendingPhotoFile.name || 'Photo',
+          size: pendingPhotoCompressed.size
+        };
+        showMediaPreview();
+        pendingPhotoFile = null;
+        pendingPhotoCompressed = null;
+      };
+      
+      document.getElementById('sendOriginalBtn').onclick = async () => {
+        closePhotoQualityModal();
+        const tierResult = await checkFileTierAndPay(pendingPhotoFile.size, pendingPhotoFile.name);
+        if (!tierResult) {
+          pendingPhotoFile = null;
+          pendingPhotoCompressed = null;
+          return;
+        }
+        const data = await fileToBase64(pendingPhotoFile);
+        pendingMedia = {
+          type: 'image',
+          data: data,
+          name: pendingPhotoFile.name || 'Photo (Original)',
+          size: pendingPhotoFile.size,
+          tierCost: tierResult.cost
+        };
+        showMediaPreview();
+        pendingPhotoFile = null;
+        pendingPhotoCompressed = null;
+      };
+      
+      document.getElementById('cancelPhotoBtn').onclick = () => {
+        closePhotoQualityModal();
+        pendingPhotoFile = null;
+        pendingPhotoCompressed = null;
+      };
+    }
+    
+    function closePhotoQualityModal() {
+      const modal = document.getElementById('photoQualityModal');
+      if (modal) modal.remove();
     }
 
     async function handleVideoSelect(event) {
