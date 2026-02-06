@@ -180,6 +180,7 @@ export class OperatorNode extends EventEmitter {
     const p: any = event?.payload || {};
     const accountId = String(p?.accountId || '').trim();
     const walletAddress = String(p?.walletAddress || '').trim();
+    const walletPublicKey = String(p?.walletPublicKey || '').trim().toLowerCase();
     const encryptionPublicKeyHex = String(p?.encryptionPublicKeyHex || '').trim().toLowerCase();
     const updatedAt = Number(p?.updatedAt || event?.timestamp || Date.now());
 
@@ -189,6 +190,10 @@ export class OperatorNode extends EventEmitter {
     this.messagingEncryptionKeyRegistry.set(accountId, { encryptionPublicKeyHex, updatedAt });
     if (walletAddress) {
       this.messagingEncryptionKeyRegistry.set(walletAddress, { encryptionPublicKeyHex, updatedAt });
+    }
+    // Also index by wallet publicKey - this is what the client uses to look up recipients
+    if (walletPublicKey && /^[0-9a-f]{64,66}$/.test(walletPublicKey)) {
+      this.messagingEncryptionKeyRegistry.set(walletPublicKey, { encryptionPublicKeyHex, updatedAt });
     }
   }
 
@@ -3898,11 +3903,17 @@ export class OperatorNode extends EventEmitter {
         this.messagingEncryptionKeyRegistry.set(account.accountId, { encryptionPublicKeyHex, updatedAt: now });
 
         let walletAddress = '';
+        let walletPublicKey = '';
         try {
           const fullAccount: any = this.state.accounts.get(account.accountId);
           walletAddress = String(fullAccount?.walletAddress || fullAccount?.identityAddress || '').trim();
+          walletPublicKey = String(fullAccount?.walletPublicKey || fullAccount?.publicKey || '').trim().toLowerCase();
           if (walletAddress) {
             this.messagingEncryptionKeyRegistry.set(walletAddress, { encryptionPublicKeyHex, updatedAt: now });
+          }
+          // Also index by wallet publicKey - this is what the client uses to look up recipients
+          if (walletPublicKey && /^[0-9a-f]{64,66}$/.test(walletPublicKey)) {
+            this.messagingEncryptionKeyRegistry.set(walletPublicKey, { encryptionPublicKeyHex, updatedAt: now });
           }
         } catch {}
 
@@ -3913,6 +3924,7 @@ export class OperatorNode extends EventEmitter {
             {
               accountId: account.accountId,
               walletAddress,
+              walletPublicKey,
               encryptionPublicKeyHex,
               updatedAt: now,
             },
