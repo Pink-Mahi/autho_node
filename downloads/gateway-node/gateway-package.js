@@ -176,6 +176,8 @@ class GatewayNode {
     // Communications ledger storage (ephemeral messages backup)
     this.ephemeralEvents = new Map(); // eventId -> event
     this.ephemeralContactsByUser = new Map(); // userId -> Set of contactIds
+    this._ledgerSaveTimer = null; // Debounce timer for async ledger saves
+    this._ledgerSavePending = false; // Flag to track if save is pending
     
     // Useful work tracking - gateways contribute to network security
     this.operatorHealth = new Map(); // operatorId -> health info
@@ -6479,8 +6481,8 @@ class GatewayNode {
     // Stop message pruning timer
     this.stopMessagePruning();
     
-    // Save communications ledger
-    this.saveEphemeralLedger();
+    // Flush communications ledger (immediate sync save for shutdown)
+    this.flushEphemeralLedger();
     console.log(`💾 Saved ${this.ephemeralEvents.size} communications ledger events`);
     
     // Close WebSocket server
@@ -6800,6 +6802,18 @@ class GatewayNode {
   }
   
   saveEphemeralLedger() {
+    // Debounced async save - batches writes to avoid blocking on large payloads
+    this._ledgerSavePending = true;
+    if (this._ledgerSaveTimer) return; // Already scheduled
+    
+    this._ledgerSaveTimer = setTimeout(() => {
+      this._ledgerSaveTimer = null;
+      this._ledgerSavePending = false;
+      this._doSaveEphemeralLedger();
+    }, 1000); // Save at most once per second
+  }
+  
+  _doSaveEphemeralLedger() {
     const filePath = path.join(CONFIG.dataDir, 'communications-ledger.json');
     try {
       const data = {
@@ -6807,9 +6821,33 @@ class GatewayNode {
         savedAt: Date.now(),
         events: Array.from(this.ephemeralEvents.values()),
       };
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+      // Use async write to avoid blocking the event loop
+      fs.writeFile(filePath, JSON.stringify(data, null, 2), (err) => {
+        if (err) console.error('Failed to save communications ledger:', err.message);
+      });
     } catch (e) {
       console.error('Failed to save communications ledger:', e.message);
+    }
+  }
+  
+  flushEphemeralLedger() {
+    // Immediate sync save for shutdown - ensures no data loss
+    if (this._ledgerSaveTimer) {
+      clearTimeout(this._ledgerSaveTimer);
+      this._ledgerSaveTimer = null;
+    }
+    if (this._ledgerSavePending || this.ephemeralEvents.size > 0) {
+      const filePath = path.join(CONFIG.dataDir, 'communications-ledger.json');
+      try {
+        const data = {
+          version: 1,
+          savedAt: Date.now(),
+          events: Array.from(this.ephemeralEvents.values()),
+        };
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+      } catch (e) {
+        console.error('Failed to flush communications ledger:', e.message);
+      }
     }
   }
 
