@@ -23,6 +23,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash, randomBytes } from 'crypto';
+import { Worker } from 'worker_threads';
 
 // Message retention periods by media type (in milliseconds)
 const RETENTION_MS = {
@@ -272,6 +273,7 @@ export class EphemeralEventStore extends EventEmitter {
   private contactsPath: string;  // Separate file for permanent contacts
   private _persistTimer: NodeJS.Timeout | null = null;
   private _persistPending: boolean = false;
+  private _serializationInProgress: boolean = false;
 
   constructor(options: EphemeralStoreOptions) {
     super();
@@ -1143,7 +1145,7 @@ export class EphemeralEventStore extends EventEmitter {
 
   /**
    * Persist events to disk (debounced to avoid blocking on large payloads like photos)
-   * Batches writes - saves at most once per second
+   * Batches writes - saves at most once every 2 seconds
    */
   private async persistToDisk(): Promise<void> {
     this._persistPending = true;
@@ -1153,53 +1155,135 @@ export class EphemeralEventStore extends EventEmitter {
       this._persistTimer = null;
       this._persistPending = false;
       this._doPersistToDisk();
-    }, 1000);
+    }, 2000); // 2 second debounce
   }
 
-  private _doPersistToDisk(): void {
-    // Use setImmediate to yield to event loop before heavy JSON.stringify
-    // This prevents blocking on large base64 photo payloads
-    setImmediate(() => {
+  /**
+   * Serialize data in a worker thread to avoid blocking the event loop.
+   * Falls back to sync if worker fails.
+   */
+  private serializeInWorker(data: any): Promise<string> {
+    return new Promise((resolve, reject) => {
       try {
-        // Messages file (prunable after 10 days)
-        const messageData = {
-          version: 2,
-          ledgerType: 'messages',
-          events: Array.from(this.events.values()),
-          lastPersisted: Date.now(),
-        };
-        // Stringify in chunks for very large data could block - but setImmediate helps
-        const messageJson = JSON.stringify(messageData);
-        fs.writeFile(this.persistPath, messageJson, (err) => {
-          if (err) console.error('[MessageLedger] Failed to persist messages:', err.message);
+        // Worker code as inline string - serializes data and sends back JSON
+        const workerCode = `
+          const { parentPort, workerData } = require('worker_threads');
+          try {
+            const json = JSON.stringify(workerData);
+            parentPort.postMessage({ success: true, json });
+          } catch (e) {
+            parentPort.postMessage({ success: false, error: e.message });
+          }
+        `;
+        
+        const worker = new Worker(workerCode, { 
+          eval: true, 
+          workerData: data 
+        });
+        
+        const timeout = setTimeout(() => {
+          worker.terminate();
+          // Fallback to sync on timeout
+          try {
+            resolve(JSON.stringify(data));
+          } catch (e: any) {
+            reject(e);
+          }
+        }, 30000); // 30 second timeout
+        
+        worker.on('message', (msg: { success: boolean; json?: string; error?: string }) => {
+          clearTimeout(timeout);
+          worker.terminate();
+          if (msg.success && msg.json) {
+            resolve(msg.json);
+          } else {
+            // Fallback to sync
+            try {
+              resolve(JSON.stringify(data));
+            } catch (e: any) {
+              reject(new Error(msg.error || 'Worker serialization failed'));
+            }
+          }
+        });
+        
+        worker.on('error', (err) => {
+          clearTimeout(timeout);
+          worker.terminate();
+          // Fallback to sync on worker error
+          try {
+            resolve(JSON.stringify(data));
+          } catch (e: any) {
+            reject(err);
+          }
         });
       } catch (e: any) {
-        console.error('[MessageLedger] Failed to serialize messages:', e.message);
+        // Fallback to sync if worker creation fails
+        try {
+          resolve(JSON.stringify(data));
+        } catch (err: any) {
+          reject(err);
+        }
       }
     });
+  }
+
+  private async _doPersistToDisk(): Promise<void> {
+    // Prevent overlapping serializations
+    if (this._serializationInProgress) {
+      // Re-schedule
+      this._persistPending = true;
+      if (!this._persistTimer) {
+        this._persistTimer = setTimeout(() => {
+          this._persistTimer = null;
+          this._persistPending = false;
+          this._doPersistToDisk();
+        }, 2000);
+      }
+      return;
+    }
     
-    // Contacts in separate setImmediate to further break up work
-    setImmediate(() => {
-      try {
-        // Contacts file (permanent, never pruned)
-        const contactData = {
-          version: 2,
-          ledgerType: 'contacts',
-          contacts: Object.fromEntries(
-            Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
-          ),
-          blocked: Object.fromEntries(
-            Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
-          ),
-          lastPersisted: Date.now(),
-        };
-        fs.writeFile(this.contactsPath, JSON.stringify(contactData), (err) => {
-          if (err) console.error('[MessageLedger] Failed to persist contacts:', err.message);
-        });
-      } catch (e: any) {
-        console.error('[MessageLedger] Failed to serialize contacts:', e.message);
-      }
-    });
+    this._serializationInProgress = true;
+    
+    try {
+      // Messages file (prunable after 10 days)
+      const messageData = {
+        version: 2,
+        ledgerType: 'messages',
+        events: Array.from(this.events.values()),
+        lastPersisted: Date.now(),
+      };
+      
+      // Serialize in worker thread to avoid blocking event loop
+      const messageJson = await this.serializeInWorker(messageData);
+      
+      await fs.promises.writeFile(this.persistPath, messageJson);
+    } catch (e: any) {
+      console.error('[MessageLedger] Failed to persist messages:', e.message);
+    }
+    
+    try {
+      // Contacts file (permanent, never pruned)
+      const contactData = {
+        version: 2,
+        ledgerType: 'contacts',
+        contacts: Object.fromEntries(
+          Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+        ),
+        blocked: Object.fromEntries(
+          Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+        ),
+        lastPersisted: Date.now(),
+      };
+      
+      // Contacts are usually small, but use worker for consistency
+      const contactJson = await this.serializeInWorker(contactData);
+      
+      await fs.promises.writeFile(this.contactsPath, contactJson);
+    } catch (e: any) {
+      console.error('[MessageLedger] Failed to persist contacts:', e.message);
+    }
+    
+    this._serializationInProgress = false;
   }
 
   /**
