@@ -6694,38 +6694,46 @@ export class OperatorNode extends EventEmitter {
    * Gateways serve as backup storage - they persist messages and can restore them to operators after restart
    */
   private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string, excludeSeed: boolean = false): void {
-    const message = {
-      type: 'ephemeral_event',
-      event,
-      sourceOperatorId: this.config.operatorId,
-      timestamp: Date.now(),
-    };
-    const msgStr = JSON.stringify(message);
+    // Use setImmediate to yield to event loop before heavy JSON.stringify
+    // This prevents blocking on large base64 video/photo payloads
+    setImmediate(() => {
+      try {
+        const message = {
+          type: 'ephemeral_event',
+          event,
+          sourceOperatorId: this.config.operatorId,
+          timestamp: Date.now(),
+        };
+        const msgStr = JSON.stringify(message);
 
-    try {
-      if (!excludeSeed && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-        this.mainSeedWs.send(msgStr);
+        try {
+          if (!excludeSeed && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+            this.mainSeedWs.send(msgStr);
+          }
+        } catch {}
+
+        // Broadcast to operator peers
+        for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
+          if (excludePeerId && peerId === excludePeerId) continue;
+          try {
+            if (peer.ws.readyState === WebSocket.OPEN) {
+              peer.ws.send(msgStr);
+            }
+          } catch {}
+        }
+
+        // Also broadcast to connected gateways (they store as backup)
+        for (const [ws, conn] of this.gatewayConnections.entries()) {
+          try {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(msgStr);
+            }
+          } catch {}
+        }
+      } catch (e: any) {
+        console.error('[Ephemeral] Failed to broadcast event:', e.message);
       }
-    } catch {}
-
-    // Broadcast to operator peers
-    for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
-      if (excludePeerId && peerId === excludePeerId) continue;
-      try {
-        if (peer.ws.readyState === WebSocket.OPEN) {
-          peer.ws.send(msgStr);
-        }
-      } catch {}
-    }
-
-    // Also broadcast to connected gateways (they store as backup)
-    for (const [ws, conn] of this.gatewayConnections.entries()) {
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(msgStr);
-        }
-      } catch {}
-    }
+    });
   }
 
   private broadcastRegistryUpdate(): void {
