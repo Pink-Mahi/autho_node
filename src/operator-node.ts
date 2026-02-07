@@ -4441,8 +4441,39 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        // For autho_node, just log the usage (balance tracking handled by main node)
-        console.log(`[Premium] File transfer: ${tier} tier, ${actionCost} sats for account ${accountId}`);
+        // Deduct from service balance by emitting event to ledger
+        const now = Date.now();
+        const nonce = randomBytes(32).toString('hex');
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: process.env.OPERATOR_ID || 'operator-1',
+            publicKey: this.config.publicKey || '',
+            signature: createHash('sha256')
+              .update(`ACCOUNT_SERVICE_BALANCE_USED:${accountId}:file_transfer:${tier}:${actionCost}:${now}`)
+              .digest('hex'),
+          },
+        ];
+
+        await this.canonicalEventStore.appendEvent(
+          {
+            type: EventType.ACCOUNT_SERVICE_BALANCE_USED,
+            timestamp: now,
+            nonce,
+            accountId: String(accountId),
+            amountSats: actionCost,
+            purpose: 'file_transfer',
+          } as any,
+          signatures
+        );
+
+        // Update in-memory state immediately so UI/gateways see the deduction without a full rebuild
+        (account as any).serviceBalanceSats = currentBalance - actionCost;
+        (account as any).serviceBalanceTotalUsedSats = ((account as any).serviceBalanceTotalUsedSats || 0) + actionCost;
+        (account as any).updatedAt = now;
+
+        this.broadcastRegistryUpdate();
+
+        console.log(`[Premium] File transfer: ${tier} tier, ${actionCost} sats deducted from account ${accountId}`);
 
         res.json({
           success: true,
