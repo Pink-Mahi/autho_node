@@ -1157,32 +1157,48 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   private _doPersistToDisk(): void {
-    // Messages file (prunable after 10 days)
-    const messageData = {
-      version: 2,
-      ledgerType: 'messages',
-      events: Array.from(this.events.values()),
-      lastPersisted: Date.now(),
-    };
-    // Use async write + compact JSON to avoid blocking event loop on large payloads
-    fs.writeFile(this.persistPath, JSON.stringify(messageData), (err) => {
-      if (err) console.error('[MessageLedger] Failed to persist messages:', err.message);
+    // Use setImmediate to yield to event loop before heavy JSON.stringify
+    // This prevents blocking on large base64 photo payloads
+    setImmediate(() => {
+      try {
+        // Messages file (prunable after 10 days)
+        const messageData = {
+          version: 2,
+          ledgerType: 'messages',
+          events: Array.from(this.events.values()),
+          lastPersisted: Date.now(),
+        };
+        // Stringify in chunks for very large data could block - but setImmediate helps
+        const messageJson = JSON.stringify(messageData);
+        fs.writeFile(this.persistPath, messageJson, (err) => {
+          if (err) console.error('[MessageLedger] Failed to persist messages:', err.message);
+        });
+      } catch (e: any) {
+        console.error('[MessageLedger] Failed to serialize messages:', e.message);
+      }
     });
     
-    // Contacts file (permanent, never pruned)
-    const contactData = {
-      version: 2,
-      ledgerType: 'contacts',
-      contacts: Object.fromEntries(
-        Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
-      ),
-      blocked: Object.fromEntries(
-        Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
-      ),
-      lastPersisted: Date.now(),
-    };
-    fs.writeFile(this.contactsPath, JSON.stringify(contactData), (err) => {
-      if (err) console.error('[MessageLedger] Failed to persist contacts:', err.message);
+    // Contacts in separate setImmediate to further break up work
+    setImmediate(() => {
+      try {
+        // Contacts file (permanent, never pruned)
+        const contactData = {
+          version: 2,
+          ledgerType: 'contacts',
+          contacts: Object.fromEntries(
+            Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+          ),
+          blocked: Object.fromEntries(
+            Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+          ),
+          lastPersisted: Date.now(),
+        };
+        fs.writeFile(this.contactsPath, JSON.stringify(contactData), (err) => {
+          if (err) console.error('[MessageLedger] Failed to persist contacts:', err.message);
+        });
+      } catch (e: any) {
+        console.error('[MessageLedger] Failed to serialize contacts:', e.message);
+      }
     });
   }
 
