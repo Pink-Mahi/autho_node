@@ -7280,6 +7280,13 @@ export class OperatorNode extends EventEmitter {
       });
     }
 
+    // Flush ephemeral message ledger to disk (immediate sync write)
+    if (this.ephemeralStore) {
+      this.ephemeralStore.flushToDisk();
+      this.ephemeralStore.stopPruning();
+      console.log('[Operator] Flushed message ledger');
+    }
+
     await this.persistState();
     console.log('[Operator] Stopped');
   }

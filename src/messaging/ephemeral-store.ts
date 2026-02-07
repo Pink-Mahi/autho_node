@@ -270,6 +270,8 @@ export class EphemeralEventStore extends EventEmitter {
   private pruneTimer?: NodeJS.Timeout;
   private persistPath: string;
   private contactsPath: string;  // Separate file for permanent contacts
+  private _persistTimer: NodeJS.Timeout | null = null;
+  private _persistPending: boolean = false;
 
   constructor(options: EphemeralStoreOptions) {
     super();
@@ -1140,9 +1142,21 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
-   * Persist events to disk (messages and contacts in separate files)
+   * Persist events to disk (debounced to avoid blocking on large payloads like photos)
+   * Batches writes - saves at most once per second
    */
   private async persistToDisk(): Promise<void> {
+    this._persistPending = true;
+    if (this._persistTimer) return; // Already scheduled
+    
+    this._persistTimer = setTimeout(() => {
+      this._persistTimer = null;
+      this._persistPending = false;
+      this._doPersistToDisk();
+    }, 1000);
+  }
+
+  private _doPersistToDisk(): void {
     // Messages file (prunable after 10 days)
     const messageData = {
       version: 2,
@@ -1150,7 +1164,10 @@ export class EphemeralEventStore extends EventEmitter {
       events: Array.from(this.events.values()),
       lastPersisted: Date.now(),
     };
-    await fs.promises.writeFile(this.persistPath, JSON.stringify(messageData, null, 2));
+    // Use async write + compact JSON to avoid blocking event loop on large payloads
+    fs.writeFile(this.persistPath, JSON.stringify(messageData), (err) => {
+      if (err) console.error('[MessageLedger] Failed to persist messages:', err.message);
+    });
     
     // Contacts file (permanent, never pruned)
     const contactData = {
@@ -1164,7 +1181,45 @@ export class EphemeralEventStore extends EventEmitter {
       ),
       lastPersisted: Date.now(),
     };
-    await fs.promises.writeFile(this.contactsPath, JSON.stringify(contactData, null, 2));
+    fs.writeFile(this.contactsPath, JSON.stringify(contactData), (err) => {
+      if (err) console.error('[MessageLedger] Failed to persist contacts:', err.message);
+    });
+  }
+
+  /**
+   * Immediate sync flush for shutdown - ensures no data loss
+   */
+  flushToDisk(): void {
+    if (this._persistTimer) {
+      clearTimeout(this._persistTimer);
+      this._persistTimer = null;
+    }
+    if (this._persistPending || this.events.size > 0) {
+      try {
+        const messageData = {
+          version: 2,
+          ledgerType: 'messages',
+          events: Array.from(this.events.values()),
+          lastPersisted: Date.now(),
+        };
+        fs.writeFileSync(this.persistPath, JSON.stringify(messageData));
+        
+        const contactData = {
+          version: 2,
+          ledgerType: 'contacts',
+          contacts: Object.fromEntries(
+            Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+          ),
+          blocked: Object.fromEntries(
+            Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+          ),
+          lastPersisted: Date.now(),
+        };
+        fs.writeFileSync(this.contactsPath, JSON.stringify(contactData));
+      } catch (e: any) {
+        console.error('[MessageLedger] Failed to flush:', e.message);
+      }
+    }
   }
 
   /**
