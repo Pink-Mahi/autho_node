@@ -867,8 +867,8 @@ export class OperatorNode extends EventEmitter {
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json({ limit: '10mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+    this.app.use(express.json({ limit: '100mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
     // CORS for gateway nodes
     this.app.use((req, res, next) => {
@@ -4192,7 +4192,10 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const messages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+        const rawMessages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+
+        // Restore any extracted large content from disk
+        const messages = await this.ephemeralStore!.restoreEventsContent(rawMessages);
 
         // Get user's walletAddress to match against recipientId (which may be Bitcoin address)
         const fullAccount = this.state.accounts.get(account.accountId) as any;
@@ -4698,7 +4701,10 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const messages = this.ephemeralStore!.getGroupMessages(groupId);
+        const rawMessages = this.ephemeralStore!.getGroupMessages(groupId);
+        
+        // Restore any extracted large content from disk
+        const messages = await this.ephemeralStore!.restoreEventsContent(rawMessages);
         
         // Return messages with the encrypted content for current user
         const userMessages = messages.map(m => {
@@ -6782,7 +6788,7 @@ export class OperatorNode extends EventEmitter {
   private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string, excludeSeed: boolean = false): void {
     // Use setImmediate to yield to event loop before heavy JSON.stringify
     // This prevents blocking on large base64 video/photo payloads
-    setImmediate(() => {
+    setImmediate(async () => {
       try {
         const message = {
           type: 'ephemeral_event',
@@ -6815,6 +6821,13 @@ export class OperatorNode extends EventEmitter {
               ws.send(msgStr);
             }
           } catch {}
+        }
+
+        // After broadcasting, extract large content from the event to separate files.
+        // This keeps the in-memory event lightweight so future persistence (structured clone
+        // + JSON.stringify) won't block the event loop. Content is restored on retrieval.
+        if (this.ephemeralStore) {
+          await this.ephemeralStore.extractLargeContent(event);
         }
       } catch (e: any) {
         console.error('[Ephemeral] Failed to broadcast event:', e.message);

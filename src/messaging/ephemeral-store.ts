@@ -208,6 +208,12 @@ export interface OnlineStatusPayload {
   lastSeen: number;
 }
 
+// Content extraction threshold - payloads larger than this are stored in separate files
+// to prevent blocking the event loop during JSON serialization / structured clone
+const CONTENT_SIZE_THRESHOLD = 512 * 1024; // 512K characters (~384KB)
+const CONTENT_REF_PREFIX = '__contentRef:';
+const CONTENT_REF_SUFFIX = '__';
+
 // File attachment limits
 export const FILE_LIMITS = {
   MAX_FILE_SIZE: 10 * 1024 * 1024,    // 10MB max
@@ -274,6 +280,7 @@ export class EphemeralEventStore extends EventEmitter {
   private _persistTimer: NodeJS.Timeout | null = null;
   private _persistPending: boolean = false;
   private _serializationInProgress: boolean = false;
+  private contentDir: string = '';
 
   constructor(options: EphemeralStoreOptions) {
     super();
@@ -286,6 +293,12 @@ export class EphemeralEventStore extends EventEmitter {
     // Ensure data directory exists
     if (!fs.existsSync(this.dataDir)) {
       fs.mkdirSync(this.dataDir, { recursive: true });
+    }
+    
+    // Content extraction directory for large payloads (videos, photos)
+    this.contentDir = path.join(this.dataDir, 'content');
+    if (!fs.existsSync(this.contentDir)) {
+      fs.mkdirSync(this.contentDir, { recursive: true });
     }
     
     // Load existing events
@@ -380,6 +393,11 @@ export class EphemeralEventStore extends EventEmitter {
       await this.enforceGroupMediaLimits(payload.groupId, payload.mediaType);
     }
 
+    // Extract large content (videos, photos) to disk files BEFORE persist/broadcast.
+    // This keeps in-memory events lightweight, preventing OOM and event-loop blocking
+    // during JSON serialization and structured clone to worker threads.
+    await this.extractLargeContent(event);
+
     // Persist to disk
     await this.persistToDisk();
 
@@ -467,6 +485,7 @@ export class EphemeralEventStore extends EventEmitter {
     const event = this.events.get(eventId);
     if (!event) return;
     
+    await this.cleanupContentFiles(event);
     const payload = event.payload as MessagePayload;
     this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
     this.messagesByUser.get(payload.senderId)?.delete(eventId);
@@ -481,6 +500,7 @@ export class EphemeralEventStore extends EventEmitter {
     const event = this.events.get(eventId);
     if (!event) return;
     
+    await this.cleanupContentFiles(event);
     const payload = event.payload as GroupMessagePayload;
     this.messagesByGroup.get(payload.groupId)?.delete(eventId);
     this.events.delete(eventId);
@@ -941,6 +961,9 @@ export class EphemeralEventStore extends EventEmitter {
     
     for (const [eventId, event] of this.events.entries()) {
       if (event.expiresAt <= now) {
+        // Clean up any extracted content files
+        await this.cleanupContentFiles(event);
+        
         // Remove from indexes
         if (event.eventType === EphemeralEventType.MESSAGE_SENT) {
           const payload = event.payload as MessagePayload;
@@ -1047,6 +1070,9 @@ export class EphemeralEventStore extends EventEmitter {
     // Update indexes
     this.indexEvent(event);
 
+    // Extract large content to disk (prevents OOM from holding large payloads in memory)
+    await this.extractLargeContent(event);
+
     // Persist to disk
     await this.persistToDisk();
 
@@ -1141,6 +1167,174 @@ export class EphemeralEventStore extends EventEmitter {
       newestMessage,
       retentionDays: Math.round(this.retentionMs / (24 * 60 * 60 * 1000)),
     };
+  }
+
+  // ============================================================
+  // CONTENT EXTRACTION - Store large payloads in separate files
+  // to prevent blocking the event loop during serialization
+  // ============================================================
+
+  /**
+   * Extract large content from an event to disk files.
+   * Modifies the event payload IN-PLACE, replacing large string fields with file references.
+   * This keeps the in-memory events lightweight for fast serialization.
+   */
+  async extractLargeContent(event: EphemeralEvent): Promise<void> {
+    const payload = event.payload;
+    if (!payload) return;
+
+    const fields = ['encryptedContent', 'encryptedForSender'];
+
+    for (const field of fields) {
+      const value = (payload as any)[field];
+      if (typeof value !== 'string' || value.length < CONTENT_SIZE_THRESHOLD) continue;
+      if (value.startsWith(CONTENT_REF_PREFIX)) continue; // Already extracted
+
+      const hash = createHash('sha256').update(`${event.eventId}:${field}`).digest('hex').slice(0, 16);
+      const contentPath = path.join(this.contentDir, `${hash}.bin`);
+
+      try {
+        await fs.promises.writeFile(contentPath, value);
+        (payload as any)[field] = `${CONTENT_REF_PREFIX}${hash}${CONTENT_REF_SUFFIX}`;
+      } catch (e: any) {
+        console.error(`[Ephemeral] Failed to extract content for ${event.eventId}:${field}: ${e.message}`);
+      }
+    }
+
+    // Also handle group messages with encryptedContentByMember
+    if ((payload as any).encryptedContentByMember) {
+      const byMember = (payload as any).encryptedContentByMember;
+      for (const memberId of Object.keys(byMember)) {
+        const value = byMember[memberId];
+        if (typeof value !== 'string' || value.length < CONTENT_SIZE_THRESHOLD) continue;
+        if (value.startsWith(CONTENT_REF_PREFIX)) continue;
+
+        const hash = createHash('sha256').update(`${event.eventId}:member:${memberId}`).digest('hex').slice(0, 16);
+        const contentPath = path.join(this.contentDir, `${hash}.bin`);
+
+        try {
+          await fs.promises.writeFile(contentPath, value);
+          byMember[memberId] = `${CONTENT_REF_PREFIX}${hash}${CONTENT_REF_SUFFIX}`;
+        } catch (e: any) {
+          console.error(`[Ephemeral] Failed to extract group content: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Restore large content from disk files for an event.
+   * Returns a CLONE of the event with content restored (does not modify the original).
+   */
+  async restoreEventContent(event: EphemeralEvent): Promise<EphemeralEvent> {
+    const payload = event.payload;
+    if (!payload) return event;
+
+    // Quick check if any fields need restoration
+    const fields = ['encryptedContent', 'encryptedForSender'];
+    let needsRestore = false;
+
+    for (const field of fields) {
+      const value = (payload as any)[field];
+      if (typeof value === 'string' && value.startsWith(CONTENT_REF_PREFIX) && value.endsWith(CONTENT_REF_SUFFIX)) {
+        needsRestore = true;
+        break;
+      }
+    }
+
+    // Check group message fields
+    if (!needsRestore && (payload as any).encryptedContentByMember) {
+      const byMember = (payload as any).encryptedContentByMember;
+      for (const value of Object.values(byMember)) {
+        if (typeof value === 'string' && (value as string).startsWith(CONTENT_REF_PREFIX)) {
+          needsRestore = true;
+          break;
+        }
+      }
+    }
+
+    if (!needsRestore) return event;
+
+    // Clone the event and payload
+    const clonedPayload = { ...payload };
+    const clonedEvent = { ...event, payload: clonedPayload };
+
+    for (const field of fields) {
+      const value = (clonedPayload as any)[field];
+      if (typeof value !== 'string' || !value.startsWith(CONTENT_REF_PREFIX) || !value.endsWith(CONTENT_REF_SUFFIX)) continue;
+
+      const hash = value.slice(CONTENT_REF_PREFIX.length, -CONTENT_REF_SUFFIX.length);
+      const contentPath = path.join(this.contentDir, `${hash}.bin`);
+
+      try {
+        (clonedPayload as any)[field] = await fs.promises.readFile(contentPath, 'utf8');
+      } catch (e: any) {
+        console.warn(`[Ephemeral] Content file missing for ${hash}, field ${field}`);
+      }
+    }
+
+    // Restore group message fields
+    if ((clonedPayload as any).encryptedContentByMember) {
+      const byMember = { ...(clonedPayload as any).encryptedContentByMember };
+      (clonedPayload as any).encryptedContentByMember = byMember;
+
+      for (const memberId of Object.keys(byMember)) {
+        const value = byMember[memberId];
+        if (typeof value !== 'string' || !value.startsWith(CONTENT_REF_PREFIX) || !value.endsWith(CONTENT_REF_SUFFIX)) continue;
+
+        const hash = value.slice(CONTENT_REF_PREFIX.length, -CONTENT_REF_SUFFIX.length);
+        const contentPath = path.join(this.contentDir, `${hash}.bin`);
+
+        try {
+          byMember[memberId] = await fs.promises.readFile(contentPath, 'utf8');
+        } catch (e: any) {
+          console.warn(`[Ephemeral] Content file missing for ${hash}, member ${memberId}`);
+        }
+      }
+    }
+
+    return clonedEvent;
+  }
+
+  /**
+   * Batch restore content for multiple events
+   */
+  async restoreEventsContent(events: EphemeralEvent[]): Promise<EphemeralEvent[]> {
+    return Promise.all(events.map(e => this.restoreEventContent(e)));
+  }
+
+  /**
+   * Delete content files associated with an event
+   */
+  private async cleanupContentFiles(event: EphemeralEvent): Promise<void> {
+    const payload = event.payload;
+    if (!payload) return;
+
+    const refs: string[] = [];
+
+    for (const field of ['encryptedContent', 'encryptedForSender']) {
+      const value = (payload as any)[field];
+      if (typeof value === 'string' && value.startsWith(CONTENT_REF_PREFIX) && value.endsWith(CONTENT_REF_SUFFIX)) {
+        refs.push(value.slice(CONTENT_REF_PREFIX.length, -CONTENT_REF_SUFFIX.length));
+      }
+    }
+
+    if ((payload as any).encryptedContentByMember) {
+      for (const value of Object.values((payload as any).encryptedContentByMember)) {
+        if (typeof value === 'string' && (value as string).startsWith(CONTENT_REF_PREFIX) && (value as string).endsWith(CONTENT_REF_SUFFIX)) {
+          refs.push((value as string).slice(CONTENT_REF_PREFIX.length, -CONTENT_REF_SUFFIX.length));
+        }
+      }
+    }
+
+    for (const hash of refs) {
+      const contentPath = path.join(this.contentDir, `${hash}.bin`);
+      try {
+        await fs.promises.unlink(contentPath);
+      } catch (e) {
+        // Ignore - file may not exist
+      }
+    }
   }
 
   /**
@@ -1639,4 +1833,5 @@ export class EphemeralEventStore extends EventEmitter {
 
     return results.sort((a, b) => b.timestamp - a.timestamp);
   }
+
 }
