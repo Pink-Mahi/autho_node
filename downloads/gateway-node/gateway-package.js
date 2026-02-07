@@ -2795,6 +2795,25 @@ class GatewayNode {
       }
     });
 
+    // Alias: Get service balance by accountId (compatibility with operator endpoint)
+    this.app.get('/api/accounts/:accountId/service-balance', async (req, res) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+
+        const balance = this.getServiceBalance(account.accountId);
+        res.json({
+          success: true,
+          accountId: account.accountId,
+          ...balance,
+        });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Get premium action pricing
     this.app.get('/api/service/pricing', async (req, res) => {
       try {
@@ -2904,6 +2923,11 @@ class GatewayNode {
         // Persist data
         this.savePremiumData();
 
+        // Relay funding event to operator canonical ledger (fire-and-forget)
+        this.relayServiceBalanceFunding(account.accountId, amountSats, txid).catch(err => {
+          console.warn(`⚠️ [Relay] Failed to relay funding to operator: ${err.message}`);
+        });
+
         const newBalance = this.getServiceBalance(account.accountId);
 
         res.json({
@@ -2970,6 +2994,11 @@ class GatewayNode {
 
         const newBalance = this.getServiceBalance(account.accountId);
 
+        // Relay deduction to operator canonical ledger (fire-and-forget)
+        this.relayServiceBalanceUsage(account.accountId, actionCost, 'message_delete', 'basic').catch(err => {
+          console.warn(`⚠️ [Premium] Failed to relay message-delete deduction to operator: ${err.message}`);
+        });
+
         res.json({
           success: true,
           accountId: account.accountId,
@@ -3019,6 +3048,11 @@ class GatewayNode {
         this.useServiceBalance(account.accountId, actionCost, 'message_edit', messageId);
 
         const newBalance = this.getServiceBalance(account.accountId);
+
+        // Relay deduction to operator canonical ledger (fire-and-forget)
+        this.relayServiceBalanceUsage(account.accountId, actionCost, 'message_edit', 'basic').catch(err => {
+          console.warn(`⚠️ [Premium] Failed to relay message-edit deduction to operator: ${err.message}`);
+        });
 
         res.json({
           success: true,
@@ -3086,6 +3120,11 @@ class GatewayNode {
         const newBalance = this.getServiceBalance(account.accountId);
 
         console.log(`📁 [Premium] File transfer: ${account.accountId} paid ${actionCost} sats for ${tier} tier (${fileName}, ${fileSize} bytes)`);
+
+        // Relay deduction to operator canonical ledger (fire-and-forget)
+        this.relayServiceBalanceUsage(account.accountId, actionCost, 'file_transfer', tier).catch(err => {
+          console.warn(`⚠️ [Premium] Failed to relay file-transfer deduction to operator: ${err.message}`);
+        });
 
         res.json({
           success: true,
@@ -7131,20 +7170,76 @@ class GatewayNode {
   }
 
   savePremiumData() {
-    const filePath = path.join(CONFIG.dataDir, 'premium-data.json');
-    try {
-      const data = {
-        version: 2,
-        savedAt: Date.now(),
-        userCredits: Object.fromEntries(this.userCredits),
-        paymentHistory: this.paymentHistory.slice(-1000), // Keep last 1000 payments
-        serviceBalances: Object.fromEntries(this.serviceBalances),
-        servicePaymentHistory: Object.fromEntries(this.servicePaymentHistory),
-      };
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-    } catch (e) {
-      console.error('Failed to save premium data:', e.message);
+    // Debounce: avoid blocking the event loop with rapid successive saves
+    if (this._premiumSaveTimer) return;
+    this._premiumSaveTimer = setTimeout(() => {
+      this._premiumSaveTimer = null;
+      const filePath = path.join(CONFIG.dataDir, 'premium-data.json');
+      try {
+        const data = {
+          version: 2,
+          savedAt: Date.now(),
+          userCredits: Object.fromEntries(this.userCredits),
+          paymentHistory: this.paymentHistory.slice(-1000),
+          serviceBalances: Object.fromEntries(this.serviceBalances),
+          servicePaymentHistory: Object.fromEntries(this.servicePaymentHistory),
+        };
+        const fsp = require('fs').promises;
+        fsp.writeFile(filePath, JSON.stringify(data, null, 2)).catch(err => {
+          console.error('Failed to save premium data:', err.message);
+        });
+      } catch (e) {
+        console.error('Failed to save premium data:', e.message);
+      }
+    }, 500);
+  }
+
+  async relayServiceBalanceUsage(accountId, amountSats, action, tier) {
+    const urls = this.getCandidateOperatorUrls();
+    for (const operatorUrl of urls.slice(0, 3)) {
+      try {
+        const resp = await fetch(`${operatorUrl}/api/service/premium/file-transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId, tier, amountSats, action }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (resp.ok) {
+          const result = await resp.json();
+          console.log(`✅ [Relay] Service balance usage relayed to ${operatorUrl}: ${JSON.stringify(result)}`);
+          return result;
+        }
+        const errBody = await resp.text();
+        console.warn(`⚠️ [Relay] Operator ${operatorUrl} returned ${resp.status}: ${errBody}`);
+      } catch (err) {
+        console.warn(`⚠️ [Relay] Failed to reach ${operatorUrl}: ${err.message}`);
+      }
     }
+    throw new Error('Could not relay service balance usage to any operator');
+  }
+
+  async relayServiceBalanceFunding(accountId, amountSats, txid) {
+    const urls = this.getCandidateOperatorUrls();
+    for (const operatorUrl of urls.slice(0, 3)) {
+      try {
+        const resp = await fetch(`${operatorUrl}/api/service/relay-funding`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accountId, amountSats, txid }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (resp.ok) {
+          const result = await resp.json();
+          console.log(`✅ [Relay] Service balance funding relayed to ${operatorUrl}: ${JSON.stringify(result)}`);
+          return result;
+        }
+        const errBody = await resp.text();
+        console.warn(`⚠️ [Relay] Operator ${operatorUrl} returned ${resp.status}: ${errBody}`);
+      } catch (err) {
+        console.warn(`⚠️ [Relay] Failed to reach ${operatorUrl}: ${err.message}`);
+      }
+    }
+    throw new Error('Could not relay service balance funding to any operator');
   }
 
   // ============================================================

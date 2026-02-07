@@ -9,6 +9,7 @@
  */
 
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { sha256 } from '../crypto';
 
@@ -111,6 +112,60 @@ export class AtomicStorage {
       fs.fsyncSync(dirFd);
       fs.closeSync(dirFd);
     } catch (err) {
+      // Directory sync may fail on some systems, that's okay
+    }
+  }
+
+  /**
+   * Async variant of writeFileAtomic – identical safety guarantees
+   * but never blocks the event loop.
+   */
+  static async writeFileAtomicAsync<T>(filePath: string, data: T): Promise<void> {
+    const tempPath = filePath + this.TEMP_SUFFIX;
+    const backupPath = filePath + this.BACKUP_SUFFIX;
+
+    const jsonData = JSON.stringify(data, null, 2);
+
+    const wrapper: ChecksummedFile<T> = {
+      version: this.CURRENT_VERSION,
+      checksum: sha256(jsonData),
+      data: data,
+      writtenAt: Date.now(),
+    };
+
+    const finalData = JSON.stringify(wrapper, null, 2);
+
+    const dir = path.dirname(filePath);
+    try { await fsp.access(dir); } catch { await fsp.mkdir(dir, { recursive: true }); }
+
+    // Step 1: Write to temp file
+    const fh = await fsp.open(tempPath, 'w');
+    try {
+      await fh.writeFile(finalData);
+      // Step 2: Force sync to physical disk
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+
+    // Step 3: Backup existing file (if exists)
+    try {
+      await fsp.access(filePath);
+      try { await fsp.unlink(backupPath); } catch { /* no backup yet */ }
+      await fsp.rename(filePath, backupPath);
+    } catch {
+      // filePath doesn't exist yet – nothing to back up
+    }
+
+    // Step 4: Atomic rename temp -> target
+    await fsp.rename(tempPath, filePath);
+
+    // Sync the directory
+    try {
+      const dirFh = await fsp.open(dir, 'r');
+      await dirFh.sync();
+      await dirFh.close();
+    } catch {
       // Directory sync may fail on some systems, that's okay
     }
   }
@@ -273,6 +328,10 @@ export class AtomicStorage {
  */
 export function atomicWriteJSON<T>(filePath: string, data: T): void {
   AtomicStorage.writeFileAtomic(filePath, data);
+}
+
+export async function atomicWriteJSONAsync<T>(filePath: string, data: T): Promise<void> {
+  await AtomicStorage.writeFileAtomicAsync(filePath, data);
 }
 
 export function atomicReadJSON<T>(filePath: string): T | null {

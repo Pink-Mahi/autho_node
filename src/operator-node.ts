@@ -4390,10 +4390,11 @@ export class OperatorNode extends EventEmitter {
     // PREMIUM SERVICE ENDPOINTS
     // ============================================================
 
-    // Premium action: File transfer (costs sats based on tier)
+    // Premium action: Generic service balance deduction (file transfer, message delete/edit, etc.)
+    // Gateway relays include { accountId, tier, amountSats, action }
     this.app.post('/api/service/premium/file-transfer', async (req: Request, res: Response) => {
       try {
-        const { accountId, tier, fileSize, fileName } = req.body;
+        const { accountId, tier, fileSize, fileName, amountSats, action } = req.body;
         
         // File tier costs (must match client-side FILE_TIERS)
         const tierCosts: Record<string, number> = {
@@ -4402,20 +4403,24 @@ export class OperatorNode extends EventEmitter {
           premium: 2000,   // 100 MB
           enterprise: 10000, // 1 GB
         };
-        
-        const actionCost = tierCosts[tier] || 0;
 
-        if (!accountId || !tier) {
-          res.status(400).json({ success: false, error: 'Missing required fields: accountId, tier' });
+        // Use explicit amountSats from relay when provided, otherwise derive from tier
+        const actionCost = typeof amountSats === 'number' && amountSats > 0
+          ? amountSats
+          : (tierCosts[tier] || 0);
+        const actionPurpose = action || 'file_transfer';
+
+        if (!accountId) {
+          res.status(400).json({ success: false, error: 'Missing required field: accountId' });
           return;
         }
 
         // Free tier doesn't require payment
-        if (tier === 'free' || actionCost === 0) {
+        if (actionCost === 0) {
           res.json({
             success: true,
             accountId: String(accountId),
-            tier,
+            tier: tier || 'free',
             costSats: 0,
             message: 'Free tier - no payment required',
           });
@@ -4430,7 +4435,11 @@ export class OperatorNode extends EventEmitter {
         }
 
         const currentBalance = (account as any).serviceBalanceSats || 0;
-        if (currentBalance < actionCost) {
+        // When amountSats is explicitly provided this is a relay from a gateway that
+        // already validated the user's balance.  Skip the operator-side balance check
+        // because the operator ledger may not have received funding events yet.
+        const isRelay = typeof amountSats === 'number' && amountSats > 0;
+        if (!isRelay && currentBalance < actionCost) {
           res.status(402).json({
             success: false,
             error: 'Insufficient service balance',
@@ -4449,7 +4458,7 @@ export class OperatorNode extends EventEmitter {
             operatorId: process.env.OPERATOR_ID || 'operator-1',
             publicKey: this.config.publicKey || '',
             signature: createHash('sha256')
-              .update(`ACCOUNT_SERVICE_BALANCE_USED:${accountId}:file_transfer:${tier}:${actionCost}:${now}`)
+              .update(`ACCOUNT_SERVICE_BALANCE_USED:${accountId}:${actionPurpose}:${tier || 'none'}:${actionCost}:${now}`)
               .digest('hex'),
           },
         ];
@@ -4461,7 +4470,7 @@ export class OperatorNode extends EventEmitter {
             nonce,
             accountId: String(accountId),
             amountSats: actionCost,
-            purpose: 'file_transfer',
+            purpose: actionPurpose,
           } as any,
           signatures
         );
@@ -4473,17 +4482,94 @@ export class OperatorNode extends EventEmitter {
 
         this.broadcastRegistryUpdate();
 
-        console.log(`[Premium] File transfer: ${tier} tier, ${actionCost} sats deducted from account ${accountId}`);
+        console.log(`[Premium] ${actionPurpose}: ${actionCost} sats deducted from account ${accountId} (tier=${tier || 'n/a'})`);
 
         res.json({
           success: true,
           accountId: String(accountId),
-          tier,
+          tier: tier || 'none',
+          action: actionPurpose,
           fileName: fileName || 'file',
           fileSize: fileSize || 0,
           costSats: actionCost,
           newBalance: currentBalance - actionCost,
-          message: `File transfer approved (${tier} tier)`,
+          message: `${actionPurpose} approved (${actionCost} sats)`,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Relay endpoint: Gateway credits a user's service balance and
+    // forwards the funding event here so the canonical ledger stays
+    // in sync.  Deduplicated by txid.
+    this.app.post('/api/service/relay-funding', async (req: Request, res: Response) => {
+      try {
+        const { accountId, amountSats, txid } = req.body;
+
+        if (!accountId || typeof amountSats !== 'number' || amountSats <= 0 || !txid) {
+          res.status(400).json({ success: false, error: 'Missing accountId, amountSats, or txid' });
+          return;
+        }
+
+        const account = this.state.accounts.get(String(accountId));
+        if (!account) {
+          res.status(404).json({ success: false, error: 'Account not found' });
+          return;
+        }
+
+        // Deduplicate by txid – avoid double-crediting on retries
+        const dedupeKey = `funded:${txid}`;
+        if ((this as any)._relayedFundingTxids?.has(dedupeKey)) {
+          res.json({ success: true, duplicate: true, message: 'Funding already recorded' });
+          return;
+        }
+        if (!(this as any)._relayedFundingTxids) {
+          (this as any)._relayedFundingTxids = new Set<string>();
+        }
+        (this as any)._relayedFundingTxids.add(dedupeKey);
+
+        const now = Date.now();
+        const nonce = randomBytes(32).toString('hex');
+        const signatures: QuorumSignature[] = [
+          {
+            operatorId: process.env.OPERATOR_ID || 'operator-1',
+            publicKey: this.config.publicKey || '',
+            signature: createHash('sha256')
+              .update(`ACCOUNT_SERVICE_BALANCE_FUNDED:${accountId}:${amountSats}:${txid}:${now}`)
+              .digest('hex'),
+          },
+        ];
+
+        await this.canonicalEventStore.appendEvent(
+          {
+            type: EventType.ACCOUNT_SERVICE_BALANCE_FUNDED,
+            timestamp: now,
+            nonce,
+            accountId: String(accountId),
+            amountSats,
+            txid,
+          } as any,
+          signatures
+        );
+
+        // Update in-memory state
+        const prev = (account as any).serviceBalanceSats || 0;
+        (account as any).serviceBalanceSats = prev + amountSats;
+        (account as any).serviceBalanceLastFundedAt = now;
+        (account as any).serviceBalanceTotalFundedSats = ((account as any).serviceBalanceTotalFundedSats || 0) + amountSats;
+        (account as any).updatedAt = now;
+
+        this.broadcastRegistryUpdate();
+
+        console.log(`[Funding Relay] Credited ${amountSats} sats to ${accountId} (txid=${txid}). Balance: ${prev} -> ${prev + amountSats}`);
+
+        res.json({
+          success: true,
+          accountId: String(accountId),
+          amountCredited: amountSats,
+          txid,
+          newBalance: prev + amountSats,
         });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });

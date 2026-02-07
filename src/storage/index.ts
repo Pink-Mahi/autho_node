@@ -7,6 +7,7 @@
 export {
   AtomicStorage,
   atomicWriteJSON,
+  atomicWriteJSONAsync,
   atomicReadJSON,
   atomicReadJSONWithRecovery,
   ChecksummedFile,
