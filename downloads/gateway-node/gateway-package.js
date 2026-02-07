@@ -6822,7 +6822,7 @@ class GatewayNode {
         events: Array.from(this.ephemeralEvents.values()),
       };
       // Use async write to avoid blocking the event loop
-      fs.writeFile(filePath, JSON.stringify(data, null, 2), (err) => {
+      fs.writeFile(filePath, JSON.stringify(data), (err) => {
         if (err) console.error('Failed to save communications ledger:', err.message);
       });
     } catch (e) {
@@ -6844,7 +6844,7 @@ class GatewayNode {
           savedAt: Date.now(),
           events: Array.from(this.ephemeralEvents.values()),
         };
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+        fs.writeFileSync(filePath, JSON.stringify(data));
       } catch (e) {
         console.error('Failed to flush communications ledger:', e.message);
       }
