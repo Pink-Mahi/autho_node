@@ -3238,11 +3238,103 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.app.post('/api/auth/login', async (req: Request, res: Response) => {
-      await this.proxyToSeed(req, res);
+      // Custom handler to capture session from seed and store locally
+      const base = this.getSeedHttpBase();
+      if (!base) {
+        return res.status(502).json({ success: false, error: 'No seed HTTP base configured' });
+      }
+
+      try {
+        const seedResp = await fetch(`${base}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(req.body),
+        });
+
+        const data = await seedResp.json() as any;
+        
+        if (seedResp.ok && data.success && data.sessionId && data.accountId) {
+          // Store session locally so subsequent requests work
+          const now = Date.now();
+          this.sessions.set(data.sessionId, {
+            sessionId: data.sessionId,
+            accountId: data.accountId,
+            createdAt: now,
+            expiresAt: now + 24 * 60 * 60 * 1000, // 24 hours
+          });
+          console.log(`[Auth] Cached session ${data.sessionId.substring(0, 8)}... for account ${data.accountId.substring(0, 8)}...`);
+        }
+
+        res.status(seedResp.status).json(data);
+      } catch (e: any) {
+        console.error('[Auth] Login proxy error:', e.message);
+        res.status(502).json({ success: false, error: e?.message || String(e) });
+      }
     });
 
     this.app.get('/api/auth/me', async (req: Request, res: Response) => {
       await this.proxyToSeed(req, res);
+    });
+
+    // Verify session endpoint for gateway nodes
+    this.app.post('/api/auth/verify-session', async (req: Request, res: Response) => {
+      try {
+        const sessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
+        if (!sessionToken) {
+          return res.status(401).json({ success: false, error: 'No session token provided' });
+        }
+
+        const session = this.sessions.get(String(sessionToken));
+        if (!session) {
+          // Try to validate with seed node
+          const base = this.getSeedHttpBase();
+          if (base) {
+            try {
+              const seedRes = await fetch(`${base}/api/auth/verify-session`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-session-token': String(sessionToken) },
+                body: JSON.stringify({ sessionToken }),
+              });
+              if (seedRes.ok) {
+                const data = await seedRes.json();
+                if (data.success && data.account) {
+                  // Cache the session locally
+                  const now = Date.now();
+                  this.sessions.set(String(sessionToken), {
+                    sessionId: String(sessionToken),
+                    accountId: data.account.accountId,
+                    createdAt: now,
+                    expiresAt: now + 24 * 60 * 60 * 1000,
+                  });
+                  return res.json({ success: true, account: data.account });
+                }
+              }
+            } catch (e: any) {
+              console.error('[Auth] Seed verify-session error:', e.message);
+            }
+          }
+          return res.status(401).json({ success: false, error: 'Invalid or expired session' });
+        }
+
+        if (Date.now() > session.expiresAt) {
+          this.sessions.delete(String(sessionToken));
+          return res.status(401).json({ success: false, error: 'Session expired' });
+        }
+
+        // Get account info
+        const account = this.state.accounts.get(session.accountId);
+        return res.json({
+          success: true,
+          account: {
+            accountId: session.accountId,
+            publicKey: account?.publicKey || session.accountId,
+            username: (account as any)?.username || '',
+          }
+        });
+      } catch (e: any) {
+        console.error('[Auth] verify-session error:', e.message);
+        return res.status(500).json({ success: false, error: 'Session verification failed' });
+      }
     });
 
     this.app.get('/api/registry/item/:itemId', async (req: Request, res: Response) => {
@@ -4192,27 +4284,41 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const rawMessages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+        // Pagination params
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+        const before = parseInt(req.query.before as string) || Date.now() + 1000;
 
-        // Restore any extracted large content from disk
-        const messages = await this.ephemeralStore!.restoreEventsContent(rawMessages);
+        const rawMessages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
 
         // Get user's walletAddress to match against recipientId (which may be Bitcoin address)
         const fullAccount = this.state.accounts.get(account.accountId) as any;
         const walletAddress = fullAccount?.walletAddress || fullAccount?.identityAddress;
 
-        // Filter to only show messages where user is sender or recipient (by accountId OR walletAddress)
-        const filtered = messages.filter(m => {
+        // OPTIMIZATION: Filter FIRST (lightweight), then restore content only for filtered messages
+        const filtered = rawMessages.filter(m => {
           const p = m.payload as MessagePayload;
           const isUserSender = p.senderId === account.accountId || p.senderId === walletAddress;
           const isUserRecipient = p.recipientId === account.accountId || p.recipientId === walletAddress;
           return isUserSender || isUserRecipient;
         });
 
+        // Sort by timestamp descending, apply pagination
+        const sorted = filtered
+          .filter(m => m.timestamp < before)
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, limit);
+
+        // Restore content only for the paginated subset (much faster)
+        const messages = await this.ephemeralStore!.restoreEventsContent(sorted);
+
+        // Return in chronological order for display
+        const chronological = messages.sort((a, b) => a.timestamp - b.timestamp);
+
         res.json({
           success: true,
           conversationId: req.params.conversationId,
-          messages: filtered.map(m => ({
+          hasMore: filtered.length > limit,
+          messages: chronological.map(m => ({
             messageId: m.payload.messageId,
             senderId: m.payload.senderId,
             recipientId: m.payload.recipientId,
@@ -4223,7 +4329,6 @@ export class OperatorNode extends EventEmitter {
             timestamp: m.timestamp,
             expiresAt: m.expiresAt,
             replyToMessageId: m.payload.replyToMessageId,
-            // Disappearing message fields
             mediaType: m.payload.mediaType,
             expiresAfterView: m.payload.expiresAfterView,
             viewedAt: m.payload.viewedAt,
@@ -4231,6 +4336,7 @@ export class OperatorNode extends EventEmitter {
           })),
         });
       } catch (error: any) {
+        console.error('[Messaging] Get messages error:', error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -7619,10 +7725,22 @@ export class OperatorNode extends EventEmitter {
           const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
           const eventData = message?.event as EphemeralEvent;
           if (eventData && eventData.eventId && eventData.eventType && this.ephemeralStore) {
+            // DEBUG: Log received content sizes
+            const ep = eventData.payload as any;
+            const recvContentLen = typeof ep?.encryptedContent === 'string' ? ep.encryptedContent.length : 0;
+            const recvForSenderLen = typeof ep?.encryptedForSender === 'string' ? ep.encryptedForSender.length : 0;
+            const recvHasChunks = !!ep?.__chunks_encryptedContent;
+            const recvIsChunked = typeof ep?.encryptedContent === 'string' && ep.encryptedContent.startsWith('__chunked:');
+            console.log(`[Ephemeral] 📨 Received from seed ${eventData.eventId.substring(0,8)}... contentLen=${recvContentLen}, forSenderLen=${recvForSenderLen}, hasChunks=${recvHasChunks}, isChunked=${recvIsChunked}`);
+            
             // Clone payload before importEvent mutates it via extractLargeContent
             const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
             const imported = await this.ephemeralStore.importEvent(eventData);
             if (imported) {
+              // DEBUG: Log broadcast copy content sizes
+              const bp = broadcastCopy.payload as any;
+              const bcContentLen = typeof bp?.encryptedContent === 'string' ? bp.encryptedContent.length : 0;
+              console.log(`[Ephemeral] 📤 Broadcasting copy contentLen=${bcContentLen}`);
               this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId, true);
             }
           }

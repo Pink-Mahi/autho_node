@@ -403,10 +403,21 @@ export class EphemeralEventStore extends EventEmitter {
     // the real content so they can store it on their own disks.
     const broadcastPayload = { ...event.payload };
 
+    // DEBUG: Log content sizes before extraction
+    const preContentLen = typeof (broadcastPayload as any).encryptedContent === 'string' ? (broadcastPayload as any).encryptedContent.length : 0;
+    const preForSenderLen = typeof (broadcastPayload as any).encryptedForSender === 'string' ? (broadcastPayload as any).encryptedForSender.length : 0;
+    console.log(`[Ephemeral] 📝 appendEvent ${event.eventId.substring(0,8)}... PRE-extraction: contentLen=${preContentLen}, forSenderLen=${preForSenderLen}`);
+
     // Extract large content (videos, photos) to disk files.
     // This keeps in-memory events lightweight, preventing OOM and event-loop blocking
     // during JSON serialization and structured clone to worker threads.
     await this.extractLargeContent(event);
+
+    // DEBUG: Log stored event after extraction
+    const storedPayload = event.payload as any;
+    const storedContentLen = typeof storedPayload.encryptedContent === 'string' ? storedPayload.encryptedContent.length : 0;
+    const storedHasChunks = !!storedPayload.__chunks_encryptedContent;
+    console.log(`[Ephemeral] 📝 appendEvent ${event.eventId.substring(0,8)}... POST-extraction stored: contentLen=${storedContentLen}, hasChunks=${storedHasChunks}`);
 
     // Persist to disk (with extracted references – lightweight)
     await this.persistToDisk();
@@ -414,6 +425,13 @@ export class EphemeralEventStore extends EventEmitter {
     // Emit the FULL event (with original content) for broadcast to peer nodes.
     // Local in-memory copy keeps the lightweight __contentRef: placeholders.
     const broadcastEvent = { ...event, payload: broadcastPayload };
+
+    // DEBUG: Log broadcast event content sizes
+    const bcPayload = broadcastEvent.payload as any;
+    const bcContentLen = typeof bcPayload.encryptedContent === 'string' ? bcPayload.encryptedContent.length : 0;
+    const bcIsChunked = typeof bcPayload.encryptedContent === 'string' && bcPayload.encryptedContent.startsWith('__chunked:');
+    console.log(`[Ephemeral] 📤 appendEvent ${event.eventId.substring(0,8)}... BROADCAST: contentLen=${bcContentLen}, isChunked=${bcIsChunked}`);
+
     this.emit('event', broadcastEvent);
     this.emit(eventType, broadcastEvent);
 
@@ -1079,6 +1097,14 @@ export class EphemeralEventStore extends EventEmitter {
       return false;
     }
 
+    // DEBUG: Log incoming content sizes
+    const p = event.payload as any;
+    const contentLen = typeof p?.encryptedContent === 'string' ? p.encryptedContent.length : 0;
+    const forSenderLen = typeof p?.encryptedForSender === 'string' ? p.encryptedForSender.length : 0;
+    const hasChunksField = !!p?.__chunks_encryptedContent;
+    const isChunkedMarker = typeof p?.encryptedContent === 'string' && p.encryptedContent.startsWith('__chunked:');
+    console.log(`[Ephemeral] 📥 importEvent ${event.eventId.substring(0,8)}... contentLen=${contentLen}, forSenderLen=${forSenderLen}, hasChunksField=${hasChunksField}, isChunkedMarker=${isChunkedMarker}`);
+
     // Store event
     this.events.set(event.eventId, event);
 
@@ -1087,6 +1113,13 @@ export class EphemeralEventStore extends EventEmitter {
 
     // Extract large content to disk (prevents OOM from holding large payloads in memory)
     await this.extractLargeContent(event);
+
+    // DEBUG: Log content after extraction
+    const postPayload = event.payload as any;
+    const postContentLen = typeof postPayload?.encryptedContent === 'string' ? postPayload.encryptedContent.length : 0;
+    const postHasChunks = !!postPayload?.__chunks_encryptedContent;
+    const postChunksLen = Array.isArray(postPayload?.__chunks_encryptedContent) ? postPayload.__chunks_encryptedContent.length : 0;
+    console.log(`[Ephemeral] 📥 importEvent ${event.eventId.substring(0,8)}... POST-extraction: contentLen=${postContentLen}, hasChunks=${postHasChunks}, chunksCount=${postChunksLen}`);
 
     // Persist to disk
     await this.persistToDisk();
@@ -1232,9 +1265,12 @@ export class EphemeralEventStore extends EventEmitter {
     if (!payload) return;
 
     const fields = ['encryptedContent', 'encryptedForSender'];
+    console.log(`[Ephemeral] 🔧 chunkLargeContent called for event ${event.eventId.substring(0,8)}...`);
 
     for (const field of fields) {
       const value = (payload as any)[field];
+      const valueLen = typeof value === 'string' ? value.length : 0;
+      console.log(`[Ephemeral]   - ${field}: len=${valueLen}, threshold=${CONTENT_SIZE_THRESHOLD}, isChunked=${this.isChunked(value)}`);
       if (typeof value !== 'string' || value.length < CONTENT_SIZE_THRESHOLD) continue;
       if (this.isChunked(value)) continue; // Already chunked
 
@@ -1246,7 +1282,7 @@ export class EphemeralEventStore extends EventEmitter {
       // Replace original field with marker showing chunk count
       (payload as any)[field] = `${CHUNK_PREFIX}${chunks.length}`;
       
-      console.log(`[Ephemeral] Chunked ${field} into ${chunks.length} chunks (${value.length} chars)`);
+      console.log(`[Ephemeral] ✅ Chunked ${field} into ${chunks.length} chunks (${value.length} chars)`);
     }
 
     // Handle group messages with encryptedContentByMember
@@ -1279,10 +1315,17 @@ export class EphemeralEventStore extends EventEmitter {
     const fields = ['encryptedContent', 'encryptedForSender'];
     let needsReassembly = false;
 
+    // DEBUG: Log all payload keys to see what's available
+    const payloadKeys = Object.keys(payload);
+    console.log(`[Ephemeral] 🔍 reassembleEventContent ${event.eventId.substring(0,8)}... payloadKeys=${payloadKeys.join(',')}`);
+
     for (const field of fields) {
       if (this.isChunked((payload as any)[field])) {
         needsReassembly = true;
-        break;
+        const chunkFieldName = this.getChunkFieldName(field);
+        const hasChunks = !!(payload as any)[chunkFieldName];
+        const chunksLen = Array.isArray((payload as any)[chunkFieldName]) ? (payload as any)[chunkFieldName].length : 0;
+        console.log(`[Ephemeral] 🔍 Field ${field} isChunked=true, chunkField=${chunkFieldName}, hasChunks=${hasChunks}, chunksLen=${chunksLen}`);
       }
     }
 
@@ -1361,9 +1404,18 @@ export class EphemeralEventStore extends EventEmitter {
       if (typeof value === 'string' && value.startsWith(CONTENT_REF_PREFIX)) hasLegacyRefs = true;
     }
 
+    // DEBUG: Log restore attempt
+    const p = payload as any;
+    const contentVal = typeof p?.encryptedContent === 'string' ? p.encryptedContent.substring(0, 50) : 'N/A';
+    const hasChunksField = !!p?.__chunks_encryptedContent;
+    console.log(`[Ephemeral] 🔄 restoreEventContent ${event.eventId.substring(0,8)}... hasChunks=${hasChunks}, hasLegacyRefs=${hasLegacyRefs}, hasChunksField=${hasChunksField}, content=${contentVal}`);
+
     // Handle new chunked format
     if (hasChunks) {
-      return this.reassembleEventContent(event);
+      const restored = this.reassembleEventContent(event);
+      const restoredLen = typeof (restored.payload as any)?.encryptedContent === 'string' ? (restored.payload as any).encryptedContent.length : 0;
+      console.log(`[Ephemeral] ✅ Reassembled content, new length=${restoredLen}`);
+      return restored;
     }
 
     // Handle legacy file-based format (backward compatibility)
