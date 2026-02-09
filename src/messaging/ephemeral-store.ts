@@ -208,9 +208,13 @@ export interface OnlineStatusPayload {
   lastSeen: number;
 }
 
-// Content extraction threshold - payloads larger than this are stored in separate files
-// to prevent blocking the event loop during JSON serialization / structured clone
-const CONTENT_SIZE_THRESHOLD = 512 * 1024; // 512K characters (~384KB)
+// Content chunking for large payloads - ensures full replication across all nodes
+// Chunks are stored INLINE in the event (not local files) so they replicate with the event
+const CHUNK_SIZE = 256 * 1024; // 256KB per chunk - small enough to broadcast without blocking
+const CHUNK_PREFIX = '__chunked:';
+const CONTENT_SIZE_THRESHOLD = CHUNK_SIZE; // Threshold for chunking = chunk size
+
+// Legacy content ref (for backward compatibility during migration)
 const CONTENT_REF_PREFIX = '__contentRef:';
 const CONTENT_REF_SUFFIX = '__';
 
@@ -413,7 +417,10 @@ export class EphemeralEventStore extends EventEmitter {
     this.emit('event', broadcastEvent);
     this.emit(eventType, broadcastEvent);
 
-    return event;
+    // Return the FULL-CONTENT event so callers (api-server, operator-node) can
+    // broadcast it to peer nodes with the actual media data intact.
+    // The in-memory stored copy retains lightweight __contentRef: placeholders.
+    return broadcastEvent;
   }
 
   /**
@@ -1178,16 +1185,49 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   // ============================================================
-  // CONTENT EXTRACTION - Store large payloads in separate files
-  // to prevent blocking the event loop during serialization
+  // CONTENT CHUNKING - Split large payloads into chunks for replication
+  // Chunks are stored INLINE in the event, ensuring full replication across all nodes
   // ============================================================
 
   /**
-   * Extract large content from an event to disk files.
-   * Modifies the event payload IN-PLACE, replacing large string fields with file references.
-   * This keeps the in-memory events lightweight for fast serialization.
+   * Split a large string into chunks for inline storage.
    */
-  async extractLargeContent(event: EphemeralEvent): Promise<void> {
+  private chunkContent(content: string): string[] {
+    const chunks: string[] = [];
+    for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+      chunks.push(content.slice(i, i + CHUNK_SIZE));
+    }
+    return chunks;
+  }
+
+  /**
+   * Reassemble chunks back into the original content.
+   */
+  private reassembleChunks(chunks: string[]): string {
+    return chunks.join('');
+  }
+
+  /**
+   * Check if a field value is chunked.
+   */
+  private isChunked(value: any): boolean {
+    return typeof value === 'string' && value.startsWith(CHUNK_PREFIX);
+  }
+
+  /**
+   * Get the chunk field name for a given field.
+   */
+  private getChunkFieldName(field: string): string {
+    return `__chunks_${field}`;
+  }
+
+  /**
+   * Chunk large content fields in an event payload.
+   * Large content is split into chunks and stored in a parallel array field.
+   * The original field gets a marker indicating it's chunked.
+   * This ensures the chunks travel WITH the event during broadcast/replication.
+   */
+  async chunkLargeContent(event: EphemeralEvent): Promise<void> {
     const payload = event.payload;
     if (!payload) return;
 
@@ -1196,76 +1236,154 @@ export class EphemeralEventStore extends EventEmitter {
     for (const field of fields) {
       const value = (payload as any)[field];
       if (typeof value !== 'string' || value.length < CONTENT_SIZE_THRESHOLD) continue;
-      if (value.startsWith(CONTENT_REF_PREFIX)) continue; // Already extracted
+      if (this.isChunked(value)) continue; // Already chunked
 
-      const hash = createHash('sha256').update(`${event.eventId}:${field}`).digest('hex').slice(0, 16);
-      const contentPath = path.join(this.contentDir, `${hash}.bin`);
-
-      try {
-        await fs.promises.writeFile(contentPath, value);
-        (payload as any)[field] = `${CONTENT_REF_PREFIX}${hash}${CONTENT_REF_SUFFIX}`;
-      } catch (e: any) {
-        console.error(`[Ephemeral] Failed to extract content for ${event.eventId}:${field}: ${e.message}`);
-      }
+      const chunks = this.chunkContent(value);
+      const chunkFieldName = this.getChunkFieldName(field);
+      
+      // Store chunks inline in the payload
+      (payload as any)[chunkFieldName] = chunks;
+      // Replace original field with marker showing chunk count
+      (payload as any)[field] = `${CHUNK_PREFIX}${chunks.length}`;
+      
+      console.log(`[Ephemeral] Chunked ${field} into ${chunks.length} chunks (${value.length} chars)`);
     }
 
-    // Also handle group messages with encryptedContentByMember
+    // Handle group messages with encryptedContentByMember
     if ((payload as any).encryptedContentByMember) {
       const byMember = (payload as any).encryptedContentByMember;
+      if (!(payload as any).__chunks_byMember) {
+        (payload as any).__chunks_byMember = {};
+      }
+      
       for (const memberId of Object.keys(byMember)) {
         const value = byMember[memberId];
         if (typeof value !== 'string' || value.length < CONTENT_SIZE_THRESHOLD) continue;
-        if (value.startsWith(CONTENT_REF_PREFIX)) continue;
+        if (this.isChunked(value)) continue;
 
-        const hash = createHash('sha256').update(`${event.eventId}:member:${memberId}`).digest('hex').slice(0, 16);
-        const contentPath = path.join(this.contentDir, `${hash}.bin`);
-
-        try {
-          await fs.promises.writeFile(contentPath, value);
-          byMember[memberId] = `${CONTENT_REF_PREFIX}${hash}${CONTENT_REF_SUFFIX}`;
-        } catch (e: any) {
-          console.error(`[Ephemeral] Failed to extract group content: ${e.message}`);
-        }
+        const chunks = this.chunkContent(value);
+        (payload as any).__chunks_byMember[memberId] = chunks;
+        byMember[memberId] = `${CHUNK_PREFIX}${chunks.length}`;
       }
     }
   }
 
   /**
-   * Restore large content from disk files for an event.
-   * Returns a CLONE of the event with content restored (does not modify the original).
+   * Reassemble chunked content in an event.
+   * Returns a CLONE of the event with chunks reassembled (does not modify original).
    */
-  async restoreEventContent(event: EphemeralEvent): Promise<EphemeralEvent> {
+  reassembleEventContent(event: EphemeralEvent): EphemeralEvent {
     const payload = event.payload;
     if (!payload) return event;
 
-    // Quick check if any fields need restoration
     const fields = ['encryptedContent', 'encryptedForSender'];
-    let needsRestore = false;
+    let needsReassembly = false;
 
     for (const field of fields) {
-      const value = (payload as any)[field];
-      if (typeof value === 'string' && value.startsWith(CONTENT_REF_PREFIX) && value.endsWith(CONTENT_REF_SUFFIX)) {
-        needsRestore = true;
+      if (this.isChunked((payload as any)[field])) {
+        needsReassembly = true;
         break;
       }
     }
 
-    // Check group message fields
-    if (!needsRestore && (payload as any).encryptedContentByMember) {
-      const byMember = (payload as any).encryptedContentByMember;
-      for (const value of Object.values(byMember)) {
-        if (typeof value === 'string' && (value as string).startsWith(CONTENT_REF_PREFIX)) {
-          needsRestore = true;
+    if (!needsReassembly && (payload as any).encryptedContentByMember) {
+      for (const value of Object.values((payload as any).encryptedContentByMember)) {
+        if (this.isChunked(value)) {
+          needsReassembly = true;
           break;
         }
       }
     }
 
-    if (!needsRestore) return event;
+    if (!needsReassembly) return event;
 
-    // Clone the event and payload
     const clonedPayload = { ...payload };
     const clonedEvent = { ...event, payload: clonedPayload };
+
+    for (const field of fields) {
+      if (!this.isChunked((clonedPayload as any)[field])) continue;
+      
+      const chunkFieldName = this.getChunkFieldName(field);
+      const chunks = (clonedPayload as any)[chunkFieldName];
+      
+      if (Array.isArray(chunks) && chunks.length > 0) {
+        (clonedPayload as any)[field] = this.reassembleChunks(chunks);
+        delete (clonedPayload as any)[chunkFieldName];
+      } else {
+        console.warn(`[Ephemeral] Missing chunks for ${field} in event ${event.eventId}`);
+      }
+    }
+
+    if ((clonedPayload as any).encryptedContentByMember && (clonedPayload as any).__chunks_byMember) {
+      const byMember = { ...(clonedPayload as any).encryptedContentByMember };
+      const chunksByMember = (clonedPayload as any).__chunks_byMember;
+      (clonedPayload as any).encryptedContentByMember = byMember;
+
+      for (const memberId of Object.keys(byMember)) {
+        if (!this.isChunked(byMember[memberId])) continue;
+        
+        const chunks = chunksByMember[memberId];
+        if (Array.isArray(chunks) && chunks.length > 0) {
+          byMember[memberId] = this.reassembleChunks(chunks);
+        }
+      }
+      
+      delete (clonedPayload as any).__chunks_byMember;
+    }
+
+    return clonedEvent;
+  }
+
+  /**
+   * Legacy: Extract large content to disk files (for backward compatibility).
+   * New code uses chunkLargeContent instead.
+   */
+  async extractLargeContent(event: EphemeralEvent): Promise<void> {
+    // Use new chunking system instead of file-based extraction
+    await this.chunkLargeContent(event);
+  }
+
+  /**
+   * Restore/reassemble content for an event.
+   * Handles both new chunked format and legacy file-based format.
+   */
+  async restoreEventContent(event: EphemeralEvent): Promise<EphemeralEvent> {
+    const payload = event.payload;
+    if (!payload) return event;
+
+    const fields = ['encryptedContent', 'encryptedForSender'];
+    let hasChunks = false;
+    let hasLegacyRefs = false;
+
+    for (const field of fields) {
+      const value = (payload as any)[field];
+      if (this.isChunked(value)) hasChunks = true;
+      if (typeof value === 'string' && value.startsWith(CONTENT_REF_PREFIX)) hasLegacyRefs = true;
+    }
+
+    // Handle new chunked format
+    if (hasChunks) {
+      return this.reassembleEventContent(event);
+    }
+
+    // Handle legacy file-based format (backward compatibility)
+    if (hasLegacyRefs) {
+      return this.restoreLegacyContent(event);
+    }
+
+    return event;
+  }
+
+  /**
+   * Legacy: Restore content from disk files (for backward compatibility with old events).
+   */
+  private async restoreLegacyContent(event: EphemeralEvent): Promise<EphemeralEvent> {
+    const payload = event.payload;
+    if (!payload) return event;
+
+    const clonedPayload = { ...payload };
+    const clonedEvent = { ...event, payload: clonedPayload };
+    const fields = ['encryptedContent', 'encryptedForSender'];
 
     for (const field of fields) {
       const value = (clonedPayload as any)[field];
@@ -1277,11 +1395,10 @@ export class EphemeralEventStore extends EventEmitter {
       try {
         (clonedPayload as any)[field] = await fs.promises.readFile(contentPath, 'utf8');
       } catch (e: any) {
-        console.warn(`[Ephemeral] Content file missing for ${hash}, field ${field}`);
+        console.warn(`[Ephemeral] Legacy content file missing for ${hash}, field ${field}`);
       }
     }
 
-    // Restore group message fields
     if ((clonedPayload as any).encryptedContentByMember) {
       const byMember = { ...(clonedPayload as any).encryptedContentByMember };
       (clonedPayload as any).encryptedContentByMember = byMember;
@@ -1296,7 +1413,7 @@ export class EphemeralEventStore extends EventEmitter {
         try {
           byMember[memberId] = await fs.promises.readFile(contentPath, 'utf8');
         } catch (e: any) {
-          console.warn(`[Ephemeral] Content file missing for ${hash}, member ${memberId}`);
+          console.warn(`[Ephemeral] Legacy content file missing for ${hash}, member ${memberId}`);
         }
       }
     }

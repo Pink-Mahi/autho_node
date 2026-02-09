@@ -4495,7 +4495,9 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
+        const resolvedAccountId = String((account as any).accountId || accountId).trim();
         const currentBalance = (account as any).serviceBalanceSats || 0;
+        console.log(`[Premium] Account ${resolvedAccountId} (lookup: ${accountId}) balance: ${currentBalance} sats, required: ${actionCost}`);
         // When amountSats is explicitly provided this is a relay from a gateway that
         // already validated the user's balance.  Skip the operator-side balance check
         // because the operator ledger may not have received funding events yet.
@@ -4519,7 +4521,7 @@ export class OperatorNode extends EventEmitter {
             operatorId: process.env.OPERATOR_ID || 'operator-1',
             publicKey: this.config.publicKey || '',
             signature: createHash('sha256')
-              .update(`ACCOUNT_SERVICE_BALANCE_USED:${accountId}:${actionPurpose}:${tier || 'none'}:${actionCost}:${now}`)
+              .update(`ACCOUNT_SERVICE_BALANCE_USED:${resolvedAccountId}:${actionPurpose}:${tier || 'none'}:${actionCost}:${now}`)
               .digest('hex'),
           },
         ];
@@ -4528,7 +4530,7 @@ export class OperatorNode extends EventEmitter {
             type: EventType.ACCOUNT_SERVICE_BALANCE_USED,
             timestamp: now,
             nonce,
-            accountId: String(accountId),
+            accountId: resolvedAccountId,
             amountSats: actionCost,
             action: actionPurpose,
             actionId: `${tier || 'none'}_${fileSize || 0}_${now}`,
@@ -6753,12 +6755,16 @@ export class OperatorNode extends EventEmitter {
             break;
           }
 
+          // Clone payload before importEvent mutates it via extractLargeContent
+          // (replaces large strings with __contentRef: placeholders on disk).
+          // We need the full content for re-broadcast to other peer nodes.
+          const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
           const imported = await this.ephemeralStore!.importEvent(eventData);
 
           if (imported) {
             console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from ${sourceOperatorId}: ${eventData.eventId}`);
-            // Re-broadcast to other peers (but not back to source)
-            this.broadcastEphemeralEvent(eventData, sourceOperatorId);
+            // Re-broadcast the FULL copy to other peers (but not back to source)
+            this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
           }
         } catch (e: any) {
           console.log(`[Ephemeral] Error importing event:`, e?.message);
@@ -6771,13 +6777,16 @@ export class OperatorNode extends EventEmitter {
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
           const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
 
+          // Restore content from disk before sending - in-memory events have __contentRef: placeholders
+          const eventsWithContent = await this.ephemeralStore!.restoreEventsContent(events);
+
           ws.send(JSON.stringify({
             type: 'ephemeral_sync_response',
-            events,
+            events: eventsWithContent,
             sinceTimestamp,
             latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
           }));
-          console.log(`[Ephemeral] 📤 Sent ${events.length} events in sync response`);
+          console.log(`[Ephemeral] 📤 Sent ${eventsWithContent.length} events in sync response (content restored)`);
         } catch (e: any) {
           console.log(`[Ephemeral] Error handling sync request:`, e?.message);
         }
@@ -7240,15 +7249,18 @@ export class OperatorNode extends EventEmitter {
             break;
           }
 
+          // Clone payload before importEvent mutates it via extractLargeContent
+          const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
+
           // Import the event (with dedupe)
           const imported = await this.ephemeralStore!.importEvent(eventData);
 
           if (imported) {
             console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from peer ${sourceOperatorId}: ${eventData.eventId}`);
 
-            // Re-broadcast to other peers (gossip protocol)
+            // Re-broadcast the FULL copy to other peers (gossip protocol)
             // Don't send back to the source
-            this.broadcastEphemeralEvent(eventData, sourceOperatorId);
+            this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
 
             // Send ack back
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -7275,10 +7287,13 @@ export class OperatorNode extends EventEmitter {
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
           const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
 
+          // Restore content from disk before sending - in-memory events have __contentRef: placeholders
+          const eventsWithContent = await this.ephemeralStore!.restoreEventsContent(events);
+
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
               type: 'ephemeral_sync_response',
-              events,
+              events: eventsWithContent,
               sinceTimestamp,
               latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
             }));
@@ -7604,9 +7619,11 @@ export class OperatorNode extends EventEmitter {
           const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
           const eventData = message?.event as EphemeralEvent;
           if (eventData && eventData.eventId && eventData.eventType && this.ephemeralStore) {
+            // Clone payload before importEvent mutates it via extractLargeContent
+            const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
             const imported = await this.ephemeralStore.importEvent(eventData);
             if (imported) {
-              this.broadcastEphemeralEvent(eventData, sourceOperatorId, true);
+              this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId, true);
             }
           }
         } catch (e: any) {
@@ -7619,12 +7636,16 @@ export class OperatorNode extends EventEmitter {
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
           const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
 
+          // Restore content from disk before sending - in-memory events have __contentRef: placeholders
+          const eventsWithContent = await this.ephemeralStore!.restoreEventsContent(events);
+
           this.mainSeedWs?.send(JSON.stringify({
             type: 'ephemeral_sync_response',
-            events,
+            events: eventsWithContent,
             sinceTimestamp,
             latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
           }));
+          console.log(`[Ephemeral] 📤 Sent ${eventsWithContent.length} events in sync response to seed (content restored)`);
         } catch (e: any) {
           console.log(`[Ephemeral] Error handling seed sync request:`, e?.message);
         }
