@@ -393,17 +393,25 @@ export class EphemeralEventStore extends EventEmitter {
       await this.enforceGroupMediaLimits(payload.groupId, payload.mediaType);
     }
 
-    // Extract large content (videos, photos) to disk files BEFORE persist/broadcast.
+    // Save a shallow clone of the payload BEFORE extraction so we can broadcast
+    // the full content to peer nodes. extractLargeContent mutates payload in-place,
+    // replacing large strings with __contentRef: placeholders.  Peer nodes need
+    // the real content so they can store it on their own disks.
+    const broadcastPayload = { ...event.payload };
+
+    // Extract large content (videos, photos) to disk files.
     // This keeps in-memory events lightweight, preventing OOM and event-loop blocking
     // during JSON serialization and structured clone to worker threads.
     await this.extractLargeContent(event);
 
-    // Persist to disk
+    // Persist to disk (with extracted references – lightweight)
     await this.persistToDisk();
 
-    // Emit event for real-time delivery
-    this.emit('event', event);
-    this.emit(eventType, event);
+    // Emit the FULL event (with original content) for broadcast to peer nodes.
+    // Local in-memory copy keeps the lightweight __contentRef: placeholders.
+    const broadcastEvent = { ...event, payload: broadcastPayload };
+    this.emit('event', broadcastEvent);
+    this.emit(eventType, broadcastEvent);
 
     return event;
   }

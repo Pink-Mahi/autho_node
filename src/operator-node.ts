@@ -4475,9 +4475,23 @@ export class OperatorNode extends EventEmitter {
         }
 
         // For premium tiers, check account balance and deduct
-        const account = this.state.accounts.get(String(accountId));
+        let account = this.state.accounts.get(String(accountId));
         if (!account) {
-          res.status(404).json({ success: false, error: 'Account not found' });
+          // Try alternate lookups (walletAddress, identityAddress, paymentAddress)
+          for (const [key, acc] of this.state.accounts.entries()) {
+            const accAny = acc as any;
+            if (accAny.walletAddress === accountId ||
+                accAny.identityAddress === accountId ||
+                accAny.paymentAddress === accountId) {
+              account = acc;
+              console.log(`[Premium] Found account by alternate key: ${key} for lookup: ${accountId}`);
+              break;
+            }
+          }
+        }
+        if (!account) {
+          console.log(`[Premium] Account not found for ID: ${accountId}, total accounts: ${this.state.accounts.size}`);
+          res.status(404).json({ success: false, error: 'Account not found', accountId });
           return;
         }
 
@@ -4510,17 +4524,23 @@ export class OperatorNode extends EventEmitter {
           },
         ];
 
-        await this.canonicalEventStore.appendEvent(
-          {
+        const eventPayload = {
             type: EventType.ACCOUNT_SERVICE_BALANCE_USED,
             timestamp: now,
             nonce,
             accountId: String(accountId),
             amountSats: actionCost,
-            purpose: actionPurpose,
-          } as any,
-          signatures
-        );
+            action: actionPurpose,
+            actionId: `${tier || 'none'}_${fileSize || 0}_${now}`,
+          };
+
+        await this.canonicalEventStore.appendEvent(eventPayload as any, signatures);
+
+        // Forward deduction event to seed node so canonical ledger stays in sync
+        const seedResult = await this.submitCanonicalEventToSeed(eventPayload, signatures);
+        if (!seedResult.ok) {
+          console.warn(`[Premium] Failed to sync deduction to seed: ${seedResult.error}`);
+        }
 
         // Update in-memory state immediately so UI/gateways see the deduction without a full rebuild
         (account as any).serviceBalanceSats = currentBalance - actionCost;
@@ -4529,7 +4549,7 @@ export class OperatorNode extends EventEmitter {
 
         this.broadcastRegistryUpdate();
 
-        console.log(`[Premium] ${actionPurpose}: ${actionCost} sats deducted from account ${accountId} (tier=${tier || 'n/a'})`);
+        console.log(`[Premium] ${actionPurpose}: ${actionCost} sats deducted from account ${accountId} (tier=${tier || 'n/a'}, synced=${seedResult.ok})`);
 
         res.json({
           success: true,
