@@ -4393,6 +4393,50 @@ export class OperatorNode extends EventEmitter {
     // PREMIUM SERVICE ENDPOINTS
     // ============================================================
 
+    // Get account service balance (needed by client-side fetchServiceBalance)
+    this.app.get('/api/accounts/:accountId/service-balance', async (req: Request, res: Response) => {
+      try {
+        const { accountId } = req.params;
+        const account = this.state.accounts.get(String(accountId));
+        if (!account) {
+          // Try alternate lookups (walletAddress, identityAddress)
+          let found: any = null;
+          for (const [key, acc] of this.state.accounts.entries()) {
+            const accAny = acc as any;
+            if (accAny.walletAddress === accountId ||
+                accAny.identityAddress === accountId ||
+                accAny.paymentAddress === accountId) {
+              found = acc;
+              break;
+            }
+          }
+          if (!found) {
+            res.status(404).json({ success: false, error: 'Account not found' });
+            return;
+          }
+          res.json({
+            success: true,
+            accountId: String(accountId),
+            serviceBalanceSats: (found as any).serviceBalanceSats || 0,
+            serviceBalanceLastFundedAt: (found as any).serviceBalanceLastFundedAt,
+            serviceBalanceTotalFundedSats: (found as any).serviceBalanceTotalFundedSats || 0,
+            serviceBalanceTotalUsedSats: (found as any).serviceBalanceTotalUsedSats || 0,
+          });
+          return;
+        }
+        res.json({
+          success: true,
+          accountId: String(accountId),
+          serviceBalanceSats: (account as any).serviceBalanceSats || 0,
+          serviceBalanceLastFundedAt: (account as any).serviceBalanceLastFundedAt,
+          serviceBalanceTotalFundedSats: (account as any).serviceBalanceTotalFundedSats || 0,
+          serviceBalanceTotalUsedSats: (account as any).serviceBalanceTotalUsedSats || 0,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     // Premium action: Generic service balance deduction (file transfer, message delete/edit, etc.)
     // Gateway relays include { accountId, tier, amountSats, action }
     this.app.post('/api/service/premium/file-transfer', async (req: Request, res: Response) => {
