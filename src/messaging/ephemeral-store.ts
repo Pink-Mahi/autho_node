@@ -1395,7 +1395,9 @@ export class EphemeralEventStore extends EventEmitter {
       try {
         (clonedPayload as any)[field] = await fs.promises.readFile(contentPath, 'utf8');
       } catch (e: any) {
-        console.warn(`[Ephemeral] Legacy content file missing for ${hash}, field ${field}`);
+        // Content file missing - set to empty to prevent raw placeholder from being shown to client
+        console.warn(`[Ephemeral] Legacy content file missing for ${hash}, field ${field} - clearing placeholder`);
+        (clonedPayload as any)[field] = '';
       }
     }
 
@@ -1413,7 +1415,9 @@ export class EphemeralEventStore extends EventEmitter {
         try {
           byMember[memberId] = await fs.promises.readFile(contentPath, 'utf8');
         } catch (e: any) {
-          console.warn(`[Ephemeral] Legacy content file missing for ${hash}, member ${memberId}`);
+          // Content file missing - set to empty to prevent raw placeholder from being shown to client
+          console.warn(`[Ephemeral] Legacy content file missing for ${hash}, member ${memberId} - clearing placeholder`);
+          byMember[memberId] = '';
         }
       }
     }
