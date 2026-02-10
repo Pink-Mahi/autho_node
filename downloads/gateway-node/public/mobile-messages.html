@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Messages - Autho</title>
-  <link rel="stylesheet" href="/css/mobile-common.css">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -1636,6 +1635,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+  <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
     let currentConversationId = null;
@@ -1654,9 +1654,9 @@
     // Helper: Check response for auth errors and redirect to login
     function checkAuthAndRedirect(response) {
       if (response.status === 401 || response.status === 403) {
-        WalletAuth.clearWallet();
+        WalletAuth.lock();
         alert('Session expired. Please log in again.');
-        window.location.href = '/m/login?redirect=/m/messages';
+        WalletAuth.requireAuth();
         return true;
       }
       return false;
@@ -1797,18 +1797,37 @@
     }
 
     async function publishMyEncryptionPublicKey() {
-      try {
-        if (!myEncryptionKeyPair) return;
-        await fetch('/api/messages/keys', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...WalletAuth.getAuthHeaders(),
-          },
-          body: JSON.stringify({ encryptionPublicKeyHex: bytesToHex(myEncryptionKeyPair.publicKey) }),
-        });
-      } catch (e) {
+      if (!myEncryptionKeyPair) return;
+      const keyHex = bytesToHex(myEncryptionKeyPair.publicKey);
+      const maxRetries = 3;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const r = await fetch('/api/messages/keys', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...WalletAuth.getAuthHeaders(),
+            },
+            body: JSON.stringify({ encryptionPublicKeyHex: keyHex }),
+          });
+          if (r.ok) {
+            console.log('[Messaging] Encryption key published successfully');
+            return;
+          }
+          const errData = await r.json().catch(() => ({}));
+          console.warn(`[Messaging] Key publish attempt ${attempt + 1} failed (${r.status}):`, errData?.error || r.statusText);
+          if (r.status === 401) {
+            // Session expired - try to re-read session from storage
+            console.warn('[Messaging] Session may be expired for key publish');
+          }
+        } catch (e) {
+          console.warn(`[Messaging] Key publish attempt ${attempt + 1} network error:`, e?.message || e);
+        }
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
       }
+      console.error('[Messaging] Failed to publish encryption key after all retries');
     }
 
     async function getRecipientEncryptionPublicKeyBytes(recipientId) {
@@ -1959,7 +1978,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       const wallet = WalletAuth.getWallet();
       if (!wallet) {
-        window.location.href = '/m/login?redirect=/m/messages';
+        WalletAuth.requireAuth();
         return;
       }
       
@@ -1981,7 +2000,7 @@
       if (!await ensureEncryptionInitialized()) {
         WalletAuth.lock();
         alert('Messaging encryption key missing. Please log in again.');
-        window.location.href = '/m/login?redirect=/m/messages';
+        WalletAuth.requireAuth();
         return;
       }
 
@@ -2040,8 +2059,8 @@
           document.getElementById('inboxStats').textContent = 
             `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`;
         } else if (data.error && data.error.includes('auth')) {
-          WalletAuth.clearWallet();
-          window.location.href = '/m/login?redirect=/m/messages';
+          WalletAuth.lock();
+          WalletAuth.requireAuth();
         }
       } catch (error) {
         console.error('Failed to load conversations:', error);
@@ -2451,7 +2470,7 @@
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
           alert('Encryption not initialized. Please log in again.');
-          window.location.href = '/m/login?redirect=/m/messages';
+          WalletAuth.requireAuth();
           console.error('SECURITY: Attempted to send group message without encryption keys');
           return;
         }
@@ -2469,10 +2488,13 @@
             encryptedContentByMember[memberId] = encrypted;
           } catch (e) {
             console.error('SECURITY: Failed to encrypt for member:', memberId, e);
-            // SECURITY: Do NOT send if encryption fails for any member
-            alert(`Failed to encrypt message for a group member. Message not sent.`);
-            return;
           }
+        }
+        
+        // SECURITY: Do NOT send if encryption fails for any member
+        if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
+          alert(`Failed to encrypt message for a group member. Message not sent.`);
+          return;
         }
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
@@ -2895,6 +2917,7 @@
 
       if (!encryptionInitPromise) {
         encryptionInitPromise = (async () => {
+          // Use messaging keys from sessionStorage (set during login)
           let messagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
           if (!messagingPrivateKey && typeof WalletAuth.ensureMessagingKeys === 'function') {
             try {
@@ -2906,6 +2929,7 @@
             throw new Error('Messaging key not found - please log in again');
           }
           myPrivateKey = messagingPrivateKey;
+          // Use the robust initialization with nacl waiting and retries
           myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
           await publishMyEncryptionPublicKey();
           return myEncryptionKeyPair;
@@ -3079,7 +3103,7 @@
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
           alert('Encryption not initialized. Please log in again.');
-          window.location.href = '/m/login?redirect=/m/messages';
+          WalletAuth.requireAuth();
           console.error('SECURITY: Attempted to send message without encryption keys');
           return;
         }
@@ -3191,7 +3215,7 @@
       
       // Generate shareable link
       const baseUrl = window.location.origin;
-      const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
+      const shareUrl = `${baseUrl}/mobile-messages.html?contact=${wallet.publicKey}`;
       document.getElementById('shareLink').value = shareUrl;
       
       // Generate QR code using qrcodejs library (same as mobile-verify.html)
@@ -3601,6 +3625,9 @@
         
         if (data.success) {
           serviceBalance = data.newBalance || (serviceBalance - requiredCost);
+          // Update the balance display in the header immediately
+          const balanceEl = document.getElementById('msgServiceBalance');
+          if (balanceEl) balanceEl.textContent = serviceBalance.toLocaleString();
           return { approved: true, cost: requiredCost, tier: requiredTier };
         } else {
           alert(data.error || 'Failed to process file transfer payment');
@@ -4053,9 +4080,7 @@
         });
         
         if (!await ensureEncryptionInitialized()) {
-          WalletAuth.lock();
-          alert('Encryption not initialized. Please log in again.');
-          window.location.href = '/m/login?redirect=/m/messages';
+          alert('Encryption not initialized. Please refresh the page and try again.');
           console.error('SECURITY: Attempted to send media without encryption keys');
           return;
         }
@@ -4383,7 +4408,10 @@
     // Fetch service balance
     async function fetchServiceBalance() {
       try {
-        const res = await fetch(`/api/service/balance`, {
+        const accountId = getServiceAccountId();
+        if (!accountId) return 0;
+
+        const res = await fetch(`/api/accounts/${accountId}/service-balance`, {
           headers: WalletAuth.getAuthHeaders(),
         });
         if (res.ok) {
@@ -4512,6 +4540,8 @@
           msgElements.forEach(el => el.remove());
           
           serviceBalance = data.newBalance || (serviceBalance - required);
+          const balEl = document.getElementById('msgServiceBalance');
+          if (balEl) balEl.textContent = serviceBalance.toLocaleString();
           hideMessageContextMenu();
         } else {
           alert(data.error || 'Failed to delete message');
@@ -4567,6 +4597,8 @@
           });
           
           serviceBalance = data.newBalance || (serviceBalance - required);
+          const balEl2 = document.getElementById('msgServiceBalance');
+          if (balEl2) balEl2.textContent = serviceBalance.toLocaleString();
         } else {
           alert(data.error || 'Failed to edit message');
         }
