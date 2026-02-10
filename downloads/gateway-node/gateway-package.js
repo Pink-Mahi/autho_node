@@ -3119,11 +3119,11 @@ class GatewayNode {
           ...conv,
           participants: [account.accountId, conv.participantId],
           participantInfo: [
-            { accountId: account.accountId, displayName: 'You' },
-            { accountId: conv.participantId, displayName: conv.participantId.substring(0, 12) + '...' },
+            { accountId: account.accountId, displayName: this.resolveDisplayName(account.accountId) },
+            { accountId: conv.participantId, displayName: this.resolveDisplayName(conv.participantId) },
           ],
           lastMessage: conv.lastMessageAt ? { timestamp: conv.lastMessageAt, payload: { itemId: conv.itemId } } : null,
-          unreadCount: 0,
+          unreadCount: conv.unreadCount || 0,
         }));
         res.json({ success: true, conversations });
       } catch (error) {
@@ -7219,14 +7219,31 @@ class GatewayNode {
   broadcastEphemeralEvent(event) {
     const message = { type: 'ephemeral_event', event };
     
-    // Broadcast to connected operators
+    // Broadcast to incoming peer connections
     this.broadcastToPeers(message);
+    
+    // Broadcast to operator WebSocket connections (outgoing)
+    this.broadcastToOperatorConnections(message);
     
     // Broadcast to gateway mesh peers
     this.broadcastToGatewayPeers(message);
     
     // Broadcast to local WebSocket clients
     this.broadcastToLocalClients(message);
+  }
+
+  broadcastToOperatorConnections(message) {
+    if (!this.operatorConnections || this.operatorConnections.size === 0) return;
+    const msgStr = JSON.stringify(message);
+    for (const [operatorId, conn] of this.operatorConnections) {
+      try {
+        if (conn.ws && conn.ws.readyState === WebSocket.OPEN) {
+          conn.ws.send(msgStr);
+        }
+      } catch (e) {
+        console.error(`Failed to send to operator ${operatorId}:`, e.message);
+      }
+    }
   }
 
   broadcastToLocalClients(message) {
@@ -7253,6 +7270,27 @@ class GatewayNode {
   // ============================================================
   // MESSAGING API HELPER METHODS
   // ============================================================
+
+  resolveDisplayName(participantId) {
+    if (!participantId) return 'Unknown';
+    const accounts = this.registryData?.accounts || {};
+    // Direct lookup by accountId
+    const acc = accounts[participantId];
+    if (acc) {
+      return acc.username || acc.companyName || acc.displayName || participantId.substring(0, 12) + '...';
+    }
+    // Search by walletAddress or publicKey
+    for (const key of Object.keys(accounts)) {
+      const a = accounts[key];
+      if (!a) continue;
+      const wa = String(a.walletAddress || a.identityAddress || '').trim();
+      const pk = String(a.publicKey || a.walletPublicKey || '').trim();
+      if ((wa && wa === participantId) || (pk && pk === participantId)) {
+        return a.username || a.companyName || a.displayName || participantId.substring(0, 12) + '...';
+      }
+    }
+    return participantId.substring(0, 12) + '...';
+  }
 
   async getAccountFromSession(req) {
     const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
