@@ -6219,14 +6219,12 @@ class GatewayNode {
     switch (message.type) {
       case 'sync_response':
         console.log(`📥 Received sync data from seed: ${seed}`);
-        this.registryData = message.state || message.data || {};
-        this.convertEntriesArrays();
+        this.mergeSyncData(message.state || message.data || {});
         break;
 
       case 'sync_data':
         console.log(`📥 Received sync data from seed: ${seed}`);
-        this.registryData = message.state || message.data || {};
-        this.convertEntriesArrays();
+        this.mergeSyncData(message.state || message.data || {});
         break;
       
       case 'registry_update':
@@ -7308,6 +7306,25 @@ class GatewayNode {
   // ============================================================
   // MESSAGING API HELPER METHODS
   // ============================================================
+
+  mergeSyncData(newData) {
+    if (!newData || typeof newData !== 'object') return;
+    // Preserve existing rich data if new sync has empty collections
+    const mergeFields = ['accounts', 'items', 'operators', 'settlements', 'consignments'];
+    const prev = this.registryData || {};
+    this.registryData = { ...prev, ...newData };
+    for (const field of mergeFields) {
+      const newVal = newData[field];
+      const prevVal = prev[field];
+      // If new data has empty/missing field but we had data, keep existing
+      const newIsEmpty = !newVal || (Array.isArray(newVal) && newVal.length === 0) || (typeof newVal === 'object' && !Array.isArray(newVal) && Object.keys(newVal).length === 0);
+      const prevHasData = prevVal && ((Array.isArray(prevVal) && prevVal.length > 0) || (typeof prevVal === 'object' && !Array.isArray(prevVal) && Object.keys(prevVal).length > 0));
+      if (newIsEmpty && prevHasData) {
+        this.registryData[field] = prevVal;
+      }
+    }
+    this.convertEntriesArrays();
+  }
 
   convertEntriesArrays() {
     // Operator sends Map data as Array.from(map.entries()) → [[key, value], ...]
