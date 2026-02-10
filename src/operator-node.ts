@@ -6977,11 +6977,20 @@ export class OperatorNode extends EventEmitter {
         };
         const msgStr = JSON.stringify(message);
 
+        // DEBUG: Log broadcast attempt
+        const seedConnected = this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN;
+        const peerCount = this.operatorPeerConnections?.size || 0;
+        const gwCount = this.gatewayConnections?.size || 0;
+        console.log(`[Ephemeral] 📡 broadcastEphemeralEvent ${event.eventId.substring(0,8)}... seedConnected=${seedConnected}, peers=${peerCount}, gateways=${gwCount}, excludeSeed=${excludeSeed}`);
+
         try {
           if (!excludeSeed && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
             this.mainSeedWs.send(msgStr);
+            console.log(`[Ephemeral] ✅ Sent to seed/gateway`);
           }
-        } catch {}
+        } catch (e: any) {
+          console.log(`[Ephemeral] ❌ Failed to send to seed:`, e?.message);
+        }
 
         // Broadcast to operator peers
         for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
