@@ -603,18 +603,23 @@
       
       // Derive messaging keypair from mnemonic (separate from BTC key, uses domain separation)
       // This key is used for E2E encrypted messaging, NOT for spending BTC
+      console.log('[Login] persistRestoredWallet - hasMnemonic:', !!walletPayload.mnemonic, 'hasAuthoBTC:', !!window.AuthoBTC, 'hasDeriveFunc:', !!window.AuthoBTC?.deriveMessagingKeyPairSync);
       if (walletPayload.mnemonic && window.AuthoBTC?.deriveMessagingKeyPairSync) {
         try {
           const msgKeys = window.AuthoBTC.deriveMessagingKeyPairSync(walletPayload.mnemonic);
+          console.log('[Login] Derived messaging keys:', !!msgKeys?.privateKeyHex, !!msgKeys?.publicKeyHex);
           if (msgKeys && msgKeys.privateKeyHex && msgKeys.publicKeyHex) {
             sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
             sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
+            console.log('[Login] Messaging keys stored in sessionStorage');
             // Publish X25519 encryption key to network immediately (like Signal does)
             publishMessagingKey(msgKeys.privateKeyHex);
           }
         } catch (e) {
           console.error('Failed to derive messaging keypair:', e);
         }
+      } else {
+        console.warn('[Login] Cannot derive messaging keys - missing mnemonic or AuthoBTC.deriveMessagingKeyPairSync');
       }
     }
 
