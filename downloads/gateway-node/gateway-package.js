@@ -7211,10 +7211,8 @@ class GatewayNode {
   generateConversationId(userId1, userId2, itemId = null) {
     const sorted = [userId1, userId2].sort();
     const base = `${sorted[0]}:${sorted[1]}`;
-    if (itemId) {
-      return `conv_item_${require('crypto').createHash('sha256').update(`${base}:${itemId}`).digest('hex').slice(0, 16)}`;
-    }
-    return `conv_${require('crypto').createHash('sha256').update(base).digest('hex').slice(0, 16)}`;
+    const suffix = itemId ? `:${itemId}` : '';
+    return require('crypto').createHash('sha256').update(base + suffix).digest('hex').substring(0, 32);
   }
 
   generateGroupId() {
