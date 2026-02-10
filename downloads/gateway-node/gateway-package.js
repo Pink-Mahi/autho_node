@@ -3478,7 +3478,7 @@ class GatewayNode {
     // Messages are created locally and broadcast to gateway mesh
     // ============================================================
 
-    // Send direct message (P2P - no operator needed)
+    // Send direct message - proxy to operator for cross-node visibility, fallback to local P2P
     this.app.post('/api/messages/send', async (req, res) => {
       try {
         const account = await this.getAccountFromSession(req);
@@ -3496,6 +3496,44 @@ class GatewayNode {
           return res.status(403).json({ success: false, error: 'You are blocked by this user' });
         }
 
+        // Try to proxy the send to an operator first (so message appears everywhere)
+        const sessionToken = req.headers['x-session-token'] || req.cookies?.sessionToken;
+        let proxied = false;
+        for (const operatorUrl of this.getCandidateOperatorUrls()) {
+          try {
+            const proxyRes = await fetch(`${operatorUrl}/api/messages/send`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-session-token': sessionToken || '',
+              },
+              body: JSON.stringify(req.body),
+            });
+            if (proxyRes.ok) {
+              const data = await proxyRes.json();
+              if (data.success) {
+                console.log(`📤 Message proxied to operator: ${operatorUrl}`);
+                // Also store locally so it shows immediately on gateway
+                const convId = data.conversationId || conversationId || this.generateConversationId(account.accountId, recipientId);
+                const localPayload = {
+                  messageId: data.messageId || this.generateMessageId(),
+                  senderId: account.accountId,
+                  recipientId,
+                  encryptedContent,
+                  encryptedForSender: encryptedForSender || encryptedContent,
+                  conversationId: convId,
+                };
+                this.createLocalEphemeralEvent('MESSAGE_SENT', localPayload, mediaType || 'TEXT');
+                return res.json(data);
+              }
+            }
+          } catch (e) {
+            console.log(`⚠️ Failed to proxy message to ${operatorUrl}: ${e.message}`);
+          }
+        }
+
+        // Fallback: create locally and broadcast via WebSocket (P2P mode)
+        console.log('📝 No operator reachable, creating message locally (P2P)');
         const messageId = this.generateMessageId();
         const convId = conversationId || this.generateConversationId(account.accountId, recipientId);
 
