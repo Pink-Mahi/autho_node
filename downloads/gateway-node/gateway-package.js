@@ -6220,11 +6220,13 @@ class GatewayNode {
       case 'sync_response':
         console.log(`📥 Received sync data from seed: ${seed}`);
         this.registryData = message.state || message.data || {};
+        this.convertEntriesArrays();
         break;
 
       case 'sync_data':
         console.log(`📥 Received sync data from seed: ${seed}`);
         this.registryData = message.state || message.data || {};
+        this.convertEntriesArrays();
         break;
       
       case 'registry_update':
@@ -7306,6 +7308,22 @@ class GatewayNode {
   // ============================================================
   // MESSAGING API HELPER METHODS
   // ============================================================
+
+  convertEntriesArrays() {
+    // Operator sends Map data as Array.from(map.entries()) → [[key, value], ...]
+    // Convert these back to plain objects for easy lookup
+    const fields = ['accounts', 'items', 'operators', 'settlements', 'consignments'];
+    for (const field of fields) {
+      const val = this.registryData?.[field];
+      if (Array.isArray(val) && val.length > 0 && Array.isArray(val[0])) {
+        const obj = {};
+        for (const [k, v] of val) {
+          obj[k] = v;
+        }
+        this.registryData[field] = obj;
+      }
+    }
+  }
 
   resolveDisplayName(participantId) {
     if (!participantId) return 'Unknown';
