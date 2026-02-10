@@ -3113,7 +3113,18 @@ class GatewayNode {
         if (!account) {
           return res.status(401).json({ success: false, error: 'Authentication required' });
         }
-        const conversations = this.getUserConversations(account.accountId);
+        const rawConversations = this.getUserConversations(account.accountId);
+        // Enrich with participantInfo to match main node format expected by frontend
+        const conversations = rawConversations.map(conv => ({
+          ...conv,
+          participants: [account.accountId, conv.participantId],
+          participantInfo: [
+            { accountId: account.accountId, displayName: 'You' },
+            { accountId: conv.participantId, displayName: conv.participantId.substring(0, 12) + '...' },
+          ],
+          lastMessage: conv.lastMessageAt ? { timestamp: conv.lastMessageAt, payload: { itemId: conv.itemId } } : null,
+          unreadCount: 0,
+        }));
         res.json({ success: true, conversations });
       } catch (error) {
         res.status(500).json({ success: false, error: error.message });
