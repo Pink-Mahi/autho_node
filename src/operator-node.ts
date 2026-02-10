@@ -3179,11 +3179,11 @@ export class OperatorNode extends EventEmitter {
         const headers: Record<string, string> = authHeader ? { 'Authorization': authHeader } : {};
         
         const response = await fetch(targetUrl, { method: 'GET', headers });
-        const data = await response.json();
+        const data = await response.json() as Record<string, unknown>;
 
         // Enhance with operator's own main seed connection status
         const enhancedData = {
-          ...(typeof data === 'object' && data !== null ? data : {}),
+          ...data,
           mainSeedConnected: this.isConnectedToMain,
           mainSeedUptimeMs: this.isConnectedToMain && this.state.lastSyncedAt ? Date.now() - this.state.lastSyncedAt : 0
         };
@@ -3296,7 +3296,7 @@ export class OperatorNode extends EventEmitter {
                 body: JSON.stringify({ sessionToken }),
               });
               if (seedRes.ok) {
-                const data = await seedRes.json();
+                const data = await seedRes.json() as { success?: boolean; account?: { accountId: string } };
                 if (data.success && data.account) {
                   // Cache the session locally
                   const now = Date.now();
