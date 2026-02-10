@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Messages - Autho</title>
+  <link rel="stylesheet" href="/css/mobile-common.css">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -1635,7 +1636,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
-  <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
     let currentConversationId = null;
@@ -1654,9 +1654,9 @@
     // Helper: Check response for auth errors and redirect to login
     function checkAuthAndRedirect(response) {
       if (response.status === 401 || response.status === 403) {
-        WalletAuth.lock();
+        WalletAuth.clearWallet();
         alert('Session expired. Please log in again.');
-        WalletAuth.requireAuth();
+        window.location.href = '/m/login?redirect=/m/messages';
         return true;
       }
       return false;
@@ -1959,7 +1959,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       const wallet = WalletAuth.getWallet();
       if (!wallet) {
-        WalletAuth.requireAuth();
+        window.location.href = '/m/login?redirect=/m/messages';
         return;
       }
       
@@ -1981,7 +1981,7 @@
       if (!await ensureEncryptionInitialized()) {
         WalletAuth.lock();
         alert('Messaging encryption key missing. Please log in again.');
-        WalletAuth.requireAuth();
+        window.location.href = '/m/login?redirect=/m/messages';
         return;
       }
 
@@ -2040,8 +2040,8 @@
           document.getElementById('inboxStats').textContent = 
             `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`;
         } else if (data.error && data.error.includes('auth')) {
-          WalletAuth.lock();
-          WalletAuth.requireAuth();
+          WalletAuth.clearWallet();
+          window.location.href = '/m/login?redirect=/m/messages';
         }
       } catch (error) {
         console.error('Failed to load conversations:', error);
@@ -2451,7 +2451,7 @@
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
           alert('Encryption not initialized. Please log in again.');
-          WalletAuth.requireAuth();
+          window.location.href = '/m/login?redirect=/m/messages';
           console.error('SECURITY: Attempted to send group message without encryption keys');
           return;
         }
@@ -2469,13 +2469,10 @@
             encryptedContentByMember[memberId] = encrypted;
           } catch (e) {
             console.error('SECURITY: Failed to encrypt for member:', memberId, e);
+            // SECURITY: Do NOT send if encryption fails for any member
+            alert(`Failed to encrypt message for a group member. Message not sent.`);
+            return;
           }
-        }
-        
-        // SECURITY: Do NOT send if encryption fails for any member
-        if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
-          alert(`Failed to encrypt message for a group member. Message not sent.`);
-          return;
         }
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
@@ -2898,7 +2895,6 @@
 
       if (!encryptionInitPromise) {
         encryptionInitPromise = (async () => {
-          // Use messaging keys from sessionStorage (set during login)
           let messagingPrivateKey = sessionStorage.getItem('autho_messaging_privateKey');
           if (!messagingPrivateKey && typeof WalletAuth.ensureMessagingKeys === 'function') {
             try {
@@ -2910,7 +2906,6 @@
             throw new Error('Messaging key not found - please log in again');
           }
           myPrivateKey = messagingPrivateKey;
-          // Use the robust initialization with nacl waiting and retries
           myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
           await publishMyEncryptionPublicKey();
           return myEncryptionKeyPair;
@@ -3084,7 +3079,7 @@
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
           alert('Encryption not initialized. Please log in again.');
-          WalletAuth.requireAuth();
+          window.location.href = '/m/login?redirect=/m/messages';
           console.error('SECURITY: Attempted to send message without encryption keys');
           return;
         }
@@ -3196,7 +3191,7 @@
       
       // Generate shareable link
       const baseUrl = window.location.origin;
-      const shareUrl = `${baseUrl}/mobile-messages.html?contact=${wallet.publicKey}`;
+      const shareUrl = `${baseUrl}/m/messages?contact=${wallet.publicKey}`;
       document.getElementById('shareLink').value = shareUrl;
       
       // Generate QR code using qrcodejs library (same as mobile-verify.html)
@@ -4060,7 +4055,7 @@
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
           alert('Encryption not initialized. Please log in again.');
-          WalletAuth.requireAuth();
+          window.location.href = '/m/login?redirect=/m/messages';
           console.error('SECURITY: Attempted to send media without encryption keys');
           return;
         }
@@ -4388,10 +4383,7 @@
     // Fetch service balance
     async function fetchServiceBalance() {
       try {
-        const accountId = getServiceAccountId();
-        if (!accountId) return 0;
-
-        const res = await fetch('/api/service/balance', {
+        const res = await fetch(`/api/service/balance`, {
           headers: WalletAuth.getAuthHeaders(),
         });
         if (res.ok) {

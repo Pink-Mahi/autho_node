@@ -15,25 +15,8 @@ const WalletAuth = {
    * Check if wallet is currently unlocked
    */
   isUnlocked() {
-    let unlocked = sessionStorage.getItem('autho_wallet_unlocked');
-    let unlockTime = sessionStorage.getItem('autho_wallet_unlock_time');
-
-    if (!unlocked || unlocked !== 'true') {
-      try {
-        const localUnlocked = localStorage.getItem('autho_wallet_unlocked');
-        const localUnlockTime = localStorage.getItem('autho_wallet_unlock_time');
-        if (localUnlocked === 'true' && localUnlockTime) {
-          const elapsed = Date.now() - parseInt(localUnlockTime);
-          const thirtyMinutes = 30 * 60 * 1000;
-          if (elapsed <= thirtyMinutes) {
-            sessionStorage.setItem('autho_wallet_unlocked', 'true');
-            sessionStorage.setItem('autho_wallet_unlock_time', localUnlockTime);
-            unlocked = 'true';
-            unlockTime = localUnlockTime;
-          }
-        }
-      } catch {}
-    }
+    const unlocked = sessionStorage.getItem('autho_wallet_unlocked');
+    const unlockTime = sessionStorage.getItem('autho_wallet_unlock_time');
     
     if (!unlocked || unlocked !== 'true') {
       return false;
@@ -77,75 +60,6 @@ const WalletAuth = {
     } catch (error) {
       console.error('Error reading wallet:', error);
       return null;
-    }
-  },
-
-  async ensureMessagingKeys() {
-    try {
-      const existing = sessionStorage.getItem('autho_messaging_privateKey');
-      if (existing) return true;
-
-      const pinHash = localStorage.getItem('autho_wallet_pin');
-      if (!pinHash) return false;
-      let pin = '';
-      try {
-        pin = atob(pinHash);
-      } catch {
-        return false;
-      }
-
-      const vaultStr = localStorage.getItem('autho_wallet_vault_local') || localStorage.getItem('autho_wallet_vault');
-      if (!vaultStr) return false;
-
-      let vault;
-      try {
-        vault = JSON.parse(vaultStr);
-      } catch {
-        return false;
-      }
-
-      const bytesFromB64 = (b64) => Uint8Array.from(atob(String(b64 || '')), (c) => c.charCodeAt(0));
-      const deriveVaultKey = async (password, saltBytes, iterations) => {
-        const enc = new TextEncoder();
-        const keyMaterial = await crypto.subtle.importKey(
-          'raw',
-          enc.encode(String(password)),
-          { name: 'PBKDF2' },
-          false,
-          ['deriveKey']
-        );
-        return crypto.subtle.deriveKey(
-          { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
-          keyMaterial,
-          { name: 'AES-GCM', length: 256 },
-          false,
-          ['decrypt']
-        );
-      };
-
-      if (!vault || vault.v !== 'AUTHO_WALLET_VAULT_V1') return false;
-      const salt = bytesFromB64(vault.kdf?.saltB64 || '');
-      const iterations = Number(vault.kdf?.iterations || 0);
-      const iv = bytesFromB64(vault.enc?.ivB64 || '');
-      const ct = bytesFromB64(vault.enc?.ctB64 || '');
-      if (!iterations) return false;
-
-      const key = await deriveVaultKey(pin, salt, iterations);
-      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-      const json = new TextDecoder().decode(pt);
-      const payload = JSON.parse(json);
-      const mnemonic = String(payload?.mnemonic || '').trim();
-      if (!mnemonic) return false;
-
-      if (!window.AuthoBTC || typeof window.AuthoBTC.deriveMessagingKeyPairSync !== 'function') return false;
-      const msgKeys = window.AuthoBTC.deriveMessagingKeyPairSync(mnemonic);
-      if (!msgKeys || !msgKeys.privateKeyHex || !msgKeys.publicKeyHex) return false;
-
-      sessionStorage.setItem('autho_messaging_privateKey', msgKeys.privateKeyHex);
-      sessionStorage.setItem('autho_messaging_publicKey', msgKeys.publicKeyHex);
-      return true;
-    } catch (e) {
-      return false;
     }
   },
 
