@@ -5,7 +5,7 @@
  * and enables the "Add to Home Screen" install prompt on mobile.
  */
 
-const CACHE_NAME = 'autho-v1';
+const CACHE_NAME = 'autho-v2';
 const OFFLINE_URL = '/mobile-entry.html';
 
 // Critical assets to pre-cache on install
@@ -79,25 +79,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache-first, fallback to network
+  // HTML pages: network-first (always get latest), cache as fallback
+  if (url.pathname.endsWith('.html') || url.pathname === '/' || event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => {
+        return caches.match(event.request).then((cached) => {
+          return cached || caches.match(OFFLINE_URL);
+        });
+      })
+    );
+    return;
+  }
+
+  // JS/JSON/static assets: cache-first, fallback to network
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
 
       return fetch(event.request).then((response) => {
-        // Cache successful responses for static assets
-        if (response.ok && !url.pathname.startsWith('/api/')) {
+        if (response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, clone);
-          });
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
       }).catch(() => {
-        // If offline and not cached, serve the offline page for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match(OFFLINE_URL);
-        }
         return new Response('Offline', { status: 503 });
       });
     })
