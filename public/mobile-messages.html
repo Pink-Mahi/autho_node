@@ -2566,37 +2566,11 @@
       }
       const paddedBytes = padMessage(messageBytes);
 
-      // ── v4: Post-quantum hybrid (NaCl + ML-KEM-768) ──
-      if (recipientKyberPubKey && window.MlKemModule && window.MlKemModule.MlKem768) {
-        try {
-          const kyber = new window.MlKemModule.MlKem768();
-          // Encapsulate: produces (kyberCiphertext, kyberSharedSecret)
-          const [kyberCt, kyberSs] = await kyber.encap(recipientKyberPubKey);
-
-          // Derive hybrid key: SHA-256(nacl_shared_secret || kyber_shared_secret)
-          // nacl_shared_secret = nacl.box.before(recipientPub, ephemeralSec)
-          const naclShared = nacl.box.before(recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
-          const combined = new Uint8Array(naclShared.length + kyberSs.length);
-          combined.set(naclShared, 0);
-          combined.set(kyberSs, naclShared.length);
-          const hybridKey = new Uint8Array(await crypto.subtle.digest('SHA-256', combined));
-
-          // AES-256-GCM encryption with hybrid key
-          const aesKey = await crypto.subtle.importKey('raw', hybridKey, 'AES-GCM', false, ['encrypt']);
-          const iv = crypto.getRandomValues(new Uint8Array(12));
-          const aesCt = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, paddedBytes));
-
-          return JSON.stringify({
-            v: 4,
-            e: nacl.util.encodeBase64(ephemeralKeyPair.publicKey),
-            k: nacl.util.encodeBase64(kyberCt),   // Kyber ciphertext
-            iv: nacl.util.encodeBase64(iv),
-            c: nacl.util.encodeBase64(aesCt),
-          });
-        } catch (e) {
-          console.warn('[Messaging] PQ hybrid encrypt failed, falling back to v3:', e.message);
-        }
-      }
+      // ── v4: Post-quantum hybrid DISABLED ──
+      // Kyber keys are random per session (not deterministic from wallet seed),
+      // so they get out of sync across nodes/logins causing decrypt failures.
+      // v3 (Curve25519 only) uses deterministic keys and always works.
+      // if (recipientKyberPubKey && window.MlKemModule && window.MlKemModule.MlKem768) { ... }
 
       // ── v3 fallback: Curve25519 only (no PQ) ──
       const encrypted = nacl.box(paddedBytes, nonce, recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
