@@ -638,12 +638,14 @@
         if (currentFilter === 'verified') params.append('verifiedOnly', 'true');
         if (currentFilter === 'official') params.append('officialOnly', 'true');
 
-        const response = await fetch(`/api/search/items?${params.toString()}`);
+        const response = await fetch(`/api/registry/items/search?${params.toString()}`);
         const data = await response.json();
 
-        if (data.success && data.results) {
-          // Extract items from search results (API returns { item: {...}, score, ... })
-          searchResults = data.results.map(r => {
+        // Handle both API formats: autho_node returns 'results', main node returns 'items'
+        const resultArray = data.results || data.items || [];
+        if (data.success && resultArray.length > 0) {
+          // Extract items from search results
+          searchResults = resultArray.map(r => {
             const item = r.item || r;
             // Flatten metadata into item for easier access
             return {
@@ -718,12 +720,24 @@
             </div>
           </div>
           <div class="result-actions">
-            <button class="action-btn message-btn" onclick="event.stopPropagation(); messageOwner('${item.itemId}', '${item.currentOwner || ''}')">
-              💬 Message Owner
-            </button>
+            <button class="action-btn message-btn" onclick="event.stopPropagation(); messageOwner('${item.itemId}', '${item.currentOwner || ''}')">💬 Message Owner</button>
           </div>
         </div>
       `).join('');
+    }
+
+    // Message item owner
+    function messageOwner(itemId, ownerId) {
+      if (typeof WalletAuth !== 'undefined' && WalletAuth.getWallet()) {
+        const wallet = WalletAuth.getWallet();
+        if (ownerId === wallet.publicKey) {
+          alert('This is your item!');
+          return;
+        }
+        window.location.href = `/mobile-messages.html?itemId=${itemId}&to=${ownerId}`;
+      } else {
+        window.location.href = `/m/login?return=${encodeURIComponent('/mobile-messages.html?itemId=' + itemId + '&to=' + ownerId)}`;
+      }
     }
 
     // View item details
@@ -911,22 +925,6 @@
         return (sats / 100000000).toFixed(2) + ' BTC';
       }
       return sats.toLocaleString() + ' sats';
-    }
-
-    // Message item owner
-    function messageOwner(itemId, ownerId) {
-      // Check if user is logged in
-      if (typeof WalletAuth !== 'undefined' && WalletAuth.getWallet()) {
-        const wallet = WalletAuth.getWallet();
-        if (ownerId === wallet.publicKey) {
-          alert('This is your item!');
-          return;
-        }
-        window.location.href = `/mobile-messages.html?itemId=${itemId}&to=${ownerId}`;
-      } else {
-        // Redirect to login first
-        window.location.href = `/m/login?return=${encodeURIComponent('/mobile-messages.html?itemId=' + itemId + '&to=' + ownerId)}`;
-      }
     }
 
     // Handle enter key in search

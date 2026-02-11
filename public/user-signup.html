@@ -445,14 +445,6 @@
 
     <script src="/wallet-generator.js"></script>
     <script>
-        // SHA256 hash helper for email privacy
-        async function sha256Hex(str) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(str);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
         let walletData = {
             mnemonic: '',
             bitcoinAddress: '',
@@ -660,16 +652,13 @@ Non-Custodial Wallet Backup
             }
 
             // Create account (send only public data to server)
-            // NOTE: Only hashes are sent - no plaintext email/username stored on ledger
             try {
-                const emailHash = await sha256Hex(userData.email.trim().toLowerCase());
-                const usernameHash = await sha256Hex(userData.username.trim().toLowerCase());
                 const response = await fetch('/api/users/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        usernameHash,  // Only hash - no plaintext username on ledger
-                        emailHash,  // Only hash - no plaintext email on ledger
+                        username: userData.username,
+                        email: userData.email,
                         password: userData.password,
                         // ONLY send public addresses - NEVER private keys!
                         bitcoinAddress: walletData.bitcoinAddress,

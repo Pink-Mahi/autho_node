@@ -282,12 +282,11 @@
                 <button class="nav-tab" onclick="switchTab('status')">🛰️ Node Status</button>
                 <button class="nav-tab" onclick="switchTab('mempool')">📦 Mempool</button>
                 <button class="nav-tab" onclick="switchTab('anchoring')">⚓ Bitcoin Anchoring</button>
-                <button class="nav-tab" onclick="switchTab('dnsseed')">🌐 DNS Seeds</button>
                 <button class="nav-tab" style="margin-left:auto; background: rgba(255, 59, 48, 0.1); border-color: #ff3b30; color: #ff3b30;" onclick="logout()">🚪 Logout</button>
             </div>
         </div>
 
-        <div class="section" id="applications-section">
+        <div class="section active" id="applications-section">
             <h2 class="section-title">🏭 Pending Role Applications</h2>
             <div class="error-message" id="appsError"></div>
             <div class="success-message" id="appsSuccess"></div>
@@ -349,9 +348,9 @@
             </div>
 
             <div style="background: rgba(52, 199, 89, 0.08); border: 1px solid rgba(52, 199, 89, 0.25); padding: 18px; border-radius: 12px; margin-bottom: 25px;">
-                <h3 style="color: #4cd964; margin-bottom: 12px; font-size: 1.1rem;">💰 Anchor Rewards</h3>
+                <h3 style="color: #4cd964; margin-bottom: 12px; font-size: 1.1rem;">💰 Fee Distribution Incentive</h3>
                 <p class="muted" style="margin-bottom: 12px;">
-                    Operators earn rewards for anchoring checkpoints. Your share is weighted by your contributions:
+                    Operators receive 40% of the 1% title-update fee. Your share is weighted by your anchor contributions:
                 </p>
                 <div style="font-size: 1.2rem; color: #4cd964; font-weight: 700; margin-top: 10px;">
                     Your Weight: <span id="myWeight">0%</span>
@@ -382,7 +381,7 @@
                         </div>
                         <div style="text-align: right;">
                             <div style="font-size: 0.9rem; color: #999;">Estimated Fee</div>
-                            <div id="estimatedFee" style="color: #4cd964; font-weight: 700; margin-top: 5px;">~150 sats</div>
+                            <div id="estimatedFee" style="color: #4cd964; font-weight: 700; margin-top: 5px;">~1,500 sats</div>
                         </div>
                     </div>
                 </div>
@@ -398,7 +397,7 @@
                 </div>
                 
                 <button id="autoAnchorBtn" class="btn" style="width: 100%; padding: 18px; font-size: 1.1rem; font-weight: 700;" onclick="startAutoAnchor()">
-                    ⚓ ANCHOR NEXT CHECKPOINT (~150 SATS)
+                    ⚓ Anchor Next Checkpoint (~1,500 sats)
                 </button>
                 
                 <p class="muted" style="margin-top: 15px; font-size: 0.85rem; text-align: center;">
@@ -461,14 +460,6 @@
                     <button class="btn btn-secondary" onclick="loadAnchorStats()">Refresh Stats</button>
                 </div>
                 <div id="anchorStatsList" class="empty-state">Loading...</div>
-            </div>
-
-            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-top: 20px;">
-                <h3 style="margin-bottom: 15px; color: #d4af37;">📜 Your Anchor History</h3>
-                <div style="display:flex; gap:10px; margin-bottom: 15px;">
-                    <button class="btn btn-secondary" onclick="loadAnchorHistory()">Refresh History</button>
-                </div>
-                <div id="anchorHistoryList" class="empty-state">Loading...</div>
             </div>
         </div>
 
@@ -555,76 +546,9 @@
             <h2 class="section-title">💰 Wallet & Earnings</h2>
             <div class="error-message" id="walletError"></div>
             <div class="success-message" id="walletSuccess"></div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 20px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button class="btn" type="button" onclick="loadWalletEarnings()">Refresh</button>
             </div>
-            
-            <!-- Balance Card -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 24px;">
-                <div style="background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%); padding: 20px; border-radius: 16px; color: #1a1a1a;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; margin-bottom: 8px;">BTC Balance</div>
-                    <div style="font-size: 1.8rem; font-weight: 700;" id="operatorBtcBalance">Loading...</div>
-                    <div style="font-size: 0.9rem; opacity: 0.8; margin-top: 4px;" id="operatorUsdBalance"></div>
-                </div>
-                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 16px;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px;">Confirmed</div>
-                    <div style="font-size: 1.4rem; font-weight: 600; color: #4cd964;" id="operatorConfirmed">-</div>
-                </div>
-                <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 16px;">
-                    <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-bottom: 8px;">Unconfirmed</div>
-                    <div style="font-size: 1.4rem; font-weight: 600; color: #f5a623;" id="operatorUnconfirmed">-</div>
-                </div>
-            </div>
-
-            <!-- Receive Section -->
-            <div style="background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.2); padding: 20px; border-radius: 16px; margin-bottom: 24px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📥 Receive BTC</h3>
-                <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
-                    <div style="flex: 1; min-width: 250px;">
-                        <div style="font-size: 0.8rem; color: #999; margin-bottom: 8px;">Your Operator Address</div>
-                        <div style="font-family: monospace; font-size: 0.85rem; word-break: break-all; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; color: #d4af37;" id="operatorReceiveAddress">Loading...</div>
-                        <button class="btn btn-secondary" style="margin-top: 10px; width: 100%;" onclick="copyOperatorAddress()">📋 Copy Address</button>
-                    </div>
-                    <div style="text-align: center;">
-                        <img id="operatorQrCode" alt="QR Code" style="width: 150px; height: 150px; border-radius: 12px; background: #fff; display: none;" />
-                        <div id="operatorQrLoading" style="width: 150px; height: 150px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 12px; color: #999;">Loading QR...</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Send Section -->
-            <div style="background: rgba(212, 175, 55, 0.05); border: 1px solid rgba(212, 175, 55, 0.2); padding: 20px; border-radius: 16px; margin-bottom: 24px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📤 Send BTC</h3>
-                <div class="form-group">
-                    <label>Recipient Address</label>
-                    <input id="operatorSendTo" type="text" placeholder="bc1q... or 1... or 3..." />
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div class="form-group">
-                        <label>Amount (sats)</label>
-                        <input id="operatorSendSats" type="number" placeholder="e.g. 50000" oninput="updateOperatorSendUsd()" />
-                    </div>
-                    <div class="form-group">
-                        <label>Amount (USD)</label>
-                        <input id="operatorSendUsd" type="number" step="0.01" placeholder="e.g. 25.00" oninput="updateOperatorSendSats()" />
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Fee Priority</label>
-                    <select id="operatorFeePriority" style="width: 100%; padding: 12px; background: rgba(42, 42, 42, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 10px; color: #fff;">
-                        <option value="low">Low (~1 sat/vB)</option>
-                        <option value="medium" selected>Medium (~5 sat/vB)</option>
-                        <option value="high">High (~10 sat/vB)</option>
-                    </select>
-                </div>
-                <div id="operatorSendFeeEstimate" style="font-size: 0.85rem; color: #999; margin-bottom: 15px;"></div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn" onclick="sendOperatorBtc()">Send BTC</button>
-                    <button class="btn btn-secondary" onclick="fillOperatorMax()">Send Max</button>
-                </div>
-                <div id="operatorSendStatus" style="margin-top: 15px; font-size: 0.9rem;"></div>
-            </div>
-
             <div id="walletPanel" class="empty-state">Open this tab to load wallet info.</div>
         </div>
 
@@ -646,12 +570,6 @@
                 <button class="btn" type="button" onclick="loadNodeStatus()">Refresh</button>
             </div>
             <div id="statusPanel" class="empty-state">Open this tab to load status.</div>
-            
-            <!-- Ledger Health Section -->
-            <div style="margin-top: 25px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px; font-size: 1.1rem;">📊 Ledger Health</h3>
-                <div id="ledgerHealthPanel" class="empty-state">Loading ledger health...</div>
-            </div>
         </div>
 
         <div class="section" id="mempool-section">
@@ -714,143 +632,9 @@
                 <a href="/mempool.html" target="_blank" class="btn btn-secondary" style="text-decoration: none;">Open Full Mempool Visualizer ↗</a>
             </div>
         </div>
-
-        <!-- DNS Seeds Section -->
-        <div class="section" id="dnsseed-section">
-            <h2 class="section-title">🌐 DNS Seed Configuration</h2>
-            <p class="muted" style="margin-bottom: 20px;">
-                DNS seeds help new nodes discover the network without hardcoded URLs. 
-                Add a TXT record to your domain so others can find your operator through DNS lookups.
-            </p>
-
-            <div class="error-message" id="dnsError"></div>
-            <div class="success-message" id="dnsSuccess"></div>
-
-            <!-- Step 1: Enter your operator URL -->
-            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px;">Step 1: Your Operator URL</h3>
-                <div class="form-group">
-                    <label>Operator Public URL</label>
-                    <input type="text" id="dnsOperatorUrl" placeholder="https://autho.yourdomain.com" />
-                    <p class="muted" style="margin-top: 8px; font-size: 0.85rem;">Enter the public URL where your operator node is accessible</p>
-                </div>
-                <button class="btn" onclick="generateDnsRecord()">Generate DNS Record</button>
-            </div>
-
-            <!-- Step 2: Copy DNS Record -->
-            <div id="dnsRecordOutput" style="display: none; background: rgba(52, 199, 89, 0.08); border: 1px solid rgba(52, 199, 89, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                <h3 style="color: #4cd964; margin-bottom: 15px;">Step 2: Add This DNS TXT Record</h3>
-                <p class="muted" style="margin-bottom: 15px;">Add this TXT record to your domain's DNS settings:</p>
-                
-                <div style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-                    <div style="display: grid; gap: 10px;">
-                        <div>
-                            <span style="color: #999; font-size: 0.85rem;">Host/Name:</span>
-                            <div style="font-family: monospace; color: #4cd964; font-size: 1.1rem; margin-top: 4px;" id="dnsHost">seed</div>
-                        </div>
-                        <div>
-                            <span style="color: #999; font-size: 0.85rem;">Type:</span>
-                            <div style="font-family: monospace; color: #d4af37; font-size: 1.1rem; margin-top: 4px;">TXT</div>
-                        </div>
-                        <div>
-                            <span style="color: #999; font-size: 0.85rem;">Value:</span>
-                            <div style="font-family: monospace; color: #fff; font-size: 0.95rem; margin-top: 4px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;" id="dnsTxtValue">-</div>
-                        </div>
-                    </div>
-                </div>
-
-                <button class="btn btn-secondary" onclick="copyDnsRecord()">📋 Copy TXT Value</button>
-            </div>
-
-            <!-- Step 3: Verify -->
-            <div id="dnsVerifySection" style="display: none; background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px;">Step 3: Verify DNS Configuration</h3>
-                <p class="muted" style="margin-bottom: 15px;">After adding the DNS record (may take up to 24 hours to propagate), click verify:</p>
-                
-                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                    <input type="text" id="dnsVerifyDomain" placeholder="seed.yourdomain.com" style="flex: 1; min-width: 200px;" />
-                    <button class="btn" onclick="verifyDnsRecord()">🔍 Verify DNS</button>
-                </div>
-
-                <div id="dnsVerifyResult" style="margin-top: 15px; display: none;">
-                    <div id="dnsVerifyStatus" style="padding: 15px; border-radius: 8px;"></div>
-                </div>
-            </div>
-
-            <!-- Known DNS Seeds -->
-            <div style="background: rgba(26, 26, 26, 0.6); border: 1px solid rgba(212, 175, 55, 0.25); padding: 20px; border-radius: 12px;">
-                <h3 style="color: #d4af37; margin-bottom: 15px;">📡 Network DNS Seeds</h3>
-                <p class="muted" style="margin-bottom: 15px;">These DNS seeds are used by gateways and operators to discover the network:</p>
-                <div id="knownDnsSeeds">
-                    <div style="font-family: monospace; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">seed.pinkmahi.com</div>
-                    <div style="font-family: monospace; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 8px;">seed.cartpathcleaning.com</div>
-                </div>
-                <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                    Once your DNS seed is verified, it can be added to the network's seed list via a PR to the 
-                    <a href="https://github.com/Pink-Mahi/autho_node/blob/main/seeds.txt" target="_blank" style="color: #d4af37;">seeds.txt</a> file.
-                </p>
-            </div>
-        </div>
     </div>
 
-    <!-- Bitcoin signing library for client-side transaction signing -->
-    <script src="/js/btc.bundle.js"></script>
     <script>
-        // === Wallet Vault Decryption Functions ===
-        function bytesFromB64(b64) {
-            const binaryStr = atob(b64);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-            return bytes;
-        }
-
-        function b64FromBytes(bytes) {
-            let binary = '';
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
-            return btoa(binary);
-        }
-
-        async function deriveVaultKey(password, salt, iterations) {
-            const enc = new TextEncoder();
-            const keyMaterial = await crypto.subtle.importKey(
-                'raw',
-                enc.encode(String(password)),
-                { name: 'PBKDF2' },
-                false,
-                ['deriveKey']
-            );
-            return crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['decrypt']
-            );
-        }
-
-        async function decryptWalletVault(walletVault, password) {
-            if (!walletVault || walletVault.v !== 'AUTHO_WALLET_VAULT_V1') {
-                throw new Error('Unsupported wallet vault format');
-            }
-            const salt = bytesFromB64(walletVault.kdf?.saltB64 || '');
-            const iterations = Number(walletVault.kdf?.iterations || 100000);
-            const iv = bytesFromB64(walletVault.enc?.ivB64 || '');
-            const ct = bytesFromB64(walletVault.enc?.ctB64 || '');
-            const key = await deriveVaultKey(password, salt, iterations);
-            const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-            return JSON.parse(new TextDecoder().decode(pt));
-        }
-
-        function opReturnScriptHexFromText(text) {
-            const bytes = new TextEncoder().encode(text);
-            const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-            const byteLen = bytes.length;
-            if (byteLen > 80) throw new Error('OP_RETURN data exceeds 80 bytes');
-            // OP_RETURN (0x6a) + PUSHDATA length + data
-            return '6a' + byteLen.toString(16).padStart(2, '0') + hex;
-        }
-
         function showEl(id, show, msg) {
             const el = document.getElementById(id);
             if (!el) return;
@@ -870,9 +654,7 @@
         function switchTab(tab) {
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            // Find the nav tab for this section and activate it
-            const navTab = document.querySelector(`.nav-tab[onclick*="'${tab}'"]`);
-            if (navTab) navTab.classList.add('active');
+            event.target.classList.add('active');
             document.getElementById(`${tab}-section`).classList.add('active');
 
             if (tab === 'applications') {
@@ -893,10 +675,6 @@
                 loadSecurity();
             } else if (tab === 'mempool') {
                 loadMempool();
-            } else if (tab === 'anchoring') {
-                loadUnanchoredCheckpoints();
-                loadAnchorStats();
-                loadAnchorHistory();
             }
         }
 
@@ -1322,7 +1100,6 @@
                 }
 
                 document.getElementById('authModal').style.display = 'none';
-                switchTab('applications'); // Show default tab after auth
                 await loadApplications();
                 try { await loadNodeStatus(true); } catch {}
             } catch (e) {
@@ -1437,118 +1214,6 @@
             }
 
             showEl('statusSuccess', true, 'Status loaded.');
-            
-            // Also load ledger health
-            loadLedgerHealth();
-        }
-
-        async function loadLedgerHealth() {
-            const el = document.getElementById('ledgerHealthPanel');
-            if (!el) return;
-            
-            try {
-                const r = await fetch('/api/operator/ledger-health', { headers: getAuthHeaders(), cache: 'no-store' });
-                const data = await r.json().catch(() => ({}));
-                
-                if (!r.ok || !data || data.success !== true) {
-                    el.innerHTML = '<div class="empty-state">Failed to load ledger health.</div>';
-                    return;
-                }
-                
-                const ledger = data.ledger || {};
-                const checkpoints = data.checkpoints || {};
-                const anchoring = data.anchoring || {};
-                const sync = data.sync || {};
-                
-                // Sync status styling
-                let syncStatusStyle = 'color: #999;';
-                let syncIcon = '⏸️';
-                if (sync.status === 'IN_SYNC') {
-                    syncStatusStyle = 'color: #4cd964; font-weight: 700;';
-                    syncIcon = '✅';
-                } else if (sync.status === 'SLIGHTLY_BEHIND') {
-                    syncStatusStyle = 'color: #ff9f0a; font-weight: 700;';
-                    syncIcon = '⚠️';
-                } else if (sync.status === 'SYNCING') {
-                    syncStatusStyle = 'color: #ff9f0a; font-weight: 700;';
-                    syncIcon = '🔄';
-                } else if (sync.status === 'DISCONNECTED') {
-                    syncStatusStyle = 'color: #ff3b30; font-weight: 700;';
-                    syncIcon = '❌';
-                }
-                
-                // Anchor coverage color
-                const coveragePercent = Number(checkpoints.anchorCoveragePercent || 0);
-                let coverageStyle = 'color: #ff3b30;';
-                if (coveragePercent >= 50) coverageStyle = 'color: #4cd964;';
-                else if (coveragePercent >= 10) coverageStyle = 'color: #ff9f0a;';
-                
-                // Format age
-                function fmtAge(seconds) {
-                    const s = Number(seconds || 0);
-                    if (s < 60) return `${s}s`;
-                    const m = Math.floor(s / 60);
-                    if (m < 60) return `${m}m`;
-                    const h = Math.floor(m / 60);
-                    if (h < 24) return `${h}h`;
-                    const d = Math.floor(h / 24);
-                    return `${d}d`;
-                }
-                
-                el.innerHTML = `
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 15px;">
-                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Total Events</div>
-                            <div style="font-size: 1.4rem; font-weight: 700; color: #d4af37;">${Number(ledger.totalEvents || 0).toLocaleString()}</div>
-                        </div>
-                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Sync Status</div>
-                            <div style="font-size: 1rem; font-weight: 700; ${syncStatusStyle}">${syncIcon} ${sync.status || 'UNKNOWN'}</div>
-                        </div>
-                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Anchor Coverage</div>
-                            <div style="font-size: 1.4rem; font-weight: 700; ${coverageStyle}">${coveragePercent.toFixed(1)}%</div>
-                        </div>
-                        <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.25); padding: 12px; border-radius: 10px; text-align: center;">
-                            <div style="font-size: 0.75rem; color: #999; margin-bottom: 4px;">Latest Event Age</div>
-                            <div style="font-size: 1.4rem; font-weight: 700; color: #d4af37;">${fmtAge(ledger.latestEventAge)}</div>
-                        </div>
-                    </div>
-                    
-                    <table style="font-size: 0.9rem;">
-                        <tbody>
-                            <tr>
-                                <td style="color: #999; width: 180px;">Latest Event Hash</td>
-                                <td style="font-family: monospace; color: #d4af37;">${ledger.latestEventHash || '-'}...</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #999;">Latest Checkpoint</td>
-                                <td style="font-family: monospace;">${checkpoints.latestCheckpointRoot || '-'}... <span style="color: #999;">(Seq #${checkpoints.latestCheckpointSeq || 0})</span></td>
-                            </tr>
-                            <tr>
-                                <td style="color: #999;">Checkpoints</td>
-                                <td><span style="color: #4cd964; font-weight: 700;">${checkpoints.anchored || 0}</span> anchored / <span style="color: #ff6b6b;">${checkpoints.unanchored || 0}</span> unanchored</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #999;">Latest Anchor TX</td>
-                                <td style="font-family: monospace;">${anchoring.latestAnchorTxid ? `<a href="https://mempool.space/tx/${anchoring.latestAnchorTxid}" target="_blank" style="color: #4cd964;">${anchoring.latestAnchorTxid}...</a>` : '-'} ${anchoring.latestAnchorBlock ? `<span style="color: #999;">(Block ${anchoring.latestAnchorBlock})</span>` : ''}</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #999;">Events Since Anchor</td>
-                                <td style="font-weight: 700; color: ${anchoring.eventsSinceLastAnchor > 100 ? '#ff9f0a' : '#d4af37'};">${anchoring.eventsSinceLastAnchor || 0}</td>
-                            </tr>
-                            ${sync.behind > 0 ? `
-                            <tr>
-                                <td style="color: #999;">Events Behind</td>
-                                <td style="font-weight: 700; color: #ff9f0a;">${sync.behind} events</td>
-                            </tr>
-                            ` : ''}
-                        </tbody>
-                    </table>
-                `;
-            } catch (err) {
-                el.innerHTML = '<div class="empty-state">Error loading ledger health.</div>';
-            }
         }
 
         async function loadVerifierActions() {
@@ -2159,11 +1824,6 @@
             showEl('networkSuccess', true, 'Network health loaded.');
         }
 
-        // Operator wallet state
-        let operatorWalletAddress = '';
-        let operatorBalanceSats = 0;
-        let operatorBtcPrice = 0;
-
         async function loadWalletEarnings() {
             showEl('walletError', false);
             showEl('walletSuccess', false);
@@ -2181,17 +1841,6 @@
             const wallet = data.wallet || {};
             const earnings = data.earnings || {};
             const transactions = Array.isArray(earnings.transactions) ? earnings.transactions : [];
-
-            // Store address for other functions
-            operatorWalletAddress = String(wallet.btcAddress || '');
-            
-            // Update receive section
-            const addrEl = document.getElementById('operatorReceiveAddress');
-            if (addrEl) addrEl.textContent = operatorWalletAddress || 'N/A';
-
-            // Load balance and QR code
-            loadOperatorBalance(operatorWalletAddress);
-            loadOperatorQrCode(operatorWalletAddress);
 
             if (el) {
                 el.innerHTML = `
@@ -2254,146 +1903,6 @@
             }
 
             showEl('walletSuccess', true, 'Wallet info loaded.');
-        }
-
-        async function loadOperatorBalance(address) {
-            if (!address) {
-                document.getElementById('operatorBtcBalance').textContent = 'No address';
-                return;
-            }
-            try {
-                // Fetch balance from mempool.space API
-                const r = await fetch(`https://mempool.space/api/address/${address}`);
-                if (!r.ok) throw new Error('Failed to fetch balance');
-                const data = await r.json();
-                
-                const confirmed = Number(data.chain_stats?.funded_txo_sum || 0) - Number(data.chain_stats?.spent_txo_sum || 0);
-                const unconfirmed = Number(data.mempool_stats?.funded_txo_sum || 0) - Number(data.mempool_stats?.spent_txo_sum || 0);
-                const total = confirmed + unconfirmed;
-                operatorBalanceSats = total;
-
-                // Update UI
-                const btcAmount = (total / 100000000).toFixed(8);
-                document.getElementById('operatorBtcBalance').textContent = `${btcAmount} BTC`;
-                document.getElementById('operatorConfirmed').textContent = `${confirmed.toLocaleString()} sats`;
-                document.getElementById('operatorUnconfirmed').textContent = `${unconfirmed.toLocaleString()} sats`;
-
-                // Fetch BTC price for USD conversion
-                try {
-                    const priceR = await fetch('https://mempool.space/api/v1/prices');
-                    const priceData = await priceR.json();
-                    operatorBtcPrice = Number(priceData.USD || 0);
-                    if (operatorBtcPrice > 0) {
-                        const usdValue = (total / 100000000) * operatorBtcPrice;
-                        document.getElementById('operatorUsdBalance').textContent = `≈ $${usdValue.toFixed(2)} USD`;
-                    }
-                } catch {}
-            } catch (e) {
-                document.getElementById('operatorBtcBalance').textContent = 'Error loading';
-                console.error('Balance fetch error:', e);
-            }
-        }
-
-        async function loadOperatorQrCode(address) {
-            const qrImg = document.getElementById('operatorQrCode');
-            const qrLoading = document.getElementById('operatorQrLoading');
-            if (!address || !qrImg) return;
-
-            try {
-                // Use QR code API
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bitcoin:${encodeURIComponent(address)}`;
-                qrImg.src = qrUrl;
-                qrImg.style.display = 'block';
-                if (qrLoading) qrLoading.style.display = 'none';
-            } catch (e) {
-                console.error('QR code error:', e);
-            }
-        }
-
-        function copyOperatorAddress() {
-            if (!operatorWalletAddress) {
-                showEl('walletError', true, 'No address to copy');
-                return;
-            }
-            navigator.clipboard.writeText(operatorWalletAddress).then(() => {
-                showEl('walletSuccess', true, 'Address copied to clipboard!');
-            }).catch(() => {
-                showEl('walletError', true, 'Failed to copy address');
-            });
-        }
-
-        function updateOperatorSendUsd() {
-            const sats = Number(document.getElementById('operatorSendSats')?.value || 0);
-            if (sats > 0 && operatorBtcPrice > 0) {
-                const usd = (sats / 100000000) * operatorBtcPrice;
-                document.getElementById('operatorSendUsd').value = usd.toFixed(2);
-            }
-        }
-
-        function updateOperatorSendSats() {
-            const usd = Number(document.getElementById('operatorSendUsd')?.value || 0);
-            if (usd > 0 && operatorBtcPrice > 0) {
-                const sats = Math.round((usd / operatorBtcPrice) * 100000000);
-                document.getElementById('operatorSendSats').value = sats;
-            }
-        }
-
-        function fillOperatorMax() {
-            // Estimate fee (assume ~200 vbytes for typical tx)
-            const priority = document.getElementById('operatorFeePriority')?.value || 'medium';
-            const feeRates = { low: 1, medium: 5, high: 10 };
-            const feeRate = feeRates[priority] || 5;
-            const estimatedFee = 200 * feeRate;
-            
-            const maxSats = Math.max(0, operatorBalanceSats - estimatedFee);
-            document.getElementById('operatorSendSats').value = maxSats;
-            updateOperatorSendUsd();
-        }
-
-        async function sendOperatorBtc() {
-            const statusEl = document.getElementById('operatorSendStatus');
-            const toAddress = document.getElementById('operatorSendTo')?.value?.trim();
-            const amountSats = Number(document.getElementById('operatorSendSats')?.value || 0);
-            const priority = document.getElementById('operatorFeePriority')?.value || 'medium';
-
-            if (!toAddress) {
-                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter a recipient address</span>';
-                return;
-            }
-            if (amountSats <= 0) {
-                statusEl.innerHTML = '<span style="color: #ff6b6b;">Please enter an amount</span>';
-                return;
-            }
-            if (amountSats > operatorBalanceSats) {
-                statusEl.innerHTML = '<span style="color: #ff6b6b;">Insufficient balance</span>';
-                return;
-            }
-
-            statusEl.innerHTML = '<span style="color: #d4af37;">Creating transaction...</span>';
-
-            try {
-                const r = await fetch('/api/operator/wallet/send', {
-                    method: 'POST',
-                    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        toAddress,
-                        amountSats,
-                        feePriority: priority
-                    })
-                });
-                const data = await r.json().catch(() => ({}));
-                
-                if (!r.ok || !data || data.success !== true) {
-                    throw new Error(data?.error || 'Failed to send transaction');
-                }
-
-                statusEl.innerHTML = `<span style="color: #4cd964;">✅ Transaction sent! TXID: <a href="https://mempool.space/tx/${data.txid}" target="_blank" style="color: #d4af37;">${String(data.txid || '').substring(0, 16)}...</a></span>`;
-                
-                // Refresh balance after a short delay
-                setTimeout(() => loadOperatorBalance(operatorWalletAddress), 3000);
-            } catch (e) {
-                statusEl.innerHTML = `<span style="color: #ff6b6b;">Error: ${e?.message || String(e)}</span>`;
-            }
         }
 
         // Store next checkpoint for auto-anchor
@@ -2521,7 +2030,7 @@
             }
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = '⚓ ANCHOR NEXT CHECKPOINT (~150 SATS)';
+                btn.textContent = '⚓ Anchor Next Checkpoint (~1,500 sats)';
                 btn.style.opacity = '1';
             }
         }
@@ -2550,121 +2059,27 @@
             try {
                 const checkpointRoot = nextCheckpointToAnchor.checkpointRoot;
                 
-                // Step 1: Check for wallet vault (non-custodial - keys never leave browser)
-                if (progressText) progressText.textContent = 'Preparing wallet...';
-                if (progressDetail) progressDetail.textContent = 'Checking wallet credentials...';
-                
-                const vaultStr = localStorage.getItem('autho_wallet_vault');
-                if (!vaultStr) {
-                    throw new Error('No wallet vault found. Please sign in again to restore your wallet.');
-                }
-                
-                let vault;
-                try {
-                    vault = JSON.parse(vaultStr);
-                } catch {
-                    throw new Error('Wallet vault is corrupted. Please sign in again.');
-                }
-                
-                // Step 2: Prompt for wallet password to unlock
-                const getSecret = (attempt) => {
-                    const label = attempt > 1
-                        ? 'Unlock failed. Enter your wallet passcode again:'
-                        : 'Enter your wallet passcode to sign the anchor transaction:';
-                    return prompt(label);
-                };
-                
-                const secret1 = getSecret(1);
-                if (!secret1) throw new Error('Wallet unlock cancelled');
-                
-                let walletPayload;
-                try {
-                    walletPayload = await decryptWalletVault(vault, secret1);
-                } catch {
-                    const secret2 = getSecret(2);
-                    if (!secret2) throw new Error('Wallet unlock cancelled');
-                    walletPayload = await decryptWalletVault(vault, secret2);
-                }
-                
-                const mnemonic = String(walletPayload?.mnemonic || '').trim();
-                if (!mnemonic) throw new Error('Mnemonic missing in vault');
-                
-                // Step 3: Get wallet address and UTXOs
-                if (progressText) progressText.textContent = 'Fetching UTXOs...';
-                
-                if (!window.AuthoBTC || typeof window.AuthoBTC.buildAndSignP2WPKH !== 'function') {
-                    throw new Error('Bitcoin signing library not loaded. Please refresh the page.');
-                }
-                
-                const network = 'mainnet';
-                const walletAddress = window.AuthoBTC.getAddressFromMnemonic(mnemonic, network, 0, 0);
-                
-                const utxosRaw = await fetch(`/api/chain/address/${encodeURIComponent(walletAddress)}/utxo`, { cache: 'no-store' }).then(r => r.json());
-                const utxos = Array.isArray(utxosRaw) ? utxosRaw : [];
-                const spendable = utxos
-                    .filter((u) => u && u.txid && (u.status?.confirmed === true))
-                    .map((u) => ({ txid: String(u.txid), vout: Number(u.vout), value: Number(u.value) }));
-                
-                if (spendable.length === 0) {
-                    throw new Error(`No confirmed UTXOs available at ${walletAddress}. Please fund your wallet first.`);
-                }
-                
-                // Step 4: Build and sign OP_RETURN transaction CLIENT-SIDE
-                if (progressText) progressText.textContent = 'Signing transaction locally...';
+                // Step 1: Request auto-anchor from server
+                if (progressText) progressText.textContent = 'Creating Bitcoin transaction...';
                 if (progressDetail) progressDetail.textContent = `Checkpoint: ${checkpointRoot.substring(0, 16)}...`;
                 
-                // Build OP_RETURN data: "AUTHO:" + first 32 bytes of checkpoint root
-                const opReturnText = 'AUTHO:' + checkpointRoot.substring(0, 64);
-                const opReturnScriptHex = opReturnScriptHexFromText(opReturnText);
-                
-                // Get fee rate (use low priority for anchoring)
-                let feeRate = 1; // Default 1 sat/vB
-                try {
-                    const feesRes = await fetch('https://mempool.space/api/v1/fees/recommended');
-                    const fees = await feesRes.json();
-                    feeRate = fees.minimumFee || fees.economyFee || 1;
-                } catch {}
-                
-                // Build outputs: just OP_RETURN (no payment needed)
-                const outputs = [
-                    { scriptHex: opReturnScriptHex, amountSats: 0 }
-                ];
-                
-                const signed = window.AuthoBTC.buildAndSignP2WPKH({
-                    mnemonic,
-                    outputs,
-                    utxos: spendable,
-                    feeRateSatPerVb: feeRate,
-                    network
-                });
-                
-                if (!signed || !signed.txHex) {
-                    throw new Error('Failed to sign transaction');
-                }
-                
-                // Step 5: Send signed transaction to server for broadcast and recording
-                if (progressText) progressText.textContent = 'Broadcasting transaction...';
-                
-                const r = await fetch('/api/operator/anchors/broadcast-anchor', {
+                const r = await fetch('/api/operator/anchors/auto-anchor', {
                     method: 'POST',
                     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        checkpointRoot,
-                        signedTxHex: signed.txHex,
-                        txid: signed.txId
-                    })
+                    body: JSON.stringify({ checkpointRoot })
                 });
                 
                 const data = await r.json().catch(() => ({}));
                 
                 if (!r.ok || !data || data.success !== true) {
-                    throw new Error(data?.error || 'Failed to broadcast anchor transaction');
+                    throw new Error(data?.error || 'Failed to create anchor transaction');
                 }
                 
-                // Step 6: Show success
+                // Step 2: Show success with transaction details
                 if (progressText) progressText.textContent = 'Transaction broadcast!';
-                if (progressDetail) progressDetail.textContent = `TXID: ${String(data.txid || signed.txId || '').substring(0, 16)}...`;
+                if (progressDetail) progressDetail.textContent = `TXID: ${String(data.txid || '').substring(0, 16)}...`;
                 
+                // Wait a moment then show success
                 await new Promise(resolve => setTimeout(resolve, 1500));
                 
                 if (progressEl) progressEl.style.display = 'none';
@@ -2672,8 +2087,8 @@
                 showEl('anchoringSuccess', true, `
                     ✅ Bitcoin anchor created successfully!<br>
                     <span style="font-family: monospace; font-size: 0.9rem;">
-                        TXID: ${data.txid || signed.txId || 'pending'}<br>
-                        Fee: ${signed.fee || 'unknown'} sats
+                        TXID: ${data.txid || 'pending'}<br>
+                        Block: ${data.blockHeight || 'pending confirmation'}
                     </span>
                 `);
                 
@@ -2739,7 +2154,7 @@
                                 ${operators.map(op => {
                                     const isMe = op.operatorId === myOperatorId;
                                     const weight = (op.weight * 100).toFixed(1);
-                                    const feeShare = (op.weight * 100).toFixed(1); // percentage of operator pool
+                                    const feeShare = (op.weight * 40).toFixed(1); // 40% of 1% goes to operators
                                     return `
                                         <tr style="${isMe ? 'background: rgba(212, 175, 55, 0.1);' : ''}">
                                             <td style="font-family: monospace; font-size: 0.85rem;">
@@ -2755,65 +2170,8 @@
                             </tbody>
                         </table>
                         <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                            💡 <strong>How it works:</strong> Your share is weighted by your anchor contributions. More anchors = more fees!
-                        </p>
-                    `;
-                }
-            }
-        }
-
-        async function loadAnchorHistory() {
-            const el = document.getElementById('anchorHistoryList');
-            if (el) el.innerHTML = '<div class="empty-state">Loading...</div>';
-
-            const r = await fetch('/api/operator/anchors/history', { headers: getAuthHeaders(), cache: 'no-store' });
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok || !data || data.success !== true) {
-                if (el) el.innerHTML = '<div class="empty-state">Failed to load history.</div>';
-                return;
-            }
-
-            const anchors = Array.isArray(data.anchors) ? data.anchors : [];
-
-            if (el) {
-                if (anchors.length === 0) {
-                    el.innerHTML = '<div class="empty-state">No anchor transactions yet. Anchor some checkpoints to see your history!</div>';
-                } else {
-                    el.innerHTML = `
-                        <div style="max-height: 400px; overflow-y: auto;">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Checkpoint</th>
-                                        <th>TX ID</th>
-                                        <th>Block</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${anchors.map(a => {
-                                        const date = new Date(a.timestamp).toLocaleString();
-                                        const cpRoot = String(a.checkpointRoot || '').substring(0, 16);
-                                        const txid = String(a.txid || '').substring(0, 16);
-                                        const fullTxid = String(a.txid || '');
-                                        return `
-                                            <tr>
-                                                <td style="font-size: 0.85rem;">${date}</td>
-                                                <td style="font-family: monospace; font-size: 0.8rem; color: #d4af37;">${cpRoot}...</td>
-                                                <td>
-                                                    <a href="https://mempool.space/tx/${fullTxid}" target="_blank" style="font-family: monospace; font-size: 0.8rem; color: #4cd964;">
-                                                        ${txid}...
-                                                    </a>
-                                                </td>
-                                                <td style="font-weight: 700; color: #d4af37;">${Number(a.blockHeight || 0).toLocaleString()}</td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                        <p class="muted" style="margin-top: 15px; font-size: 0.85rem;">
-                            🔗 Click TX ID to view on mempool.space | OP_RETURN data: AUTHO:[checkpoint_hash]
+                            💡 <strong>How it works:</strong> Operators receive 40% of the 1% title-update fee. 
+                            Your share is weighted by your anchor contributions. More anchors = more fees!
                         </p>
                     `;
                 }
@@ -2980,112 +2338,6 @@
         }
 
         setInterval(updateMempoolProgress, 100);
-
-        // === DNS Seed Functions ===
-        function generateDnsRecord() {
-            const urlInput = document.getElementById('dnsOperatorUrl');
-            const url = urlInput.value.trim();
-            
-            if (!url) {
-                showEl('dnsError', true, 'Please enter your operator URL');
-                return;
-            }
-
-            try {
-                const parsed = new URL(url);
-                const httpUrl = parsed.origin;
-                const wsUrl = httpUrl.replace('https://', 'wss://').replace('http://', 'ws://');
-                const domain = parsed.hostname;
-                
-                // Generate TXT record value
-                const txtValue = `autho-peer=${wsUrl},${httpUrl},operator`;
-                
-                // Show the output section
-                document.getElementById('dnsRecordOutput').style.display = 'block';
-                document.getElementById('dnsVerifySection').style.display = 'block';
-                
-                // Set the values
-                document.getElementById('dnsHost').textContent = 'seed';
-                document.getElementById('dnsTxtValue').textContent = txtValue;
-                
-                // Pre-fill verify domain
-                const baseDomain = domain.split('.').slice(-2).join('.');
-                document.getElementById('dnsVerifyDomain').value = `seed.${baseDomain}`;
-                
-                showEl('dnsError', false);
-                showEl('dnsSuccess', true, 'DNS record generated! Add this to your domain\'s DNS settings.');
-            } catch (e) {
-                showEl('dnsError', true, 'Invalid URL format. Please enter a valid URL like https://autho.yourdomain.com');
-            }
-        }
-
-        function copyDnsRecord() {
-            const txtValue = document.getElementById('dnsTxtValue').textContent;
-            navigator.clipboard.writeText(txtValue).then(() => {
-                showEl('dnsSuccess', true, 'TXT value copied to clipboard!');
-            }).catch(() => {
-                showEl('dnsError', true, 'Failed to copy. Please select and copy manually.');
-            });
-        }
-
-        async function verifyDnsRecord() {
-            const domain = document.getElementById('dnsVerifyDomain').value.trim();
-            
-            if (!domain) {
-                showEl('dnsError', true, 'Please enter a domain to verify');
-                return;
-            }
-
-            const resultDiv = document.getElementById('dnsVerifyResult');
-            const statusDiv = document.getElementById('dnsVerifyStatus');
-            resultDiv.style.display = 'block';
-            statusDiv.innerHTML = '<span style="color: #999;">🔄 Checking DNS...</span>';
-
-            try {
-                // Call our API to verify the DNS record
-                const response = await fetch(`/api/network/dns-verify?domain=${encodeURIComponent(domain)}`);
-                const data = await response.json();
-
-                if (data.success && data.found) {
-                    statusDiv.innerHTML = `
-                        <div style="background: rgba(52, 199, 89, 0.15); border: 1px solid rgba(52, 199, 89, 0.4); padding: 15px; border-radius: 8px;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <span style="font-size: 1.5rem;">✅</span>
-                                <span style="color: #4cd964; font-weight: 700; font-size: 1.1rem;">DNS Seed Verified!</span>
-                            </div>
-                            <div style="font-family: monospace; color: #ccc; font-size: 0.9rem; word-break: break-all;">
-                                ${data.txtRecord || 'Record found'}
-                            </div>
-                        </div>
-                    `;
-                    showEl('dnsSuccess', true, 'Your DNS seed is correctly configured! 🎉');
-                } else {
-                    statusDiv.innerHTML = `
-                        <div style="background: rgba(255, 59, 48, 0.15); border: 1px solid rgba(255, 59, 48, 0.4); padding: 15px; border-radius: 8px;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                                <span style="font-size: 1.5rem;">❌</span>
-                                <span style="color: #ff6b6b; font-weight: 700; font-size: 1.1rem;">DNS Seed Not Found</span>
-                            </div>
-                            <div style="color: #999; font-size: 0.9rem;">
-                                ${data.error || 'No autho-peer TXT record found. DNS changes can take up to 24 hours to propagate.'}
-                            </div>
-                        </div>
-                    `;
-                }
-            } catch (e) {
-                statusDiv.innerHTML = `
-                    <div style="background: rgba(255, 159, 64, 0.15); border: 1px solid rgba(255, 159, 64, 0.4); padding: 15px; border-radius: 8px;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="font-size: 1.5rem;">⚠️</span>
-                            <span style="color: #ffa500; font-weight: 600;">Could not verify DNS</span>
-                        </div>
-                        <div style="color: #999; font-size: 0.9rem; margin-top: 8px;">
-                            Verification service unavailable. Try again later or verify manually using: <code>dig TXT ${domain}</code>
-                        </div>
-                    </div>
-                `;
-            }
-        }
 
         window.addEventListener('load', async () => {
             await requireOperatorAuth();
