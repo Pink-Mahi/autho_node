@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f7931a">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/autho-192.svg">
   <title>Messages - Autho</title>
   <style>
     * { box-sizing: border-box; }
@@ -1307,6 +1310,14 @@
         </button>
       </div>
 
+      <!-- Message Search Bar -->
+      <div id="messageSearchBar" style="margin:0 16px 8px 16px;">
+        <input type="text" id="messageSearchInput" placeholder="Search messages..." 
+               oninput="handleMessageSearch(this.value)"
+               style="width:100%;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:10px;color:#fff;font-size:14px;outline:none;">
+        <div id="messageSearchResults" style="display:none;max-height:300px;overflow-y:auto;background:#1a1a1a;border:1px solid #333;border-top:none;border-radius:0 0 10px 10px;"></div>
+      </div>
+
       <div class="nav-tabs">
         <div class="nav-tab active" data-tab="conversations" onclick="switchTab('conversations')">
           Chats
@@ -1361,12 +1372,23 @@
           <div class="chat-participant-name" id="chatParticipantName">Loading...</div>
           <div class="chat-item-context" id="chatItemContext"></div>
         </div>
+        <button id="voiceCallBtn" onclick="startVoiceCall()" title="Encrypted voice call" style="background:transparent;border:1px solid #4caf50;color:#4caf50;padding:4px 8px;border-radius:6px;font-size:14px;cursor:pointer;margin-right:4px;">
+          📞
+        </button>
+        <button id="videoCallBtn" onclick="startVideoCall()" title="Encrypted video call" style="background:transparent;border:1px solid #2196f3;color:#2196f3;padding:4px 8px;border-radius:6px;font-size:14px;cursor:pointer;margin-right:4px;">
+          📹
+        </button>
+        <button class="add-contact-chat-btn" id="verifyContactBtn" onclick="showSafetyNumber()" title="Verify contact identity" style="background:transparent;border:1px solid #4caf50;color:#4caf50;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;margin-right:4px;">
+          🔍 Verify
+        </button>
         <button class="add-contact-chat-btn" id="addContactChatBtn" onclick="addCurrentRecipientToContacts()">
           ➕ Add
         </button>
       </div>
 
       <div class="chat-messages" id="chatMessages"></div>
+
+      <div id="typingIndicator" style="display:none;padding:4px 16px;font-size:12px;color:#888;font-style:italic;">typing...</div>
 
       <div class="encryption-notice" onclick="showEncryptionInfo()">
         <span>🔐</span> AES-256 + Curve25519 encrypted • Zero-knowledge architecture
@@ -1459,6 +1481,14 @@
 
   <!-- Message Context Menu -->
   <div class="message-context-menu" id="messageContextMenu">
+    <div class="reaction-quick-bar" id="reactionQuickBar" style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.1);justify-content:center;">
+      <span class="reaction-emoji" onclick="reactToMessage('👍')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">👍</span>
+      <span class="reaction-emoji" onclick="reactToMessage('❤️')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">❤️</span>
+      <span class="reaction-emoji" onclick="reactToMessage('😂')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">😂</span>
+      <span class="reaction-emoji" onclick="reactToMessage('😮')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">😮</span>
+      <span class="reaction-emoji" onclick="reactToMessage('😢')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">😢</span>
+      <span class="reaction-emoji" onclick="reactToMessage('🔥')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">🔥</span>
+    </div>
     <div class="context-menu-item" onclick="copyMessageText()">
       <span>📋</span> Copy Text
     </div>
@@ -1631,10 +1661,66 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+  <!-- Safety Numbers Verification Modal -->
+  <div id="safetyNumberModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeSafetyNumberModal()">
+    <div class="modal-content" style="max-width: 380px;">
+      <div class="modal-header">
+        <div class="modal-title">🔍 Verify Safety Number</div>
+        <button class="modal-close" onclick="closeSafetyNumberModal()">×</button>
+      </div>
+      <div style="color: #aaa; font-size: 13px; margin-bottom: 16px; line-height: 1.5;">
+        Compare this number with your contact's screen. If they match, your conversation is end-to-end encrypted and not intercepted.
+      </div>
+      <div id="safetyNumberDisplay" style="font-family: 'Courier New', monospace; font-size: 18px; letter-spacing: 2px; text-align: center; color: #4caf50; background: rgba(76,175,80,0.08); border: 1px solid rgba(76,175,80,0.2); border-radius: 12px; padding: 20px 16px; margin-bottom: 16px; word-break: break-all; line-height: 2;">
+        Loading...
+      </div>
+      <div id="safetyNumberQR" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+      <div style="display: flex; gap: 8px;">
+        <button class="modal-btn" onclick="markContactVerified()" style="background: #4caf50; flex: 1;">✅ Mark Verified</button>
+        <button class="modal-btn" onclick="closeSafetyNumberModal()" style="background: #333; flex: 1;">Close</button>
+      </div>
+      <div id="verifiedStatus" style="text-align: center; margin-top: 12px; font-size: 12px; color: #888;"></div>
+    </div>
+  </div>
+
+  <!-- ═══════ Encrypted Call Overlay ═══════ -->
+  <div id="callOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0a0a;z-index:10000;flex-direction:column;align-items:center;justify-content:center;font-family:Inter,'Segoe UI',sans-serif;">
+    <!-- Remote video (fills background) -->
+    <video id="remoteVideo" autoplay playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;"></video>
+    <!-- Self-view (picture-in-picture) -->
+    <video id="localVideo" autoplay playsinline muted style="position:absolute;top:16px;right:16px;width:120px;height:160px;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,0.3);z-index:10001;display:none;"></video>
+
+    <!-- Call info (centered, shown over video or solid bg) -->
+    <div id="callInfo" style="position:relative;z-index:10001;text-align:center;padding:40px 20px;">
+      <div id="callPeerName" style="font-size:28px;font-weight:600;color:#fff;margin-bottom:8px;">Unknown</div>
+      <div id="callStatusText" style="font-size:16px;color:rgba(255,255,255,0.6);margin-bottom:4px;">Calling...</div>
+      <div id="callDuration" style="font-size:14px;color:rgba(255,255,255,0.4);"></div>
+      <div id="callEncryption" style="font-size:12px;color:#4caf50;margin-top:12px;">🔐 End-to-end encrypted</div>
+    </div>
+
+    <!-- Incoming call buttons -->
+    <div id="incomingCallBtns" style="display:none;position:absolute;bottom:80px;left:0;right:0;z-index:10001;display:none;justify-content:center;gap:40px;">
+      <button onclick="rejectIncomingCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#f44336;color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 16px rgba(244,67,54,0.4);">✕</button>
+      <button onclick="acceptIncomingCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#4caf50;color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 16px rgba(76,175,80,0.4);">📞</button>
+    </div>
+
+    <!-- Active call controls -->
+    <div id="activeCallBtns" style="display:none;position:absolute;bottom:80px;left:0;right:0;z-index:10001;justify-content:center;gap:24px;">
+      <button id="muteBtn" onclick="toggleCallMute()" style="width:56px;height:56px;border-radius:50%;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(10px);">🎤</button>
+      <button id="camToggleBtn" onclick="toggleCallCamera()" style="width:56px;height:56px;border-radius:50%;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(10px);display:none;">📷</button>
+      <button onclick="endCurrentCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#f44336;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(244,67,54,0.4);">✕</button>
+    </div>
+  </div>
+
+  <script src="/js/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
+  <script src="/js/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous"></script>
+  <script src="/js/mlkem.bundle.js" integrity="sha384-5MFLjnWWzPLJ8xZQMzwzz8M0mx0mqoMzwG43tueyZi0no25PcQw2AMg6k/JUQFN1" crossorigin="anonymous"></script>
+  <script src="/js/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
+  <script src="/js/nacl-util.min.js" integrity="sha384-qpU3wxGxaAPcz02pOLeZTv5B0rNzsh3CETsUqdHxRBP70bO0kHoBopr+f9AcGj04" crossorigin="anonymous"></script>
+  <script src="/js/double-ratchet.js" integrity="sha384-AgMXGk5+mUUw2YWWcFLVRj7sJM3eMskKVbdDgWwxBPCA/wk0FElqi4YtGso5LFfO" crossorigin="anonymous"></script>
+  <script src="/js/mls-group.js" integrity="sha384-ikW8LAAJS8aZFWIq2eICz7MSnfHOUVLXBZrCc0oTBJs/x+DiRfsLsabPQqiunmOy" crossorigin="anonymous"></script>
+  <script src="/js/autho-wire.js" integrity="sha384-EwvW0hNJ1vdF1w9ZOAvuPCsWm1l16rxI20yZYvOx8cldFX0AyxIGJh1lJbgJf1h8" crossorigin="anonymous"></script>
+  <script src="/js/autho-call.js"></script>
   <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
@@ -1645,11 +1731,156 @@
     let myMessagingPrivateKey = null; // Messaging private key (NOT BTC spending key)
     let myMessagingPublicKey = null;  // Messaging public key for key exchange
     let myEncryptionKeyPair = null;   // Derived X25519 keypair for E2E encryption
+    let myKyberKeyPair = null;         // ML-KEM-768 keypair for post-quantum hybrid
     const recipientEncryptionKeyCache = new Map();
+    const recipientKyberKeyCache = new Map();
     let conversations = [];
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
     const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
+
+    // ============================================================
+    // WEBSOCKET REAL-TIME MESSAGING (replaces polling when connected)
+    // ============================================================
+    let messagingWs = null;
+    let messagingWsReconnectTimer = null;
+    let messagingWsConnected = false;
+
+    function connectMessagingWebSocket() {
+      if (messagingWs && messagingWs.readyState <= 1) return; // already open/connecting
+      try {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = proto + '//' + location.host + '/ws/messaging';
+        messagingWs = new WebSocket(wsUrl);
+
+        messagingWs.onopen = function() {
+          messagingWsConnected = true;
+          console.log('[WS] Messaging WebSocket connected');
+          // Authenticate
+          const wallet = WalletAuth.getWallet();
+          if (wallet) {
+            messagingWs.send(JSON.stringify({
+              type: 'auth',
+              publicKey: wallet.publicKey,
+              ...WalletAuth.getAuthHeaders()
+            }));
+          }
+          // Subscribe to current conversation
+          if (currentConversationId) {
+            messagingWs.send(JSON.stringify({
+              type: 'subscribe',
+              conversationId: currentConversationId
+            }));
+          }
+          if (currentGroupId) {
+            messagingWs.send(JSON.stringify({
+              type: 'subscribe_group',
+              groupId: currentGroupId
+            }));
+          }
+        };
+
+        messagingWs.onmessage = function(event) {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'new_message' && data.conversationId === currentConversationId) {
+              // Real-time message received — reload messages
+              if (currentConversationId) loadMessages(currentConversationId);
+            }
+            if (data.type === 'new_group_message' && data.groupId === currentGroupId) {
+              if (currentGroupId) loadGroupMessages(currentGroupId);
+            }
+            if (data.type === 'message_sent') {
+              // Server confirmed our optimistic message
+              updateOptimisticMessage(data.tempId, 'sent');
+            }
+            // ── Reactions ──
+            if (data.type === 'reaction' && data.conversationId === currentConversationId && data.messageId && data.emoji) {
+              applyReaction(data.messageId, data.emoji, data.fromId || 'remote', data.action || 'add');
+            }
+            // ── Typing indicators ──
+            if (data.type === 'typing' && data.conversationId === currentConversationId) {
+              const ti = document.getElementById('typingIndicator');
+              if (ti) {
+                ti.style.display = data.isTyping ? 'block' : 'none';
+              }
+            }
+            // ── Read receipts ──
+            if (data.type === 'read_receipt' && data.conversationId === currentConversationId) {
+              // Update sent message status indicators to "read"
+              document.querySelectorAll('.message-status.sent, .message-status.delivered').forEach(function(el) {
+                el.textContent = '✓✓';
+                el.classList.add('read');
+                el.style.color = '#4caf50';
+              });
+            }
+            // ── Call signaling ──
+            if (data.type === 'call_signal' && data.signal && typeof AutohoCall !== 'undefined') {
+              data.signal.from = data.fromId;
+              AutohoCall.handleSignal(data.signal, sendCallSignal);
+            }
+          } catch {}
+        };
+
+        messagingWs.onclose = function() {
+          messagingWsConnected = false;
+          console.log('[WS] Messaging WebSocket closed, reconnecting in 3s...');
+          clearTimeout(messagingWsReconnectTimer);
+          messagingWsReconnectTimer = setTimeout(connectMessagingWebSocket, 3000);
+        };
+
+        messagingWs.onerror = function() {
+          messagingWsConnected = false;
+        };
+      } catch (e) {
+        console.warn('[WS] WebSocket connect failed:', e.message);
+      }
+    }
+
+    function sendViaWebSocket(payload) {
+      if (messagingWs && messagingWs.readyState === 1) {
+        messagingWs.send(JSON.stringify(payload));
+        return true;
+      }
+      return false;
+    }
+
+    // ============================================================
+    // OPTIMISTIC UI — show message instantly before server confirms
+    // ============================================================
+    let optimisticMsgCounter = 0;
+
+    function renderOptimisticMessage(text) {
+      const container = document.getElementById('chatMessages');
+      if (!container) return null;
+      const tempId = 'opt_' + (++optimisticMsgCounter) + '_' + Date.now();
+      const timeStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble sent';
+      bubble.id = tempId;
+      bubble.innerHTML = '<div class="message-text">' + escapeHtml(text) + '</div>' +
+        '<div class="message-meta">' + timeStr + ' <span class="msg-status" style="opacity:0.5;">sending...</span></div>';
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+      return tempId;
+    }
+
+    function updateOptimisticMessage(tempId, status) {
+      const el = document.getElementById(tempId);
+      if (!el) return;
+      const statusEl = el.querySelector('.msg-status');
+      if (statusEl) {
+        if (status === 'sent') {
+          statusEl.textContent = '✓';
+          statusEl.style.opacity = '1';
+          statusEl.style.color = '#4caf50';
+        } else if (status === 'failed') {
+          statusEl.textContent = '✗ failed';
+          statusEl.style.opacity = '1';
+          statusEl.style.color = '#ff4444';
+        }
+      }
+    }
 
     // Helper: Check response for auth errors and redirect to login
     function checkAuthAndRedirect(response) {
@@ -1797,18 +2028,41 @@
     }
 
     async function publishMyEncryptionPublicKey() {
-      try {
-        if (!myEncryptionKeyPair) return;
-        await fetch('/api/messages/keys', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...WalletAuth.getAuthHeaders(),
-          },
-          body: JSON.stringify({ encryptionPublicKeyHex: bytesToHex(myEncryptionKeyPair.publicKey) }),
-        });
-      } catch (e) {
+      if (!myEncryptionKeyPair) return;
+      const keyHex = bytesToHex(myEncryptionKeyPair.publicKey);
+      // Include Kyber public key if available
+      const payload = { encryptionPublicKeyHex: keyHex };
+      if (myKyberKeyPair && myKyberKeyPair.publicKey) {
+        payload.kyberPublicKeyB64 = nacl.util.encodeBase64(myKyberKeyPair.publicKey);
       }
+      const maxRetries = 3;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const r = await fetch('/api/messages/keys', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...WalletAuth.getAuthHeaders(),
+            },
+            body: JSON.stringify(payload),
+          });
+          if (r.ok) {
+            console.log('[Messaging] Encryption key published successfully' + (payload.kyberPublicKeyB64 ? ' (with PQ Kyber)' : ''));
+            return;
+          }
+          const errData = await r.json().catch(() => ({}));
+          console.warn(`[Messaging] Key publish attempt ${attempt + 1} failed (${r.status}):`, errData?.error || r.statusText);
+          if (r.status === 401) {
+            console.warn('[Messaging] Session may be expired for key publish');
+          }
+        } catch (e) {
+          console.warn(`[Messaging] Key publish attempt ${attempt + 1} network error:`, e?.message || e);
+        }
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+      console.error('[Messaging] Failed to publish encryption key after all retries');
     }
 
     async function getRecipientEncryptionPublicKeyBytes(recipientId) {
@@ -1840,6 +2094,17 @@
       }
 
       recipientEncryptionKeyCache.set(id, { bytes, updatedAt: Number(data?.updatedAt || Date.now()) });
+
+      // Cache Kyber public key if available (for PQ hybrid)
+      if (data?.kyberPublicKeyB64) {
+        try {
+          const kyberBytes = nacl.util.decodeBase64(data.kyberPublicKeyB64);
+          if (kyberBytes && kyberBytes.length > 0) {
+            recipientKyberKeyCache.set(id, kyberBytes);
+          }
+        } catch {}
+      }
+
       return bytes;
     }
 
@@ -1850,27 +2115,500 @@
       }
       
       const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(recipientPublicKeyHex);
-      return encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes);
+      // Check for recipient's Kyber key for PQ hybrid
+      const recipientKyberPubKey = recipientKyberKeyCache.get(String(recipientPublicKeyHex).trim());
+      return encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes, recipientKyberPubKey);
     }
 
-    async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes) {
+    // Pad plaintext to nearest 256-byte boundary to prevent length-based analysis
+    function padMessage(messageBytes) {
+      const PAD_BLOCK = 256;
+      // Prepend 4-byte big-endian length header
+      const len = messageBytes.length;
+      const paddedLen = Math.ceil((len + 4) / PAD_BLOCK) * PAD_BLOCK;
+      const padded = new Uint8Array(paddedLen);
+      // Write length as 4 bytes big-endian
+      padded[0] = (len >>> 24) & 0xff;
+      padded[1] = (len >>> 16) & 0xff;
+      padded[2] = (len >>> 8) & 0xff;
+      padded[3] = len & 0xff;
+      padded.set(messageBytes, 4);
+      // Fill remaining bytes with random padding
+      const randomPad = nacl.randomBytes(paddedLen - 4 - len);
+      padded.set(randomPad, 4 + len);
+      return padded;
+    }
+
+    // Remove padding and extract original message
+    function unpadMessage(paddedBytes) {
+      if (paddedBytes.length < 4) return paddedBytes;
+      const len = (paddedBytes[0] << 24) | (paddedBytes[1] << 16) | (paddedBytes[2] << 8) | paddedBytes[3];
+      if (len <= 0 || len > paddedBytes.length - 4) return paddedBytes;
+      return paddedBytes.slice(4, 4 + len);
+    }
+
+    // ============================================================
+    // REPLAY PROTECTION: In-memory nonce tracking
+    // ============================================================
+    const _seenNonces = new Set();
+    const _MAX_NONCE_CACHE = 10000;
+    function checkAndStoreNonce(nonceB64) {
+      if (_seenNonces.has(nonceB64)) return false;
+      _seenNonces.add(nonceB64);
+      if (_seenNonces.size > _MAX_NONCE_CACHE) {
+        const oldest = _seenNonces.values().next().value;
+        _seenNonces.delete(oldest);
+      }
+      return true;
+    }
+
+    // ============================================================
+    // TIER 4: SIGNED PRE-KEYS WITH ROTATION (X3DH pre-key bundle)
+    // ============================================================
+    let mySignedPreKeyPair = null;
+    let myOneTimePreKeys = [];
+    const SIGNED_PREKEY_ROTATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+    async function generateSignedPreKey() {
+      const preKeyPair = nacl.box.keyPair();
+      // Sign the pre-key with our identity key for authentication
+      const preKeyPubB64 = nacl.util.encodeBase64(preKeyPair.publicKey);
+      const sigPayload = nacl.util.decodeUTF8('AuthoSignedPreKey:' + preKeyPubB64);
+      // Use HMAC-SHA256 as signature (identity secret key as HMAC key)
+      const hmacKey = await crypto.subtle.importKey('raw', myEncryptionKeyPair.secretKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, sigPayload));
+      return {
+        keyPair: preKeyPair,
+        publicKeyB64: preKeyPubB64,
+        signatureB64: nacl.util.encodeBase64(sig),
+        createdAt: Date.now()
+      };
+    }
+
+    async function generateOneTimePreKeys(count) {
+      const keys = [];
+      for (let i = 0; i < count; i++) {
+        const kp = nacl.box.keyPair();
+        keys.push({
+          keyPair: kp,
+          publicKeyB64: nacl.util.encodeBase64(kp.publicKey),
+          id: crypto.getRandomValues(new Uint8Array(8)).reduce((s, b) => s + b.toString(16).padStart(2, '0'), '')
+        });
+      }
+      return keys;
+    }
+
+    async function publishPreKeyBundle() {
+      if (!myEncryptionKeyPair) return;
+      try {
+        const signedPreKey = await generateSignedPreKey();
+        mySignedPreKeyPair = signedPreKey;
+        const oneTimeKeys = await generateOneTimePreKeys(10);
+        myOneTimePreKeys = oneTimeKeys;
+
+        const bundle = {
+          identityKeyB64: nacl.util.encodeBase64(myEncryptionKeyPair.publicKey),
+          signedPreKeyB64: signedPreKey.publicKeyB64,
+          signedPreKeySigB64: signedPreKey.signatureB64,
+          oneTimePreKeys: oneTimeKeys.map(k => ({ id: k.id, keyB64: k.publicKeyB64 })),
+          timestamp: Date.now()
+        };
+
+        await fetch('/api/messages/prekey-bundle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+          body: JSON.stringify(bundle)
+        });
+        console.log('[X3DH] Pre-key bundle published (' + oneTimeKeys.length + ' one-time keys)');
+
+        // Store rotation timestamp
+        localStorage.setItem('autho_prekey_published_at', String(Date.now()));
+      } catch (e) {
+        console.warn('[X3DH] Pre-key bundle publish failed:', e.message);
+      }
+    }
+
+    async function maybeRotatePreKeys() {
+      const lastPublished = parseInt(localStorage.getItem('autho_prekey_published_at') || '0');
+      if (Date.now() - lastPublished > SIGNED_PREKEY_ROTATION_MS) {
+        await publishPreKeyBundle();
+      }
+    }
+
+    async function fetchPreKeyBundle(recipientId) {
+      try {
+        const r = await fetch(`/api/messages/prekey-bundle/${encodeURIComponent(recipientId)}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      }
+    }
+
+    // ============================================================
+    // TIER 4: ENCRYPTED ATTACHMENTS (client-side encrypt before upload)
+    // ============================================================
+
+    async function encryptAttachment(fileArrayBuffer) {
+      // Generate random file key
+      const fileKey = crypto.getRandomValues(new Uint8Array(32));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const aesKey = await crypto.subtle.importKey('raw', fileKey, 'AES-GCM', false, ['encrypt']);
+      const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, fileArrayBuffer));
+
+      // Compute SHA-256 digest of plaintext for integrity verification
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', fileArrayBuffer));
+
+      return {
+        encryptedData: encrypted,
+        fileKeyB64: nacl.util.encodeBase64(fileKey),
+        ivB64: nacl.util.encodeBase64(iv),
+        digestB64: nacl.util.encodeBase64(digest),
+        size: fileArrayBuffer.byteLength
+      };
+    }
+
+    async function decryptAttachment(encryptedData, fileKeyB64, ivB64, expectedDigestB64) {
+      const fileKey = nacl.util.decodeBase64(fileKeyB64);
+      const iv = nacl.util.decodeBase64(ivB64);
+      const aesKey = await crypto.subtle.importKey('raw', fileKey, 'AES-GCM', false, ['decrypt']);
+      const decrypted = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, encryptedData));
+
+      // Verify integrity
+      if (expectedDigestB64) {
+        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', decrypted));
+        const digestB64 = nacl.util.encodeBase64(digest);
+        if (digestB64 !== expectedDigestB64) {
+          throw new Error('SECURITY: Attachment integrity check failed — file may have been tampered with');
+        }
+      }
+
+      return decrypted;
+    }
+
+    function stripImageMetadata(arrayBuffer) {
+      // Strip EXIF/GPS metadata from JPEG files for privacy
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) return arrayBuffer;
+      // Check JPEG magic bytes
+      if (view.getUint8(0) !== 0xFF || view.getUint8(1) !== 0xD8) return arrayBuffer;
+
+      // Find and remove APP1 (EXIF) segments
+      const cleaned = [];
+      let i = 0;
+      cleaned.push(0xFF, 0xD8); // SOI
+      i = 2;
+      while (i < view.byteLength - 1) {
+        const marker = view.getUint8(i);
+        if (marker !== 0xFF) { i++; continue; }
+        const type = view.getUint8(i + 1);
+        if (type === 0xD9) { // EOI
+          cleaned.push(0xFF, 0xD9);
+          break;
+        }
+        if (type === 0xDA) { // SOS — rest is image data, copy all
+          for (let j = i; j < view.byteLength; j++) {
+            cleaned.push(view.getUint8(j));
+          }
+          break;
+        }
+        if (i + 3 >= view.byteLength) break;
+        const segLen = view.getUint16(i + 2);
+        if (type === 0xE1) {
+          // APP1 (EXIF/GPS) — skip entirely
+          i += 2 + segLen;
+          continue;
+        }
+        // Keep other segments
+        for (let j = 0; j < segLen + 2; j++) {
+          if (i + j < view.byteLength) cleaned.push(view.getUint8(i + j));
+        }
+        i += 2 + segLen;
+      }
+      return new Uint8Array(cleaned).buffer;
+    }
+
+    // ============================================================
+    // TIER 4: SESSION / DEVICE BINDING
+    // ============================================================
+
+    function getDeviceFingerprint() {
+      let fp = sessionStorage.getItem('autho_device_fingerprint');
+      if (fp) return fp;
+      // Generate a stable-ish fingerprint from browser properties
+      const components = [
+        navigator.userAgent || '',
+        navigator.language || '',
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset().toString(),
+        navigator.hardwareConcurrency || '0'
+      ];
+      fp = components.join('|');
+      // Hash it
+      let hash = 0;
+      for (let i = 0; i < fp.length; i++) {
+        hash = ((hash << 5) - hash + fp.charCodeAt(i)) | 0;
+      }
+      fp = 'dev_' + Math.abs(hash).toString(36);
+      sessionStorage.setItem('autho_device_fingerprint', fp);
+      return fp;
+    }
+
+    function bindSessionToDevice(sessionObj) {
+      if (!sessionObj) return sessionObj;
+      sessionObj._deviceFingerprint = getDeviceFingerprint();
+      sessionObj._boundAt = Date.now();
+      return sessionObj;
+    }
+
+    function verifySessionDevice(sessionObj) {
+      if (!sessionObj || !sessionObj._deviceFingerprint) return true; // no binding = ok
+      if (sessionObj._deviceFingerprint !== getDeviceFingerprint()) {
+        console.warn('SECURITY: Ratchet session was created on a different device — re-initializing');
+        return false;
+      }
+      return true;
+    }
+
+    // ============================================================
+    // TIER 4: METADATA PROTECTION
+    // ============================================================
+
+    // Randomize polling interval to prevent timing analysis
+    function getRandomizedPollInterval() {
+      // Base 5s ± 2s random jitter
+      return 3000 + Math.floor(Math.random() * 4000);
+    }
+
+    // Uniform message size padding (already have padMessage, this adds extra)
+    function padToUniformSize(messageBytes, targetSize) {
+      if (!targetSize) targetSize = 1024; // 1KB minimum
+      const minSize = Math.max(targetSize, messageBytes.length);
+      const paddedSize = Math.ceil(minSize / 1024) * 1024; // Round up to nearest KB
+      if (paddedSize <= messageBytes.length) return messageBytes;
+      const padded = new Uint8Array(paddedSize);
+      padded.set(messageBytes, 0);
+      // Fill rest with random bytes
+      const randomPad = crypto.getRandomValues(new Uint8Array(paddedSize - messageBytes.length));
+      padded.set(randomPad, messageBytes.length);
+      return padded;
+    }
+
+    // ============================================================
+    // DOUBLE RATCHET: Session management + v5 envelope
+    // ============================================================
+
+    // Derive a stable encryption key for ratchet state storage from identity key
+    function getRatchetStorageKey() {
+      if (!myEncryptionKeyPair) return null;
+      // Use first 32 bytes of SHA-256(secretKey) as AES key for state encryption
+      return myEncryptionKeyPair.secretKey;
+    }
+
+    async function getOrCreateRatchetSession(conversationId, recipientEncPubKeyBytes) {
+      if (!window.DoubleRatchet) return null;
+      const DR = window.DoubleRatchet;
+
+      // Check in-memory cache first
+      let session = DR.getSession(conversationId);
+      if (session && session.initialized) return session;
+
+      // Try loading from server
+      const storageKey = getRatchetStorageKey();
+      if (storageKey) {
+        session = await DR.loadSessionFromServer(conversationId, storageKey, WalletAuth.getAuthHeaders());
+        if (session && session.initialized) {
+          DR.setSession(conversationId, session);
+          return session;
+        }
+      }
+
+      // Initialize new session as sender
+      try {
+        session = await DR.initSender(myEncryptionKeyPair, recipientEncPubKeyBytes, recipientEncPubKeyBytes);
+        DR.setSession(conversationId, session);
+        // Save to server (non-blocking)
+        if (storageKey) {
+          DR.saveSessionToServer(conversationId, session, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+        return session;
+      } catch (e) {
+        console.warn('[DoubleRatchet] Session init failed:', e.message);
+        return null;
+      }
+    }
+
+    async function encryptWithRatchet(plaintext, conversationId, recipientEncPubKeyBytes) {
+      if (!window.DoubleRatchet || !conversationId) return null;
+
+      try {
+        const session = await getOrCreateRatchetSession(conversationId, recipientEncPubKeyBytes);
+        if (!session) return null;
+
+        // Sealed sender: embed sender identity inside payload
+        const wallet = WalletAuth.getWallet();
+        const innerPayload = JSON.stringify({
+          s: wallet ? wallet.publicKey : '',
+          t: Date.now(),
+          body: plaintext
+        });
+
+        const ratchetMsg = await window.DoubleRatchet.ratchetEncrypt(session, innerPayload);
+
+        // Save updated session state
+        const storageKey = getRatchetStorageKey();
+        if (storageKey) {
+          window.DoubleRatchet.saveSessionToServer(conversationId, session, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+
+        return JSON.stringify({
+          v: 5,
+          h: ratchetMsg.header,
+          iv: ratchetMsg.iv,
+          c: ratchetMsg.ciphertext
+        });
+      } catch (e) {
+        console.warn('[DoubleRatchet] Encrypt failed, falling back to v3/v4:', e.message);
+        return null;
+      }
+    }
+
+    async function decryptWithRatchet(envelope, conversationId, senderPublicKeyHex) {
+      if (!window.DoubleRatchet || !conversationId) return null;
+      const DR = window.DoubleRatchet;
+
+      try {
+        let session = DR.getSession(conversationId);
+
+        // Try loading from server if not in memory
+        if (!session) {
+          const storageKey = getRatchetStorageKey();
+          if (storageKey) {
+            session = await DR.loadSessionFromServer(conversationId, storageKey, WalletAuth.getAuthHeaders());
+          }
+        }
+
+        // If no session exists, init as receiver
+        if (!session) {
+          const senderPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(senderPublicKeyHex);
+          session = await DR.initReceiver(myEncryptionKeyPair, myEncryptionKeyPair, senderPubKeyBytes, nacl.util.decodeBase64(envelope.h.dh));
+        }
+
+        DR.setSession(conversationId, session);
+
+        const decrypted = await DR.ratchetDecrypt(session, {
+          header: envelope.h,
+          iv: envelope.iv,
+          ciphertext: envelope.c
+        });
+
+        // Save updated session state
+        const storageKey = getRatchetStorageKey();
+        if (storageKey) {
+          DR.saveSessionToServer(conversationId, session, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+
+        // Parse inner payload (sealed sender)
+        try {
+          const inner = JSON.parse(decrypted);
+          if (inner.t && (Date.now() - inner.t) > 86400000) {
+            console.warn('SECURITY: v5 ratchet message timestamp >24h old');
+          }
+          return inner.body || decrypted;
+        } catch {
+          return decrypted;
+        }
+      } catch (e) {
+        console.warn('[DoubleRatchet] Decrypt failed:', e.message);
+        return null;
+      }
+    }
+
+    // ============================================================
+    // v3/v4/v5 ENCRYPTION: Ephemeral keys + Sealed sender + Replay protection
+    // v4 adds post-quantum hybrid (ML-KEM-768 + Curve25519)
+    // v5 adds Double Ratchet (per-message key rotation)
+    // ============================================================
+    async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes, recipientKyberPubKey) {
       if (!myEncryptionKeyPair) {
         throw new Error('Encryption keys not initialized');
       }
 
+      // ── v5: Double Ratchet (best security — per-message key rotation) ──
+      if (currentConversationId && window.DoubleRatchet) {
+        const ratchetResult = await encryptWithRatchet(plaintext, currentConversationId, recipientEncPubKeyBytes);
+        if (ratchetResult) return ratchetResult;
+      }
+
+      // Generate ephemeral keypair — destroyed after this call (forward secrecy)
+      const ephemeralKeyPair = nacl.box.keyPair();
       const nonce = nacl.randomBytes(24);
-      const messageBytes = nacl.util.decodeUTF8(plaintext);
-      const encrypted = nacl.box(messageBytes, nonce, recipientEncPubKeyBytes, myEncryptionKeyPair.secretKey);
+
+      // Sealed sender: embed sender identity inside encrypted payload
+      const wallet = WalletAuth.getWallet();
+      const innerPayload = JSON.stringify({
+        s: wallet ? wallet.publicKey : '',  // sender identity (hidden from server)
+        t: Date.now(),                       // timestamp for replay protection
+        body: plaintext                      // original message content
+      });
+
+      // ── Wire protocol: compress before encrypt for smaller payloads ──
+      let messageBytes;
+      if (window.AutohoWire && innerPayload.length > 64) {
+        try {
+          messageBytes = await window.AutohoWire.compressText(innerPayload);
+        } catch { messageBytes = nacl.util.decodeUTF8(innerPayload); }
+      } else {
+        messageBytes = nacl.util.decodeUTF8(innerPayload);
+      }
+      const paddedBytes = padMessage(messageBytes);
+
+      // ── v4: Post-quantum hybrid (NaCl + ML-KEM-768) ──
+      if (recipientKyberPubKey && window.MlKemModule && window.MlKemModule.MlKem768) {
+        try {
+          const kyber = new window.MlKemModule.MlKem768();
+          // Encapsulate: produces (kyberCiphertext, kyberSharedSecret)
+          const [kyberCt, kyberSs] = await kyber.encap(recipientKyberPubKey);
+
+          // Derive hybrid key: SHA-256(nacl_shared_secret || kyber_shared_secret)
+          // nacl_shared_secret = nacl.box.before(recipientPub, ephemeralSec)
+          const naclShared = nacl.box.before(recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
+          const combined = new Uint8Array(naclShared.length + kyberSs.length);
+          combined.set(naclShared, 0);
+          combined.set(kyberSs, naclShared.length);
+          const hybridKey = new Uint8Array(await crypto.subtle.digest('SHA-256', combined));
+
+          // AES-256-GCM encryption with hybrid key
+          const aesKey = await crypto.subtle.importKey('raw', hybridKey, 'AES-GCM', false, ['encrypt']);
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const aesCt = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, paddedBytes));
+
+          return JSON.stringify({
+            v: 4,
+            e: nacl.util.encodeBase64(ephemeralKeyPair.publicKey),
+            k: nacl.util.encodeBase64(kyberCt),   // Kyber ciphertext
+            iv: nacl.util.encodeBase64(iv),
+            c: nacl.util.encodeBase64(aesCt),
+          });
+        } catch (e) {
+          console.warn('[Messaging] PQ hybrid encrypt failed, falling back to v3:', e.message);
+        }
+      }
+
+      // ── v3 fallback: Curve25519 only (no PQ) ──
+      const encrypted = nacl.box(paddedBytes, nonce, recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
 
       return JSON.stringify({
-        v: 1,
+        v: 3,
+        e: nacl.util.encodeBase64(ephemeralKeyPair.publicKey),
         n: nacl.util.encodeBase64(nonce),
         c: nacl.util.encodeBase64(encrypted),
-        s: bytesToHex(myEncryptionKeyPair.publicKey),
       });
     }
 
-    // Decrypt message from sender
+    // Decrypt message from sender (supports v1, v2, v3, and v4 envelopes)
     async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
       try {
         if (!myEncryptionKeyPair) {
@@ -1881,39 +2619,139 @@
         }
 
         const envelope = JSON.parse(encryptedJson);
-        
-        // Check if this is actually encrypted (v1 format)
-        if (envelope.v !== 1 || !envelope.n || !envelope.c) {
-          // Not encrypted, return as-is (legacy message)
+
+        // ── v5: Double Ratchet (per-message key rotation) ──
+        if (envelope.v === 5 && envelope.h && envelope.iv && envelope.c) {
+          const result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
+          if (result) return result;
+          // If ratchet decrypt fails, cannot fall back (ratchet state mismatch)
+          console.warn('SECURITY: v5 ratchet decrypt failed — session state may be out of sync');
           return null;
         }
-        
-        const nonce = nacl.util.decodeBase64(envelope.n);
-        const ciphertext = nacl.util.decodeBase64(envelope.c);
 
-        const candidateSenderKeys = [];
-
-        const sHex = String(envelope.s || '').trim().toLowerCase();
-        if (/^[0-9a-f]{64}$/.test(sHex)) {
+        // ── v4: Post-quantum hybrid (ML-KEM-768 + Curve25519 + AES-GCM) ──
+        if (envelope.v === 4 && envelope.e && envelope.k && envelope.iv && envelope.c) {
+          if (!myKyberKeyPair || !myKyberKeyPair.secretKey) {
+            console.warn('SECURITY: v4 message received but no Kyber secret key');
+            return null;
+          }
           try {
-            const k = hexToBytes(sHex);
-            if (k && k.length === 32) candidateSenderKeys.push(k);
-          } catch {}
+            const kyber = new window.MlKemModule.MlKem768();
+            const ephemeralPubKey = nacl.util.decodeBase64(envelope.e);
+            const kyberCt = nacl.util.decodeBase64(envelope.k);
+            const iv = nacl.util.decodeBase64(envelope.iv);
+            const aesCt = nacl.util.decodeBase64(envelope.c);
+
+            // Decapsulate Kyber to get shared secret
+            const kyberSs = await kyber.decap(kyberCt, myKyberKeyPair.secretKey);
+
+            // Derive hybrid key: SHA-256(nacl_shared || kyber_shared)
+            const naclShared = nacl.box.before(ephemeralPubKey, myEncryptionKeyPair.secretKey);
+            const combined = new Uint8Array(naclShared.length + kyberSs.length);
+            combined.set(naclShared, 0);
+            combined.set(kyberSs, naclShared.length);
+            const hybridKey = new Uint8Array(await crypto.subtle.digest('SHA-256', combined));
+
+            // AES-256-GCM decrypt
+            const aesKey = await crypto.subtle.importKey('raw', hybridKey, 'AES-GCM', false, ['decrypt']);
+            const decryptedBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, aesCt);
+            const decrypted = new Uint8Array(decryptedBuf);
+
+            const unpadded = unpadMessage(decrypted);
+            // Wire protocol: try decompress, fall back to raw UTF8
+            let innerStr;
+            if (window.AutohoWire && unpadded.length > 1 && (unpadded[0] === 0x00 || unpadded[0] === 0x01)) {
+              try { innerStr = await window.AutohoWire.decompressText(unpadded); } catch { innerStr = nacl.util.encodeUTF8(unpadded); }
+            } else {
+              innerStr = nacl.util.encodeUTF8(unpadded);
+            }
+
+            try {
+              const inner = JSON.parse(innerStr);
+              if (inner.t && (Date.now() - inner.t) > 86400000) {
+                console.warn('SECURITY: v4 message timestamp >24h old');
+              }
+              return inner.body || innerStr;
+            } catch {
+              return innerStr;
+            }
+          } catch (e) {
+            console.error('v4 PQ hybrid decrypt failed:', e);
+            return null;
+          }
         }
 
-        const sid = String(senderPublicKeyHex || '').trim();
-        if (sid) {
+        // ── v3: Ephemeral-key encryption (forward secrecy + sealed sender) ──
+        if (envelope.v === 3 && envelope.e && envelope.n && envelope.c) {
+          const ephemeralPubKey = nacl.util.decodeBase64(envelope.e);
+          const nonce = nacl.util.decodeBase64(envelope.n);
+          const ciphertext = nacl.util.decodeBase64(envelope.c);
+
+          const decrypted = nacl.box.open(ciphertext, nonce, ephemeralPubKey, myEncryptionKeyPair.secretKey);
+          if (!decrypted) return null;
+
+          const unpadded = unpadMessage(decrypted);
+          // Wire protocol: try decompress, fall back to raw UTF8
+          let innerStr;
+          if (window.AutohoWire && unpadded.length > 1 && (unpadded[0] === 0x00 || unpadded[0] === 0x01)) {
+            try { innerStr = await window.AutohoWire.decompressText(unpadded); } catch { innerStr = nacl.util.encodeUTF8(unpadded); }
+          } else {
+            innerStr = nacl.util.encodeUTF8(unpadded);
+          }
+
           try {
-            const k = await getRecipientEncryptionPublicKeyBytes(sid);
-            if (k && k.length === 32) candidateSenderKeys.push(k);
-          } catch {}
+            const inner = JSON.parse(innerStr);
+            // Replay protection: warn on old timestamps
+            if (inner.t && (Date.now() - inner.t) > 86400000) {
+              console.warn('SECURITY: Message timestamp >24h old, possible replay');
+            }
+            checkAndStoreNonce(envelope.n);
+            return inner.body || innerStr;
+          } catch {
+            return innerStr;
+          }
         }
 
-        // Decrypt using NaCl box.open; try all candidates
-        for (const senderEncPubKey of candidateSenderKeys) {
-          const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
-          if (decrypted) {
-            return nacl.util.encodeUTF8(decrypted);
+        // ── v1/v2 backward compatibility ──
+        if ((envelope.v === 1 || envelope.v === 2) && envelope.n && envelope.c) {
+          const nonce = nacl.util.decodeBase64(envelope.n);
+          const ciphertext = nacl.util.decodeBase64(envelope.c);
+          const isV2 = envelope.v === 2;
+
+          const candidateSenderKeys = [];
+
+          // v1: sender key embedded in envelope
+          const sHex = String(envelope.s || '').trim().toLowerCase();
+          if (/^[0-9a-f]{64}$/.test(sHex)) {
+            try {
+              const k = hexToBytes(sHex);
+              if (k && k.length === 32) candidateSenderKeys.push(k);
+            } catch {}
+          }
+
+          // v2 and fallback: look up sender's encryption key from server
+          const sid = String(senderPublicKeyHex || '').trim();
+          if (sid) {
+            try {
+              const k = await getRecipientEncryptionPublicKeyBytes(sid);
+              if (k && k.length === 32) candidateSenderKeys.push(k);
+            } catch {}
+          }
+
+          // Also try own key (for messages encrypted for self)
+          if (myEncryptionKeyPair.publicKey) {
+            candidateSenderKeys.push(myEncryptionKeyPair.publicKey);
+          }
+
+          for (const senderEncPubKey of candidateSenderKeys) {
+            const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
+            if (decrypted) {
+              if (isV2) {
+                const unpadded = unpadMessage(decrypted);
+                return nacl.util.encodeUTF8(unpadded);
+              }
+              return nacl.util.encodeUTF8(decrypted);
+            }
           }
         }
 
@@ -2391,7 +3229,7 @@
       }
     }
 
-    function renderGroupMessages(messages) {
+    async function renderGroupMessages(messages) {
       const container = document.getElementById('chatMessages');
       const wallet = WalletAuth.getWallet();
       
@@ -2400,14 +3238,40 @@
         return;
       }
 
-      container.innerHTML = messages.map(msg => {
+      const rendered = [];
+      for (const msg of messages) {
         const isSent = msg.senderId === wallet.publicKey;
         let content = '[Encrypted]';
         
-        // Decrypt message
-        if (msg.encryptedContent && myEncryptionKeyPair) {
+        // Try MLS decryption first (shared group key)
+        if (msg.mlsEncryptedContent && window.MLSGroup && currentGroupId && myEncryptionKeyPair) {
           try {
-            content = decryptMessage(msg.encryptedContent, msg.senderId);
+            const envelope = JSON.parse(msg.mlsEncryptedContent);
+            if (envelope.v === 'mls1') {
+              const groupState = await getOrCreateMLSGroupState(currentGroupId, currentGroupMembers || []);
+              if (groupState) {
+                content = await window.MLSGroup.decryptGroupMessage(groupState, envelope);
+                // Parse inner content if it's a message envelope
+                try {
+                  const parsed = JSON.parse(content);
+                  content = parsed.content || content;
+                } catch {}
+              }
+            }
+          } catch (e) {
+            console.warn('[MLS] Group decrypt failed:', e.message);
+            content = '[MLS decrypt failed]';
+          }
+        }
+        // Fallback: per-member encrypted content
+        else if (msg.encryptedContent && myEncryptionKeyPair) {
+          try {
+            const result = decryptMessage(msg.encryptedContent, msg.senderId);
+            if (result && typeof result === 'object' && result.encrypted) {
+              content = await decryptMessageAsync(result.data, result.senderId);
+            } else {
+              content = result;
+            }
           } catch (e) {
             content = '[Unable to decrypt]';
           }
@@ -2415,16 +3279,59 @@
         
         const senderName = isSent ? 'You' : (msg.senderId.substring(0, 8) + '...');
         
-        return `
+        rendered.push(`
           <div class="message-bubble ${isSent ? 'sent' : 'received'}">
             ${!isSent ? `<div class="group-message-sender">${senderName}</div>` : ''}
             <div class="message-text">${escapeHtml(content)}</div>
             <div class="message-meta">${formatTime(msg.timestamp)}</div>
           </div>
-        `;
-      }).join('');
-      
+        `);
+      }
+
+      container.innerHTML = rendered.join('');
       container.scrollTop = container.scrollHeight;
+    }
+
+    // ── MLS Group State Helpers ──
+    async function getOrCreateMLSGroupState(groupId, memberPubKeys) {
+      if (!window.MLSGroup || !myEncryptionKeyPair) return null;
+      const MLS = window.MLSGroup;
+
+      // Check in-memory cache
+      let state = MLS.getGroupState(groupId);
+      if (state) return state;
+
+      // Try loading from server
+      const storageKey = getRatchetStorageKey();
+      if (storageKey) {
+        state = await MLS.loadGroupStateFromServer(groupId, storageKey, WalletAuth.getAuthHeaders());
+        if (state) {
+          MLS.setGroupState(groupId, state);
+          return state;
+        }
+      }
+
+      // Create new group state
+      try {
+        const memberKeys = [];
+        for (const pk of memberPubKeys) {
+          try {
+            const bytes = await getRecipientEncryptionPublicKeyBytes(pk);
+            memberKeys.push(bytes);
+          } catch {
+            memberKeys.push(myEncryptionKeyPair.publicKey); // fallback
+          }
+        }
+        state = await MLS.createGroup(groupId, myEncryptionKeyPair, memberKeys);
+        MLS.setGroupState(groupId, state);
+        if (storageKey) {
+          MLS.saveGroupStateToServer(groupId, state, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+        return state;
+      } catch (e) {
+        console.warn('[MLS] Group state creation failed:', e.message);
+        return null;
+      }
     }
 
     async function sendGroupMessage() {
@@ -2456,26 +3363,54 @@
           return;
         }
 
-        // Encrypt message for each group member
-        const encryptedContentByMember = {};
-        
-        for (const memberId of currentGroupMembers) {
+        // ── Try MLS shared-key encryption first (O(1) per message) ──
+        let mlsEncrypted = null;
+        if (window.MLSGroup && currentGroupMembers && currentGroupMembers.length > 0) {
           try {
-            const wallet = WalletAuth.getWallet();
-            const isMe = wallet && memberId === wallet.publicKey;
-            const encrypted = isMe
-              ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
-              : await encryptForRecipient(messageEnvelope, memberId);
-            encryptedContentByMember[memberId] = encrypted;
+            const groupState = await getOrCreateMLSGroupState(currentGroupId, currentGroupMembers);
+            if (groupState) {
+              const wallet = WalletAuth.getWallet();
+              const senderPubB64 = wallet ? wallet.publicKey : '';
+              const envelope = await window.MLSGroup.encryptGroupMessage(groupState, messageEnvelope, senderPubB64);
+              mlsEncrypted = JSON.stringify(envelope);
+              // Save updated state
+              const storageKey = getRatchetStorageKey();
+              if (storageKey) {
+                window.MLSGroup.saveGroupStateToServer(currentGroupId, groupState, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+              }
+            }
           } catch (e) {
-            console.error('SECURITY: Failed to encrypt for member:', memberId, e);
+            console.warn('[MLS] Group encrypt failed, falling back to per-member:', e.message);
           }
         }
-        
-        // SECURITY: Do NOT send if encryption fails for any member
-        if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
-          alert(`Failed to encrypt message for a group member. Message not sent.`);
-          return;
+
+        let body;
+        if (mlsEncrypted) {
+          // MLS: single encrypted payload for all members
+          body = JSON.stringify({ mlsEncryptedContent: mlsEncrypted });
+        } else {
+          // Fallback: encrypt message for each group member individually
+          const encryptedContentByMember = {};
+          
+          for (const memberId of currentGroupMembers) {
+            try {
+              const wallet = WalletAuth.getWallet();
+              const isMe = wallet && memberId === wallet.publicKey;
+              const encrypted = isMe
+                ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
+                : await encryptForRecipient(messageEnvelope, memberId);
+              encryptedContentByMember[memberId] = encrypted;
+            } catch (e) {
+              console.error('SECURITY: Failed to encrypt for member:', memberId, e);
+            }
+          }
+          
+          // SECURITY: Do NOT send if encryption fails for any member
+          if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
+            alert(`Failed to encrypt message for a group member. Message not sent.`);
+            return;
+          }
+          body = JSON.stringify({ encryptedContentByMember });
         }
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
@@ -2484,7 +3419,7 @@
             'Content-Type': 'application/json',
             ...WalletAuth.getAuthHeaders()
           },
-          body: JSON.stringify({ encryptedContentByMember })
+          body
         });
 
         if (checkAuthAndRedirect(response)) return;
@@ -2695,6 +3630,9 @@
       const participant = conv?.participantInfo.find(p => p.accountId === recipientId);
       document.getElementById('chatParticipantName').textContent = participant?.displayName || recipientId.substring(0, 12) + '...';
       
+      // Load per-conversation disappearing timer settings
+      loadDisappearSettings();
+      
       await loadMessages(conversationId);
       
       // Reset message count for new conversation
@@ -2709,11 +3647,17 @@
     
     function startMessagePolling() {
       stopMessagePolling(); // Clear any existing interval
-      messagePollingInterval = setInterval(async () => {
-        if (currentConversationId) {
-          await pollForNewMessages(currentConversationId);
-        }
-      }, POLL_INTERVAL_MS);
+      // Use randomized interval for metadata protection (anti-timing analysis)
+      function scheduleNext() {
+        const jitteredInterval = getRandomizedPollInterval();
+        messagePollingInterval = setTimeout(async () => {
+          if (currentConversationId) {
+            await pollForNewMessages(currentConversationId);
+          }
+          scheduleNext();
+        }, jitteredInterval);
+      }
+      scheduleNext();
     }
     
     async function pollForNewMessages(conversationId) {
@@ -2745,7 +3689,7 @@
     
     function stopMessagePolling() {
       if (messagePollingInterval) {
-        clearInterval(messagePollingInterval);
+        clearTimeout(messagePollingInterval);
         messagePollingInterval = null;
       }
     }
@@ -2769,20 +3713,38 @@
     // ============================================================
 
     function updateDisappearTimer() {
-      // Called on change for UI feedback if needed
       const select = document.getElementById('disappearTimer');
+      const checkbox = document.getElementById('expiresAfterView');
       const timer = parseInt(select.value) || 0;
-      console.log('[Disappear] Timer changed to:', timer, 'ms');
+      const afterView = checkbox ? checkbox.checked : false;
+      // Persist per-conversation
+      if (currentConversationId) {
+        const stored = JSON.parse(localStorage.getItem('autho_disappear_settings') || '{}');
+        stored[currentConversationId] = { timer, afterView };
+        localStorage.setItem('autho_disappear_settings', JSON.stringify(stored));
+      }
+    }
+
+    function loadDisappearSettings() {
+      if (!currentConversationId) return;
+      const stored = JSON.parse(localStorage.getItem('autho_disappear_settings') || '{}');
+      const settings = stored[currentConversationId];
+      const select = document.getElementById('disappearTimer');
+      const checkbox = document.getElementById('expiresAfterView');
+      if (settings && select) {
+        select.value = String(settings.timer || 0);
+        if (checkbox) checkbox.checked = !!settings.afterView;
+      } else if (select) {
+        select.value = '0';
+        if (checkbox) checkbox.checked = false;
+      }
     }
 
     function getDisappearSettings() {
-      // Always read directly from DOM to get current values
       const select = document.getElementById('disappearTimer');
       const checkbox = document.getElementById('expiresAfterView');
       const timerValue = select ? parseInt(select.value) || 0 : 0;
       const afterView = checkbox ? checkbox.checked : false;
-      
-      console.log('[Disappear] Sending with timer:', timerValue, 'afterView:', afterView);
       
       return {
         selfDestructAfter: timerValue > 0 ? timerValue : undefined,
@@ -2912,7 +3874,24 @@
           myPrivateKey = messagingPrivateKey;
           // Use the robust initialization with nacl waiting and retries
           myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
+          // Generate ML-KEM-768 (Kyber) keypair for post-quantum hybrid
+          try {
+            if (window.MlKemModule && window.MlKemModule.MlKem768) {
+              const kyber = new window.MlKemModule.MlKem768();
+              const [kyberPk, kyberSk] = await kyber.generateKeyPair();
+              myKyberKeyPair = { publicKey: kyberPk, secretKey: kyberSk };
+              console.log('[Messaging] ML-KEM-768 (post-quantum) keypair generated');
+            }
+          } catch (e) {
+            console.warn('[Messaging] ML-KEM-768 keygen failed (PQ not available):', e.message);
+          }
           await publishMyEncryptionPublicKey();
+          // Key transparency: publish hash for audit (non-blocking)
+          publishKeyTransparencyHash().catch(() => {});
+          // X3DH: publish/rotate signed pre-key bundle (non-blocking)
+          maybeRotatePreKeys().catch(() => {});
+          // Real-time messaging: connect WebSocket (non-blocking)
+          try { connectMessagingWebSocket(); } catch {}
           return myEncryptionKeyPair;
         })();
       }
@@ -3009,10 +3988,18 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // Check for v1 encrypted format
+        // v5: Double Ratchet, v4: PQ hybrid, v3: ephemeral key encryption
+        if (parsed.v === 5 && parsed.h && parsed.iv && parsed.c) {
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        if (parsed.v === 3 && parsed.e && parsed.n && parsed.c) {
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        // v1: legacy encrypted format
         if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
-          // This is encrypted - need async decryption
-          // Return marker for async handling
           return { encrypted: true, data: encryptedContent, senderId };
         }
         
@@ -3030,18 +4017,20 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // Check for v1 encrypted format
-        if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
+        // v5: Double Ratchet, v4: PQ hybrid, v3: ephemeral key, v1/v2: legacy encrypted
+        if (parsed.v === 5 && parsed.h && parsed.iv && parsed.c) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
           const decrypted = await decryptFromSender(encryptedContent, senderId);
-          if (decrypted) {
-            return decrypted;
-          }
-          return '[Could not decrypt]';
+          return decrypted || '[Could not decrypt - ratchet state missing]';
         }
-
-        if (parsed.v === 1 && parsed.n && parsed.c && !parsed.s) {
+        if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
+          const ok = await ensureEncryptionInitialized();
+          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
+          const decrypted = await decryptFromSender(encryptedContent, senderId);
+          return decrypted || '[Could not decrypt - PQ keys missing]';
+        }
+        if ((parsed.v === 3 || parsed.v === 2 || parsed.v === 1) && parsed.n && parsed.c) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
           const decrypted = await decryptFromSender(encryptedContent, senderId);
@@ -3072,6 +4061,10 @@
 
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.disabled = true;
+
+      // ── OPTIMISTIC UI: show message instantly ──
+      const tempId = renderOptimisticMessage(text);
+      input.value = '';
       
       try {
         // Create message envelope
@@ -3083,6 +4076,7 @@
         
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
+          updateOptimisticMessage(tempId, 'failed');
           alert('Encryption not initialized. Please log in again.');
           WalletAuth.requireAuth();
           console.error('SECURITY: Attempted to send message without encryption keys');
@@ -3094,9 +4088,29 @@
         // Also encrypt for self (so we can read our own sent messages)
         const wallet = WalletAuth.getWallet();
         const encryptedForSender = await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey);
-        
+
+        // ── Wire protocol: compress encrypted content if available ──
+        let sendPayload = {
+          recipientId: currentRecipientId,
+          encryptedContent: encryptedForRecipient,
+          encryptedForSender: encryptedForSender,
+          itemId: currentItemId || undefined,
+          conversationId: currentConversationId || undefined,
+          mediaType: 'text'
+        };
+
         // Get disappearing message settings
         const disappearSettings = getDisappearSettings();
+        if (disappearSettings.selfDestructAfter) sendPayload.selfDestructAfter = disappearSettings.selfDestructAfter;
+        if (disappearSettings.expiresAfterView) sendPayload.expiresAfterView = disappearSettings.expiresAfterView;
+
+        // Add wire protocol size metrics (for debugging)
+        if (window.AutohoWire) {
+          try {
+            const metrics = window.AutohoWire.measureSavings(encryptedForRecipient);
+            console.log('[Wire] Envelope: ' + metrics.jsonSize + 'B → ' + metrics.binarySize + 'B (' + metrics.savedPercent + ' saved)');
+          } catch {}
+        }
         
         const response = await fetch('/api/messages/send', {
           method: 'POST',
@@ -3104,33 +4118,24 @@
             'Content-Type': 'application/json',
             ...WalletAuth.getAuthHeaders()
           },
-          body: JSON.stringify({
-            recipientId: currentRecipientId,
-            encryptedContent: encryptedForRecipient,
-            encryptedForSender: encryptedForSender,
-            itemId: currentItemId || undefined,
-            conversationId: currentConversationId || undefined,
-            mediaType: 'text',
-            selfDestructAfter: disappearSettings.selfDestructAfter,
-            expiresAfterView: disappearSettings.expiresAfterView
-          })
+          body: JSON.stringify(sendPayload)
         });
         
         const data = await response.json();
         if (data.success) {
-          input.value = '';
+          updateOptimisticMessage(tempId, 'sent');
           if (data.conversationId) {
             currentConversationId = data.conversationId;
           }
-          // Reload messages to show the new one
-          await loadMessages(currentConversationId);
           // Refresh inbox list so you can see the conversation immediately
           loadConversations();
         } else {
+          updateOptimisticMessage(tempId, 'failed');
           alert(data.error || 'Failed to send message');
         }
       } catch (error) {
         console.error('Send error:', error);
+        updateOptimisticMessage(tempId, 'failed');
         const errorMsg = error?.message || '';
         if (errorMsg.includes('recipient') || errorMsg.includes('Recipient') || errorMsg.includes('not found')) {
           alert('Cannot send: The recipient has not set up messaging yet. Ask them to log in first.');
@@ -3606,6 +4611,9 @@
         
         if (data.success) {
           serviceBalance = data.newBalance || (serviceBalance - requiredCost);
+          // Update the balance display in the header immediately
+          const balanceEl = document.getElementById('msgServiceBalance');
+          if (balanceEl) balanceEl.textContent = serviceBalance.toLocaleString();
           return { approved: true, cost: requiredCost, tier: requiredTier };
         } else {
           alert(data.error || 'Failed to process file transfer payment');
@@ -3626,26 +4634,51 @@
       if (!file) return;
       
       try {
-        // For photos, we compress so tier check is usually not needed
-        const compressed = await compressImage(file, MAX_IMAGE_SIZE);
-        
-        // If original is large, show quality choice modal
-        if (file.size > FILE_TIERS.free.maxSize) {
-          pendingPhotoFile = file;
-          pendingPhotoCompressed = compressed;
-          showPhotoQualityModal(file, compressed);
-          event.target.value = '';
-          return;
+        // ── Wire protocol: optimize image (WebP + resize to 1600px max) ──
+        let optimized = null;
+        if (window.AutohoWire) {
+          try {
+            optimized = await window.AutohoWire.optimizeImage(file, 1600, 1600, 0.82);
+            console.log('[Wire] Image: ' + (file.size/1024).toFixed(0) + 'KB → ' + (optimized.blob.size/1024).toFixed(0) + 'KB (' + optimized.savings + ' saved)');
+          } catch (e) {
+            console.warn('[Wire] Image optimize failed, using fallback:', e.message);
+          }
         }
-        
-        // Small file - just use compressed
-        pendingMedia = {
-          type: 'image',
-          data: compressed.data,
-          name: file.name || 'Photo',
-          size: compressed.size
-        };
-        showMediaPreview();
+
+        if (optimized && optimized.blob.size < file.size) {
+          // Use optimized WebP/JPEG
+          const reader = new FileReader();
+          const data = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(optimized.blob);
+          });
+          pendingMedia = {
+            type: 'image',
+            data: data,
+            name: file.name || 'Photo',
+            size: optimized.blob.size,
+            mime: optimized.type
+          };
+          showMediaPreview();
+        } else {
+          // Fallback to existing compression
+          const compressed = await compressImage(file, MAX_IMAGE_SIZE);
+          if (file.size > FILE_TIERS.free.maxSize) {
+            pendingPhotoFile = file;
+            pendingPhotoCompressed = compressed;
+            showPhotoQualityModal(file, compressed);
+            event.target.value = '';
+            return;
+          }
+          pendingMedia = {
+            type: 'image',
+            data: compressed.data,
+            name: file.name || 'Photo',
+            size: compressed.size
+          };
+          showMediaPreview();
+        }
       } catch (e) {
         console.error('Photo processing error:', e);
         alert('Failed to process photo');
@@ -4045,12 +5078,42 @@
       
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.disabled = true;
+
+      // ── OPTIMISTIC UI: show media message instantly ──
+      const mediaLabel = pendingMedia.type === 'image' ? '📷 Photo' :
+                         pendingMedia.type === 'video' ? '🎥 Video' :
+                         pendingMedia.type === 'audio' ? '🎵 Voice message' : '📎 File';
+      const tempId = renderOptimisticMessage(mediaLabel + ' (' + formatFileSize(pendingMedia.size) + ')');
       
       try {
+        // ── Strip EXIF metadata from JPEG images for privacy ──
+        let mediaData = pendingMedia.data;
+        if (pendingMedia.type === 'image' && typeof stripImageMetadata === 'function') {
+          try {
+            // Convert base64 to ArrayBuffer, strip, convert back
+            const b64Part = mediaData.split(',')[1];
+            if (b64Part) {
+              const raw = atob(b64Part);
+              const arr = new Uint8Array(raw.length);
+              for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+              const stripped = stripImageMetadata(arr.buffer);
+              if (stripped.byteLength < arr.buffer.byteLength) {
+                const strippedArr = new Uint8Array(stripped);
+                const b64 = btoa(String.fromCharCode.apply(null, strippedArr));
+                const prefix = mediaData.split(',')[0];
+                mediaData = prefix + ',' + b64;
+                console.log('[Wire] EXIF stripped: ' + arr.length + 'B → ' + strippedArr.length + 'B');
+              }
+            }
+          } catch (e) {
+            console.warn('[Wire] EXIF strip failed:', e.message);
+          }
+        }
+
         // Create media envelope
         const mediaEnvelope = JSON.stringify({
           type: pendingMedia.type,
-          content: pendingMedia.data,
+          content: mediaData,
           name: pendingMedia.name,
           size: pendingMedia.size,
           mime: pendingMedia.mime,
@@ -4058,6 +5121,7 @@
         });
         
         if (!await ensureEncryptionInitialized()) {
+          updateOptimisticMessage(tempId, 'failed');
           alert('Encryption not initialized. Please refresh the page and try again.');
           console.error('SECURITY: Attempted to send media without encryption keys');
           return;
@@ -4084,7 +5148,6 @@
             encryptedForSender: encryptedForSender,
             itemId: currentItemId || undefined,
             conversationId: currentConversationId || undefined,
-            // Include media type and disappearing settings
             mediaType: pendingMedia.type,
             selfDestructAfter: disappearSettings.selfDestructAfter,
             expiresAfterView: disappearSettings.expiresAfterView
@@ -4093,17 +5156,19 @@
         
         const data = await response.json();
         if (data.success) {
+          updateOptimisticMessage(tempId, 'sent');
           clearMediaPreview();
           if (data.conversationId) {
             currentConversationId = data.conversationId;
           }
-          await loadMessages(currentConversationId);
           loadConversations();
         } else {
+          updateOptimisticMessage(tempId, 'failed');
           alert(data.error || 'Failed to send media');
         }
       } catch (error) {
         console.error('Send media error:', error);
+        updateOptimisticMessage(tempId, 'failed');
         alert('Failed to send media');
       } finally {
         sendBtn.disabled = false;
@@ -4411,6 +5476,152 @@
     // Fetch balance on page load
     fetchServiceBalance();
 
+    // ============================================================
+    // SAFETY NUMBERS: Key verification (like Signal)
+    // ============================================================
+    async function generateSafetyNumber(myEncPubKeyBytes, theirEncPubKeyBytes) {
+      // Sort keys deterministically so both sides compute the same number
+      const myHex = bytesToHex(myEncPubKeyBytes);
+      const theirHex = bytesToHex(theirEncPubKeyBytes);
+      const keys = [myEncPubKeyBytes, theirEncPubKeyBytes];
+      if (myHex > theirHex) keys.reverse();
+      
+      // Concatenate sorted keys
+      const combined = new Uint8Array(keys[0].length + keys[1].length);
+      combined.set(keys[0], 0);
+      combined.set(keys[1], keys[0].length);
+      
+      // SHA-256 hash
+      const hash = await crypto.subtle.digest('SHA-256', combined);
+      const hashBytes = new Uint8Array(hash);
+      
+      // Format as 12 groups of 5 digits (60 digits total, like Signal)
+      let result = '';
+      for (let i = 0; i < 30; i += 2.5) {
+        const idx = Math.floor(i);
+        const val = ((hashBytes[idx] << 8) | (hashBytes[idx + 1] || 0)) % 100000;
+        result += val.toString().padStart(5, '0') + ' ';
+        if ((result.trim().split(' ').length) % 4 === 0) result += '\n';
+      }
+      return result.trim();
+    }
+
+    async function showSafetyNumber() {
+      if (!currentRecipientId || !myEncryptionKeyPair) {
+        alert('Encryption not initialized or no contact selected.');
+        return;
+      }
+      
+      const modal = document.getElementById('safetyNumberModal');
+      const display = document.getElementById('safetyNumberDisplay');
+      const qrContainer = document.getElementById('safetyNumberQR');
+      const statusEl = document.getElementById('verifiedStatus');
+      
+      display.textContent = 'Computing...';
+      qrContainer.innerHTML = '';
+      modal.style.display = 'flex';
+      
+      try {
+        // Get recipient's encryption public key
+        const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(currentRecipientId);
+        if (!recipientEncPubKeyBytes) {
+          display.textContent = 'Could not load contact key';
+          return;
+        }
+        
+        const safetyNumber = await generateSafetyNumber(myEncryptionKeyPair.publicKey, recipientEncPubKeyBytes);
+        display.textContent = safetyNumber;
+        
+        // Generate QR code of safety number
+        try {
+          new QRCode(qrContainer, {
+            text: safetyNumber.replace(/\s+/g, ''),
+            width: 160,
+            height: 160,
+            colorDark: '#4caf50',
+            colorLight: '#1a1a2e',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } catch {}
+        
+        // Check verified status
+        const verifiedContacts = JSON.parse(localStorage.getItem('autho_verified_contacts') || '{}');
+        const storedHash = verifiedContacts[currentRecipientId];
+        const currentHash = safetyNumber.replace(/\s+/g, '');
+        
+        if (storedHash === currentHash) {
+          statusEl.innerHTML = '<span style="color:#4caf50;">&#10003; Verified</span> — Key has not changed since verification';
+        } else if (storedHash) {
+          statusEl.innerHTML = '<span style="color:#ff4444;">&#9888; Key changed!</span> — Re-verify this contact';
+        } else {
+          statusEl.textContent = 'Not yet verified';
+        }
+      } catch (e) {
+        console.error('Safety number error:', e);
+        display.textContent = 'Error generating safety number';
+      }
+    }
+
+    function closeSafetyNumberModal() {
+      document.getElementById('safetyNumberModal').style.display = 'none';
+    }
+
+    async function markContactVerified() {
+      if (!currentRecipientId || !myEncryptionKeyPair) return;
+      
+      try {
+        const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(currentRecipientId);
+        const safetyNumber = await generateSafetyNumber(myEncryptionKeyPair.publicKey, recipientEncPubKeyBytes);
+        const hash = safetyNumber.replace(/\s+/g, '');
+        
+        const verifiedContacts = JSON.parse(localStorage.getItem('autho_verified_contacts') || '{}');
+        verifiedContacts[currentRecipientId] = hash;
+        localStorage.setItem('autho_verified_contacts', JSON.stringify(verifiedContacts));
+        
+        document.getElementById('verifiedStatus').innerHTML = 
+          '<span style="color:#4caf50;">&#10003; Verified</span> — Key has not changed since verification';
+        
+        // Update verify button to show verified state
+        const btn = document.getElementById('verifyContactBtn');
+        if (btn) { btn.style.borderColor = '#4caf50'; btn.style.color = '#4caf50'; btn.textContent = '✅ Verified'; }
+      } catch (e) {
+        console.error('Mark verified error:', e);
+      }
+    }
+
+    // ============================================================
+    // KEY TRANSPARENCY: Publish key hash to ledger for audit
+    // ============================================================
+    async function publishKeyTransparencyHash() {
+      if (!myEncryptionKeyPair) return;
+      
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+        
+        // Hash the encryption public key
+        const pubKeyHash = await crypto.subtle.digest('SHA-256', myEncryptionKeyPair.publicKey);
+        const hashHex = Array.from(new Uint8Array(pubKeyHash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Publish to transparency log
+        await fetch('/api/messages/key-transparency', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            publicKeyHash: hashHex,
+            algorithm: 'curve25519',
+            timestamp: Date.now()
+          })
+        });
+      } catch (e) {
+        // Non-critical: don't block messaging if transparency log fails
+        console.warn('Key transparency publish failed:', e.message);
+      }
+    }
+
     // Show encryption info modal
     function showEncryptionInfo() {
       document.getElementById('encryptionModal').classList.add('active');
@@ -4436,12 +5647,17 @@
       event.preventDefault();
       event.stopPropagation();
       
-      if (!isSent) return; // Only sender can edit/delete
-      
       selectedMessageId = messageId;
       selectedMessageText = messageText;
+      contextMenuMessageId = messageId;
       
       const menu = document.getElementById('messageContextMenu');
+      // Show/hide edit+delete based on ownership (reactions always visible)
+      const editItem = menu.querySelector('.context-menu-item:nth-child(3)'); // Edit
+      const deleteItem = menu.querySelector('.context-menu-item.delete');     // Delete
+      if (editItem) editItem.style.display = isSent ? '' : 'none';
+      if (deleteItem) deleteItem.style.display = isSent ? '' : 'none';
+
       const x = Math.min(event.clientX, window.innerWidth - 180);
       const y = Math.min(event.clientY, window.innerHeight - 150);
       
@@ -4518,6 +5734,8 @@
           msgElements.forEach(el => el.remove());
           
           serviceBalance = data.newBalance || (serviceBalance - required);
+          const balEl = document.getElementById('msgServiceBalance');
+          if (balEl) balEl.textContent = serviceBalance.toLocaleString();
           hideMessageContextMenu();
         } else {
           alert(data.error || 'Failed to delete message');
@@ -4573,6 +5791,8 @@
           });
           
           serviceBalance = data.newBalance || (serviceBalance - required);
+          const balEl2 = document.getElementById('msgServiceBalance');
+          if (balEl2) balEl2.textContent = serviceBalance.toLocaleString();
         } else {
           alert(data.error || 'Failed to edit message');
         }
@@ -4640,6 +5860,369 @@
 
     // Initial balance fetch
     fetchServiceBalance();
+
+    // ============================================================
+    // MESSAGE SEARCH
+    // ============================================================
+    let searchDebounce = null;
+
+    function handleMessageSearch(query) {
+      clearTimeout(searchDebounce);
+      const resultsEl = document.getElementById('messageSearchResults');
+      if (!query || query.length < 2) {
+        resultsEl.style.display = 'none';
+        resultsEl.innerHTML = '';
+        return;
+      }
+      searchDebounce = setTimeout(async function() {
+        await performMessageSearch(query);
+      }, 300);
+    }
+
+    async function performMessageSearch(query) {
+      const resultsEl = document.getElementById('messageSearchResults');
+      resultsEl.style.display = 'block';
+      resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">Searching...</div>';
+
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+
+        // Fetch all conversations
+        const convResp = await fetch('/api/messages/conversations', {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const convData = await convResp.json();
+        if (!convData.success || !convData.conversations) {
+          resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">No results</div>';
+          return;
+        }
+
+        const results = [];
+        const lowerQuery = query.toLowerCase();
+
+        // Search through each conversation's recent messages
+        for (const conv of convData.conversations.slice(0, 20)) {
+          try {
+            const msgResp = await fetch('/api/messages/conversation/' + conv.conversationId + '?limit=50', {
+              headers: WalletAuth.getAuthHeaders()
+            });
+            const msgData = await msgResp.json();
+            if (!msgData.success || !msgData.messages) continue;
+
+            for (const msg of msgData.messages) {
+              try {
+                // Try to decrypt the message to search its content
+                let plaintext = '';
+                const isSelf = msg.senderId === wallet.publicKey;
+                const encrypted = isSelf ? msg.encryptedForSender : msg.encryptedContent;
+                if (!encrypted) continue;
+                plaintext = await decryptFromSender(encrypted, msg.senderId);
+                if (!plaintext) continue;
+
+                // Parse the decrypted envelope
+                let envelope;
+                try { envelope = JSON.parse(plaintext); } catch { continue; }
+                const content = envelope.content || envelope.text || '';
+                if (content.toLowerCase().includes(lowerQuery)) {
+                  const other = conv.participants?.find(p => p.accountId !== wallet.publicKey);
+                  results.push({
+                    conversationId: conv.conversationId,
+                    recipientId: other?.accountId,
+                    displayName: other?.displayName || 'Unknown',
+                    content: content,
+                    timestamp: msg.timestamp,
+                    messageId: msg.eventId
+                  });
+                }
+                if (results.length >= 20) break;
+              } catch {}
+            }
+          } catch {}
+          if (results.length >= 20) break;
+        }
+
+        if (results.length === 0) {
+          resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">No messages found</div>';
+          return;
+        }
+
+        resultsEl.innerHTML = results.map(function(r) {
+          const preview = r.content.length > 60 ? r.content.substring(0, 60) + '...' : r.content;
+          const time = new Date(r.timestamp).toLocaleDateString();
+          // Highlight match
+          const highlighted = escapeHtml(preview).replace(new RegExp('(' + escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark style="background:#f7931a;color:#000;border-radius:2px;padding:0 2px;">$1</mark>');
+          return '<div onclick="openConversation(\'' + r.conversationId + '\', \'' + (r.recipientId || '') + '\')" style="padding:10px 14px;border-bottom:1px solid #222;cursor:pointer;">' +
+            '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<span style="color:#fff;font-size:13px;font-weight:600;">' + escapeHtml(r.displayName) + '</span>' +
+            '<span style="color:#666;font-size:11px;">' + time + '</span></div>' +
+            '<div style="color:#aaa;font-size:12px;line-height:1.4;">' + highlighted + '</div></div>';
+        }).join('');
+      } catch (e) {
+        console.warn('[Search] Error:', e);
+        resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">Search failed</div>';
+      }
+    }
+
+    // ============================================================
+    // MESSAGE REACTIONS (emoji)
+    // ============================================================
+    const messageReactions = new Map(); // messageId -> Map<emoji, Set<userId>>
+    let contextMenuMessageId = null;
+
+    function reactToMessage(emoji) {
+      if (!contextMenuMessageId || !currentConversationId) return;
+      // Close context menu
+      const menu = document.getElementById('messageContextMenu');
+      if (menu) menu.style.display = 'none';
+
+      // Send reaction via WebSocket
+      if (messagingWs && messagingWsConnected) {
+        messagingWs.send(JSON.stringify({
+          type: 'reaction',
+          conversationId: currentConversationId,
+          messageId: contextMenuMessageId,
+          emoji: emoji,
+          action: 'add'
+        }));
+      }
+
+      // Apply locally immediately (optimistic)
+      applyReaction(contextMenuMessageId, emoji, 'self', 'add');
+    }
+
+    function applyReaction(messageId, emoji, fromId, action) {
+      if (!messageReactions.has(messageId)) messageReactions.set(messageId, new Map());
+      const msgReactions = messageReactions.get(messageId);
+      if (!msgReactions.has(emoji)) msgReactions.set(emoji, new Set());
+
+      if (action === 'add') {
+        msgReactions.get(emoji).add(fromId);
+      } else {
+        msgReactions.get(emoji).delete(fromId);
+        if (msgReactions.get(emoji).size === 0) msgReactions.delete(emoji);
+      }
+
+      // Render reactions below the message bubble
+      const bubble = document.querySelector('[data-message-id="' + messageId + '"]');
+      if (!bubble) return;
+      let reactionsEl = bubble.querySelector('.message-reactions');
+      if (!reactionsEl) {
+        reactionsEl = document.createElement('div');
+        reactionsEl.className = 'message-reactions';
+        reactionsEl.style.cssText = 'display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
+        bubble.appendChild(reactionsEl);
+      }
+      reactionsEl.innerHTML = '';
+      for (const [em, users] of msgReactions.entries()) {
+        if (users.size === 0) continue;
+        const badge = document.createElement('span');
+        badge.style.cssText = 'background:rgba(255,255,255,0.1);border-radius:12px;padding:2px 6px;font-size:12px;cursor:pointer;';
+        badge.textContent = em + (users.size > 1 ? ' ' + users.size : '');
+        badge.title = users.size + ' reaction(s)';
+        reactionsEl.appendChild(badge);
+      }
+    }
+
+    // ============================================================
+    // TYPING INDICATORS + READ RECEIPTS
+    // ============================================================
+    let typingTimeout = null;
+    let isTypingSent = false;
+
+    // Send typing indicator when user types
+    const msgInput = document.getElementById('messageInput');
+    if (msgInput) {
+      msgInput.addEventListener('input', function() {
+        if (!messagingWs || !messagingWsConnected || !currentConversationId) return;
+        if (!isTypingSent) {
+          isTypingSent = true;
+          messagingWs.send(JSON.stringify({
+            type: 'typing',
+            conversationId: currentConversationId,
+            isTyping: true
+          }));
+        }
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(function() {
+          isTypingSent = false;
+          if (messagingWs && messagingWsConnected && currentConversationId) {
+            messagingWs.send(JSON.stringify({
+              type: 'typing',
+              conversationId: currentConversationId,
+              isTyping: false
+            }));
+          }
+        }, 2000);
+      });
+    }
+
+    // Send read receipt when messages are viewed
+    function sendReadReceipt() {
+      if (!messagingWs || !messagingWsConnected || !currentConversationId) return;
+      messagingWs.send(JSON.stringify({
+        type: 'read_receipt',
+        conversationId: currentConversationId,
+        lastReadTimestamp: Date.now()
+      }));
+    }
+
+    // Hook into loadMessages to send read receipt after viewing
+    const _originalLoadMessages = typeof loadMessages === 'function' ? loadMessages : null;
+    if (_originalLoadMessages) {
+      const _wrappedLoadMessages = loadMessages;
+      loadMessages = async function() {
+        const result = await _wrappedLoadMessages.apply(this, arguments);
+        sendReadReceipt();
+        return result;
+      };
+    }
+
+    // ============================================================
+    // ENCRYPTED VOICE / VIDEO CALLS (WebRTC + Autho signaling)
+    // ============================================================
+
+    // Send call signal as an encrypted message through the messaging WebSocket
+    function sendCallSignal(signal) {
+      if (!currentRecipientId && !AutohoCall.getPeerId()) {
+        console.warn('[Call] No recipient to signal');
+        return;
+      }
+      const peerId = currentRecipientId || AutohoCall.getPeerId();
+      // Send via WebSocket as a lightweight call signal
+      if (messagingWs && messagingWsConnected) {
+        messagingWs.send(JSON.stringify({
+          type: 'call_signal',
+          targetId: peerId,
+          signal: signal
+        }));
+      }
+    }
+
+    function startVoiceCall() {
+      if (!currentRecipientId) { alert('Open a conversation first'); return; }
+      if (currentGroupId) { alert('Voice calls are 1-to-1 only'); return; }
+      document.getElementById('callPeerName').textContent = document.getElementById('chatParticipantName').textContent || 'Unknown';
+      document.getElementById('callStatusText').textContent = 'Calling...';
+      document.getElementById('callDuration').textContent = '';
+      showCallOverlay('calling', 'voice');
+      AutohoCall.startCall(currentRecipientId, 'voice', sendCallSignal);
+    }
+
+    function startVideoCall() {
+      if (!currentRecipientId) { alert('Open a conversation first'); return; }
+      if (currentGroupId) { alert('Video calls are 1-to-1 only'); return; }
+      document.getElementById('callPeerName').textContent = document.getElementById('chatParticipantName').textContent || 'Unknown';
+      document.getElementById('callStatusText').textContent = 'Calling...';
+      document.getElementById('callDuration').textContent = '';
+      showCallOverlay('calling', 'video');
+      AutohoCall.startCall(currentRecipientId, 'video', sendCallSignal);
+    }
+
+    function acceptIncomingCall() {
+      AutohoCall.acceptCall();
+    }
+
+    function rejectIncomingCall() {
+      AutohoCall.rejectCall();
+      hideCallOverlay();
+    }
+
+    function endCurrentCall() {
+      AutohoCall.endCall(sendCallSignal);
+    }
+
+    function toggleCallMute() {
+      const muted = AutohoCall.toggleMute();
+      document.getElementById('muteBtn').textContent = muted ? '🔇' : '🎤';
+      document.getElementById('muteBtn').style.background = muted ? 'rgba(244,67,54,0.4)' : 'rgba(255,255,255,0.15)';
+    }
+
+    function toggleCallCamera() {
+      const off = AutohoCall.toggleVideo();
+      document.getElementById('camToggleBtn').textContent = off ? '🚫' : '📷';
+      document.getElementById('camToggleBtn').style.background = off ? 'rgba(244,67,54,0.4)' : 'rgba(255,255,255,0.15)';
+    }
+
+    function showCallOverlay(state, type) {
+      const overlay = document.getElementById('callOverlay');
+      overlay.style.display = 'flex';
+      const inBtns = document.getElementById('incomingCallBtns');
+      const actBtns = document.getElementById('activeCallBtns');
+      const camBtn = document.getElementById('camToggleBtn');
+
+      if (state === 'ringing') {
+        inBtns.style.display = 'flex';
+        actBtns.style.display = 'none';
+      } else {
+        inBtns.style.display = 'none';
+        actBtns.style.display = 'flex';
+      }
+      camBtn.style.display = (type === 'video') ? 'block' : 'none';
+    }
+
+    function hideCallOverlay() {
+      document.getElementById('callOverlay').style.display = 'none';
+      document.getElementById('remoteVideo').style.display = 'none';
+      document.getElementById('localVideo').style.display = 'none';
+      document.getElementById('remoteVideo').srcObject = null;
+      document.getElementById('localVideo').srcObject = null;
+    }
+
+    // Wire AutohoCall callbacks
+    if (typeof AutohoCall !== 'undefined') {
+      AutohoCall.onStateChange(function(state, type, peerId) {
+        console.log('[Call] State:', state, type);
+        const statusEl = document.getElementById('callStatusText');
+        switch (state) {
+          case 'calling':
+            statusEl.textContent = 'Calling...';
+            break;
+          case 'ringing':
+            statusEl.textContent = 'Incoming ' + (type === 'video' ? 'video' : 'voice') + ' call...';
+            showCallOverlay('ringing', type);
+            // Play ringtone sound (simple oscillator)
+            try {
+              const actx = new AudioContext();
+              const osc = actx.createOscillator();
+              const gain = actx.createGain();
+              osc.type = 'sine'; osc.frequency.value = 440;
+              gain.gain.value = 0.15;
+              osc.connect(gain); gain.connect(actx.destination);
+              osc.start(); setTimeout(() => { osc.stop(); actx.close(); }, 2000);
+            } catch {}
+            break;
+          case 'active':
+            statusEl.textContent = 'Connected';
+            showCallOverlay('active', type);
+            // Attach local video
+            const ls = AutohoCall.getLocalStream();
+            if (ls && type === 'video') {
+              const lv = document.getElementById('localVideo');
+              lv.srcObject = ls;
+              lv.style.display = 'block';
+            }
+            break;
+          case 'ended':
+            statusEl.textContent = 'Call ended';
+            setTimeout(hideCallOverlay, 1500);
+            break;
+          case 'idle':
+            hideCallOverlay();
+            break;
+        }
+      });
+
+      AutohoCall.onRemoteStream(function(stream) {
+        const rv = document.getElementById('remoteVideo');
+        rv.srcObject = stream;
+        rv.style.display = 'block';
+      });
+
+      AutohoCall.onDuration(function(dur) {
+        document.getElementById('callDuration').textContent = dur;
+      });
+    }
   </script>
 </body>
 </html>

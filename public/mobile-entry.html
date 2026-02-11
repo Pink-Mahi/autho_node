@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>Verify & Buy - Bitcoin Ownership Protocol</title>
+  <meta name="theme-color" content="#f7931a">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/autho-192.svg">
+  <link rel="apple-touch-icon" href="/icons/autho-192.svg">
+  <title>Autho</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
     * {
@@ -398,6 +403,44 @@
       if (!document.hidden) {
         checkWalletStatus();
       }
+    });
+
+    // ── PWA: Service Worker Registration ──
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        console.log('[PWA] Service worker registered');
+      }).catch(function(err) {
+        console.warn('[PWA] SW registration failed:', err);
+      });
+    }
+
+    // ── PWA: Install Prompt ──
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      // Show install banner
+      const banner = document.createElement('div');
+      banner.id = 'pwa-install-banner';
+      banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#1a1a1a;border-top:2px solid #f7931a;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;z-index:9999;font-family:Inter,sans-serif;';
+      banner.innerHTML = '<div style="color:#fff;font-size:14px;"><strong>Install Autho</strong><br><span style="opacity:0.7;font-size:12px;">Add to home screen for the best experience</span></div>' +
+        '<div><button id="pwa-install-btn" style="background:#f7931a;color:#000;border:none;padding:8px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;">Install</button>' +
+        '<button id="pwa-dismiss-btn" style="background:none;color:#888;border:none;padding:8px;cursor:pointer;margin-left:8px;">✕</button></div>';
+      document.body.appendChild(banner);
+      document.getElementById('pwa-install-btn').onclick = function() {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function(result) {
+          deferredPrompt = null;
+          banner.remove();
+        });
+      };
+      document.getElementById('pwa-dismiss-btn').onclick = function() {
+        banner.remove();
+        localStorage.setItem('pwa_dismissed', Date.now());
+      };
+      // Don't show if dismissed recently (7 days)
+      var dismissed = parseInt(localStorage.getItem('pwa_dismissed') || '0');
+      if (Date.now() - dismissed < 7 * 24 * 60 * 60 * 1000) banner.remove();
     });
   </script>
 </body>

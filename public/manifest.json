@@ -1,0 +1,46 @@
+{
+  "name": "Autho — Encrypted Messenger & Registry",
+  "short_name": "Autho",
+  "description": "End-to-end encrypted messaging, decentralized item registry, and Bitcoin wallet. Max privacy, max freedom.",
+  "start_url": "/mobile-entry.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#f7931a",
+  "categories": ["social", "security", "finance"],
+  "icons": [
+    {
+      "src": "/icons/autho-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/autho-192.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "url": "/mobile-messages.html",
+      "icons": [{ "src": "/icons/autho-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Wallet",
+      "short_name": "Wallet",
+      "url": "/mobile-wallet.html",
+      "icons": [{ "src": "/icons/autho-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Items",
+      "short_name": "Items",
+      "url": "/mobile-items.html",
+      "icons": [{ "src": "/icons/autho-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
