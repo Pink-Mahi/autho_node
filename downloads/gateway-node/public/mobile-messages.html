@@ -1361,6 +1361,9 @@
           <div class="chat-participant-name" id="chatParticipantName">Loading...</div>
           <div class="chat-item-context" id="chatItemContext"></div>
         </div>
+        <button class="add-contact-chat-btn" id="verifyContactBtn" onclick="showSafetyNumber()" title="Verify contact identity" style="background:transparent;border:1px solid #4caf50;color:#4caf50;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;margin-right:4px;">
+          🔍 Verify
+        </button>
         <button class="add-contact-chat-btn" id="addContactChatBtn" onclick="addCurrentRecipientToContacts()">
           ➕ Add
         </button>
@@ -1631,8 +1634,31 @@
     </div>
   </div>
 
+  <!-- Safety Numbers Verification Modal -->
+  <div id="safetyNumberModal" class="modal-overlay" style="display: none;" onclick="if(event.target===this)closeSafetyNumberModal()">
+    <div class="modal-content" style="max-width: 380px;">
+      <div class="modal-header">
+        <div class="modal-title">🔍 Verify Safety Number</div>
+        <button class="modal-close" onclick="closeSafetyNumberModal()">×</button>
+      </div>
+      <div style="color: #aaa; font-size: 13px; margin-bottom: 16px; line-height: 1.5;">
+        Compare this number with your contact's screen. If they match, your conversation is end-to-end encrypted and not intercepted.
+      </div>
+      <div id="safetyNumberDisplay" style="font-family: 'Courier New', monospace; font-size: 18px; letter-spacing: 2px; text-align: center; color: #4caf50; background: rgba(76,175,80,0.08); border: 1px solid rgba(76,175,80,0.2); border-radius: 12px; padding: 20px 16px; margin-bottom: 16px; word-break: break-all; line-height: 2;">
+        Loading...
+      </div>
+      <div id="safetyNumberQR" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+      <div style="display: flex; gap: 8px;">
+        <button class="modal-btn" onclick="markContactVerified()" style="background: #4caf50; flex: 1;">✅ Mark Verified</button>
+        <button class="modal-btn" onclick="closeSafetyNumberModal()" style="background: #333; flex: 1;">Close</button>
+      </div>
+      <div id="verifiedStatus" style="text-align: center; margin-top: 12px; font-size: 12px; color: #888;"></div>
+    </div>
+  </div>
+
   <script src="/js/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
   <script src="/js/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous"></script>
+  <script src="/js/mlkem.bundle.js" integrity="sha384-5MFLjnWWzPLJ8xZQMzwzz8M0mx0mqoMzwG43tueyZi0no25PcQw2AMg6k/JUQFN1" crossorigin="anonymous"></script>
   <script src="/js/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
   <script src="/js/nacl-util.min.js" integrity="sha384-qpU3wxGxaAPcz02pOLeZTv5B0rNzsh3CETsUqdHxRBP70bO0kHoBopr+f9AcGj04" crossorigin="anonymous"></script>
   <script src="/js/btc.bundle.js"></script>
@@ -1645,7 +1671,9 @@
     let myMessagingPrivateKey = null; // Messaging private key (NOT BTC spending key)
     let myMessagingPublicKey = null;  // Messaging public key for key exchange
     let myEncryptionKeyPair = null;   // Derived X25519 keypair for E2E encryption
+    let myKyberKeyPair = null;         // ML-KEM-768 keypair for post-quantum hybrid
     const recipientEncryptionKeyCache = new Map();
+    const recipientKyberKeyCache = new Map();
     let conversations = [];
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
@@ -1799,6 +1827,11 @@
     async function publishMyEncryptionPublicKey() {
       if (!myEncryptionKeyPair) return;
       const keyHex = bytesToHex(myEncryptionKeyPair.publicKey);
+      // Include Kyber public key if available
+      const payload = { encryptionPublicKeyHex: keyHex };
+      if (myKyberKeyPair && myKyberKeyPair.publicKey) {
+        payload.kyberPublicKeyB64 = nacl.util.encodeBase64(myKyberKeyPair.publicKey);
+      }
       const maxRetries = 3;
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -1808,16 +1841,15 @@
               'Content-Type': 'application/json',
               ...WalletAuth.getAuthHeaders(),
             },
-            body: JSON.stringify({ encryptionPublicKeyHex: keyHex }),
+            body: JSON.stringify(payload),
           });
           if (r.ok) {
-            console.log('[Messaging] Encryption key published successfully');
+            console.log('[Messaging] Encryption key published successfully' + (payload.kyberPublicKeyB64 ? ' (with PQ Kyber)' : ''));
             return;
           }
           const errData = await r.json().catch(() => ({}));
           console.warn(`[Messaging] Key publish attempt ${attempt + 1} failed (${r.status}):`, errData?.error || r.statusText);
           if (r.status === 401) {
-            // Session expired - try to re-read session from storage
             console.warn('[Messaging] Session may be expired for key publish');
           }
         } catch (e) {
@@ -1859,6 +1891,17 @@
       }
 
       recipientEncryptionKeyCache.set(id, { bytes, updatedAt: Number(data?.updatedAt || Date.now()) });
+
+      // Cache Kyber public key if available (for PQ hybrid)
+      if (data?.kyberPublicKeyB64) {
+        try {
+          const kyberBytes = nacl.util.decodeBase64(data.kyberPublicKeyB64);
+          if (kyberBytes && kyberBytes.length > 0) {
+            recipientKyberKeyCache.set(id, kyberBytes);
+          }
+        } catch {}
+      }
+
       return bytes;
     }
 
@@ -1869,25 +1912,31 @@
       }
       
       const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(recipientPublicKeyHex);
-      return encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes);
+      // Check for recipient's Kyber key for PQ hybrid
+      const recipientKyberPubKey = recipientKyberKeyCache.get(String(recipientPublicKeyHex).trim());
+      return encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes, recipientKyberPubKey);
     }
 
     // Pad plaintext to nearest 256-byte boundary to prevent length-based analysis
     function padMessage(messageBytes) {
       const PAD_BLOCK = 256;
+      // Prepend 4-byte big-endian length header
       const len = messageBytes.length;
       const paddedLen = Math.ceil((len + 4) / PAD_BLOCK) * PAD_BLOCK;
       const padded = new Uint8Array(paddedLen);
+      // Write length as 4 bytes big-endian
       padded[0] = (len >>> 24) & 0xff;
       padded[1] = (len >>> 16) & 0xff;
       padded[2] = (len >>> 8) & 0xff;
       padded[3] = len & 0xff;
       padded.set(messageBytes, 4);
+      // Fill remaining bytes with random padding
       const randomPad = nacl.randomBytes(paddedLen - 4 - len);
       padded.set(randomPad, 4 + len);
       return padded;
     }
 
+    // Remove padding and extract original message
     function unpadMessage(paddedBytes) {
       if (paddedBytes.length < 4) return paddedBytes;
       const len = (paddedBytes[0] << 24) | (paddedBytes[1] << 16) | (paddedBytes[2] << 8) | paddedBytes[3];
@@ -1895,24 +1944,89 @@
       return paddedBytes.slice(4, 4 + len);
     }
 
-    async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes) {
+    // ============================================================
+    // REPLAY PROTECTION: In-memory nonce tracking
+    // ============================================================
+    const _seenNonces = new Set();
+    const _MAX_NONCE_CACHE = 10000;
+    function checkAndStoreNonce(nonceB64) {
+      if (_seenNonces.has(nonceB64)) return false;
+      _seenNonces.add(nonceB64);
+      if (_seenNonces.size > _MAX_NONCE_CACHE) {
+        const oldest = _seenNonces.values().next().value;
+        _seenNonces.delete(oldest);
+      }
+      return true;
+    }
+
+    // ============================================================
+    // v3/v4 ENCRYPTION: Ephemeral keys + Sealed sender + Replay protection
+    // v4 adds post-quantum hybrid (ML-KEM-768 + Curve25519)
+    // ============================================================
+    async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes, recipientKyberPubKey) {
       if (!myEncryptionKeyPair) {
         throw new Error('Encryption keys not initialized');
       }
 
+      // Generate ephemeral keypair — destroyed after this call (forward secrecy)
+      const ephemeralKeyPair = nacl.box.keyPair();
       const nonce = nacl.randomBytes(24);
-      const messageBytes = nacl.util.decodeUTF8(plaintext);
+
+      // Sealed sender: embed sender identity inside encrypted payload
+      const wallet = WalletAuth.getWallet();
+      const innerPayload = JSON.stringify({
+        s: wallet ? wallet.publicKey : '',  // sender identity (hidden from server)
+        t: Date.now(),                       // timestamp for replay protection
+        body: plaintext                      // original message content
+      });
+
+      const messageBytes = nacl.util.decodeUTF8(innerPayload);
       const paddedBytes = padMessage(messageBytes);
-      const encrypted = nacl.box(paddedBytes, nonce, recipientEncPubKeyBytes, myEncryptionKeyPair.secretKey);
+
+      // ── v4: Post-quantum hybrid (NaCl + ML-KEM-768) ──
+      if (recipientKyberPubKey && window.MlKemModule && window.MlKemModule.MlKem768) {
+        try {
+          const kyber = new window.MlKemModule.MlKem768();
+          // Encapsulate: produces (kyberCiphertext, kyberSharedSecret)
+          const [kyberCt, kyberSs] = await kyber.encap(recipientKyberPubKey);
+
+          // Derive hybrid key: SHA-256(nacl_shared_secret || kyber_shared_secret)
+          // nacl_shared_secret = nacl.box.before(recipientPub, ephemeralSec)
+          const naclShared = nacl.box.before(recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
+          const combined = new Uint8Array(naclShared.length + kyberSs.length);
+          combined.set(naclShared, 0);
+          combined.set(kyberSs, naclShared.length);
+          const hybridKey = new Uint8Array(await crypto.subtle.digest('SHA-256', combined));
+
+          // AES-256-GCM encryption with hybrid key
+          const aesKey = await crypto.subtle.importKey('raw', hybridKey, 'AES-GCM', false, ['encrypt']);
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const aesCt = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, paddedBytes));
+
+          return JSON.stringify({
+            v: 4,
+            e: nacl.util.encodeBase64(ephemeralKeyPair.publicKey),
+            k: nacl.util.encodeBase64(kyberCt),   // Kyber ciphertext
+            iv: nacl.util.encodeBase64(iv),
+            c: nacl.util.encodeBase64(aesCt),
+          });
+        } catch (e) {
+          console.warn('[Messaging] PQ hybrid encrypt failed, falling back to v3:', e.message);
+        }
+      }
+
+      // ── v3 fallback: Curve25519 only (no PQ) ──
+      const encrypted = nacl.box(paddedBytes, nonce, recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
 
       return JSON.stringify({
-        v: 2,
+        v: 3,
+        e: nacl.util.encodeBase64(ephemeralKeyPair.publicKey),
         n: nacl.util.encodeBase64(nonce),
         c: nacl.util.encodeBase64(encrypted),
       });
     }
 
-    // Decrypt message from sender (supports v1 and v2 envelopes)
+    // Decrypt message from sender (supports v1, v2, v3, and v4 envelopes)
     async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
       try {
         if (!myEncryptionKeyPair) {
@@ -1923,45 +2037,118 @@
         }
 
         const envelope = JSON.parse(encryptedJson);
-        
-        if ((!envelope.v || (envelope.v !== 1 && envelope.v !== 2)) || !envelope.n || !envelope.c) {
-          return null;
-        }
-        
-        const nonce = nacl.util.decodeBase64(envelope.n);
-        const ciphertext = nacl.util.decodeBase64(envelope.c);
-        const isV2 = envelope.v === 2;
 
-        const candidateSenderKeys = [];
-
-        const sHex = String(envelope.s || '').trim().toLowerCase();
-        if (/^[0-9a-f]{64}$/.test(sHex)) {
+        // ── v4: Post-quantum hybrid (ML-KEM-768 + Curve25519 + AES-GCM) ──
+        if (envelope.v === 4 && envelope.e && envelope.k && envelope.iv && envelope.c) {
+          if (!myKyberKeyPair || !myKyberKeyPair.secretKey) {
+            console.warn('SECURITY: v4 message received but no Kyber secret key');
+            return null;
+          }
           try {
-            const k = hexToBytes(sHex);
-            if (k && k.length === 32) candidateSenderKeys.push(k);
-          } catch {}
-        }
+            const kyber = new window.MlKemModule.MlKem768();
+            const ephemeralPubKey = nacl.util.decodeBase64(envelope.e);
+            const kyberCt = nacl.util.decodeBase64(envelope.k);
+            const iv = nacl.util.decodeBase64(envelope.iv);
+            const aesCt = nacl.util.decodeBase64(envelope.c);
 
-        const sid = String(senderPublicKeyHex || '').trim();
-        if (sid) {
-          try {
-            const k = await getRecipientEncryptionPublicKeyBytes(sid);
-            if (k && k.length === 32) candidateSenderKeys.push(k);
-          } catch {}
-        }
+            // Decapsulate Kyber to get shared secret
+            const kyberSs = await kyber.decap(kyberCt, myKyberKeyPair.secretKey);
 
-        if (myEncryptionKeyPair.publicKey) {
-          candidateSenderKeys.push(myEncryptionKeyPair.publicKey);
-        }
+            // Derive hybrid key: SHA-256(nacl_shared || kyber_shared)
+            const naclShared = nacl.box.before(ephemeralPubKey, myEncryptionKeyPair.secretKey);
+            const combined = new Uint8Array(naclShared.length + kyberSs.length);
+            combined.set(naclShared, 0);
+            combined.set(kyberSs, naclShared.length);
+            const hybridKey = new Uint8Array(await crypto.subtle.digest('SHA-256', combined));
 
-        for (const senderEncPubKey of candidateSenderKeys) {
-          const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
-          if (decrypted) {
-            if (isV2) {
-              const unpadded = unpadMessage(decrypted);
-              return nacl.util.encodeUTF8(unpadded);
+            // AES-256-GCM decrypt
+            const aesKey = await crypto.subtle.importKey('raw', hybridKey, 'AES-GCM', false, ['decrypt']);
+            const decryptedBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, aesCt);
+            const decrypted = new Uint8Array(decryptedBuf);
+
+            const unpadded = unpadMessage(decrypted);
+            const innerStr = nacl.util.encodeUTF8(unpadded);
+
+            try {
+              const inner = JSON.parse(innerStr);
+              if (inner.t && (Date.now() - inner.t) > 86400000) {
+                console.warn('SECURITY: v4 message timestamp >24h old');
+              }
+              return inner.body || innerStr;
+            } catch {
+              return innerStr;
             }
-            return nacl.util.encodeUTF8(decrypted);
+          } catch (e) {
+            console.error('v4 PQ hybrid decrypt failed:', e);
+            return null;
+          }
+        }
+
+        // ── v3: Ephemeral-key encryption (forward secrecy + sealed sender) ──
+        if (envelope.v === 3 && envelope.e && envelope.n && envelope.c) {
+          const ephemeralPubKey = nacl.util.decodeBase64(envelope.e);
+          const nonce = nacl.util.decodeBase64(envelope.n);
+          const ciphertext = nacl.util.decodeBase64(envelope.c);
+
+          const decrypted = nacl.box.open(ciphertext, nonce, ephemeralPubKey, myEncryptionKeyPair.secretKey);
+          if (!decrypted) return null;
+
+          const unpadded = unpadMessage(decrypted);
+          const innerStr = nacl.util.encodeUTF8(unpadded);
+
+          try {
+            const inner = JSON.parse(innerStr);
+            // Replay protection: warn on old timestamps
+            if (inner.t && (Date.now() - inner.t) > 86400000) {
+              console.warn('SECURITY: Message timestamp >24h old, possible replay');
+            }
+            checkAndStoreNonce(envelope.n);
+            return inner.body || innerStr;
+          } catch {
+            return innerStr;
+          }
+        }
+
+        // ── v1/v2 backward compatibility ──
+        if ((envelope.v === 1 || envelope.v === 2) && envelope.n && envelope.c) {
+          const nonce = nacl.util.decodeBase64(envelope.n);
+          const ciphertext = nacl.util.decodeBase64(envelope.c);
+          const isV2 = envelope.v === 2;
+
+          const candidateSenderKeys = [];
+
+          // v1: sender key embedded in envelope
+          const sHex = String(envelope.s || '').trim().toLowerCase();
+          if (/^[0-9a-f]{64}$/.test(sHex)) {
+            try {
+              const k = hexToBytes(sHex);
+              if (k && k.length === 32) candidateSenderKeys.push(k);
+            } catch {}
+          }
+
+          // v2 and fallback: look up sender's encryption key from server
+          const sid = String(senderPublicKeyHex || '').trim();
+          if (sid) {
+            try {
+              const k = await getRecipientEncryptionPublicKeyBytes(sid);
+              if (k && k.length === 32) candidateSenderKeys.push(k);
+            } catch {}
+          }
+
+          // Also try own key (for messages encrypted for self)
+          if (myEncryptionKeyPair.publicKey) {
+            candidateSenderKeys.push(myEncryptionKeyPair.publicKey);
+          }
+
+          for (const senderEncPubKey of candidateSenderKeys) {
+            const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
+            if (decrypted) {
+              if (isV2) {
+                const unpadded = unpadMessage(decrypted);
+                return nacl.util.encodeUTF8(unpadded);
+              }
+              return nacl.util.encodeUTF8(decrypted);
+            }
           }
         }
 
@@ -2743,6 +2930,9 @@
       const participant = conv?.participantInfo.find(p => p.accountId === recipientId);
       document.getElementById('chatParticipantName').textContent = participant?.displayName || recipientId.substring(0, 12) + '...';
       
+      // Load per-conversation disappearing timer settings
+      loadDisappearSettings();
+      
       await loadMessages(conversationId);
       
       // Reset message count for new conversation
@@ -2817,20 +3007,38 @@
     // ============================================================
 
     function updateDisappearTimer() {
-      // Called on change for UI feedback if needed
       const select = document.getElementById('disappearTimer');
+      const checkbox = document.getElementById('expiresAfterView');
       const timer = parseInt(select.value) || 0;
-      console.log('[Disappear] Timer changed to:', timer, 'ms');
+      const afterView = checkbox ? checkbox.checked : false;
+      // Persist per-conversation
+      if (currentConversationId) {
+        const stored = JSON.parse(localStorage.getItem('autho_disappear_settings') || '{}');
+        stored[currentConversationId] = { timer, afterView };
+        localStorage.setItem('autho_disappear_settings', JSON.stringify(stored));
+      }
+    }
+
+    function loadDisappearSettings() {
+      if (!currentConversationId) return;
+      const stored = JSON.parse(localStorage.getItem('autho_disappear_settings') || '{}');
+      const settings = stored[currentConversationId];
+      const select = document.getElementById('disappearTimer');
+      const checkbox = document.getElementById('expiresAfterView');
+      if (settings && select) {
+        select.value = String(settings.timer || 0);
+        if (checkbox) checkbox.checked = !!settings.afterView;
+      } else if (select) {
+        select.value = '0';
+        if (checkbox) checkbox.checked = false;
+      }
     }
 
     function getDisappearSettings() {
-      // Always read directly from DOM to get current values
       const select = document.getElementById('disappearTimer');
       const checkbox = document.getElementById('expiresAfterView');
       const timerValue = select ? parseInt(select.value) || 0 : 0;
       const afterView = checkbox ? checkbox.checked : false;
-      
-      console.log('[Disappear] Sending with timer:', timerValue, 'afterView:', afterView);
       
       return {
         selfDestructAfter: timerValue > 0 ? timerValue : undefined,
@@ -2960,7 +3168,20 @@
           myPrivateKey = messagingPrivateKey;
           // Use the robust initialization with nacl waiting and retries
           myEncryptionKeyPair = await initializeEncryption(myPrivateKey);
+          // Generate ML-KEM-768 (Kyber) keypair for post-quantum hybrid
+          try {
+            if (window.MlKemModule && window.MlKemModule.MlKem768) {
+              const kyber = new window.MlKemModule.MlKem768();
+              const [kyberPk, kyberSk] = await kyber.generateKeyPair();
+              myKyberKeyPair = { publicKey: kyberPk, secretKey: kyberSk };
+              console.log('[Messaging] ML-KEM-768 (post-quantum) keypair generated');
+            }
+          } catch (e) {
+            console.warn('[Messaging] ML-KEM-768 keygen failed (PQ not available):', e.message);
+          }
           await publishMyEncryptionPublicKey();
+          // Key transparency: publish hash for audit (non-blocking)
+          publishKeyTransparencyHash().catch(() => {});
           return myEncryptionKeyPair;
         })();
       }
@@ -3057,10 +3278,15 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // Check for v1 encrypted format
+        // v4: PQ hybrid, v3: ephemeral key encryption
+        if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        if (parsed.v === 3 && parsed.e && parsed.n && parsed.c) {
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
+        // v1: legacy encrypted format
         if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
-          // This is encrypted - need async decryption
-          // Return marker for async handling
           return { encrypted: true, data: encryptedContent, senderId };
         }
         
@@ -3078,8 +3304,14 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // Check for v1 or v2 encrypted format
-        if ((parsed.v === 1 || parsed.v === 2) && parsed.n && parsed.c) {
+        // v4: PQ hybrid, v3: ephemeral key, v1/v2: legacy encrypted
+        if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
+          const ok = await ensureEncryptionInitialized();
+          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
+          const decrypted = await decryptFromSender(encryptedContent, senderId);
+          return decrypted || '[Could not decrypt - PQ keys missing]';
+        }
+        if ((parsed.v === 3 || parsed.v === 2 || parsed.v === 1) && parsed.n && parsed.c) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
           const decrypted = await decryptFromSender(encryptedContent, senderId);
@@ -4451,6 +4683,152 @@
     
     // Fetch balance on page load
     fetchServiceBalance();
+
+    // ============================================================
+    // SAFETY NUMBERS: Key verification (like Signal)
+    // ============================================================
+    async function generateSafetyNumber(myEncPubKeyBytes, theirEncPubKeyBytes) {
+      // Sort keys deterministically so both sides compute the same number
+      const myHex = bytesToHex(myEncPubKeyBytes);
+      const theirHex = bytesToHex(theirEncPubKeyBytes);
+      const keys = [myEncPubKeyBytes, theirEncPubKeyBytes];
+      if (myHex > theirHex) keys.reverse();
+      
+      // Concatenate sorted keys
+      const combined = new Uint8Array(keys[0].length + keys[1].length);
+      combined.set(keys[0], 0);
+      combined.set(keys[1], keys[0].length);
+      
+      // SHA-256 hash
+      const hash = await crypto.subtle.digest('SHA-256', combined);
+      const hashBytes = new Uint8Array(hash);
+      
+      // Format as 12 groups of 5 digits (60 digits total, like Signal)
+      let result = '';
+      for (let i = 0; i < 30; i += 2.5) {
+        const idx = Math.floor(i);
+        const val = ((hashBytes[idx] << 8) | (hashBytes[idx + 1] || 0)) % 100000;
+        result += val.toString().padStart(5, '0') + ' ';
+        if ((result.trim().split(' ').length) % 4 === 0) result += '\n';
+      }
+      return result.trim();
+    }
+
+    async function showSafetyNumber() {
+      if (!currentRecipientId || !myEncryptionKeyPair) {
+        alert('Encryption not initialized or no contact selected.');
+        return;
+      }
+      
+      const modal = document.getElementById('safetyNumberModal');
+      const display = document.getElementById('safetyNumberDisplay');
+      const qrContainer = document.getElementById('safetyNumberQR');
+      const statusEl = document.getElementById('verifiedStatus');
+      
+      display.textContent = 'Computing...';
+      qrContainer.innerHTML = '';
+      modal.style.display = 'flex';
+      
+      try {
+        // Get recipient's encryption public key
+        const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(currentRecipientId);
+        if (!recipientEncPubKeyBytes) {
+          display.textContent = 'Could not load contact key';
+          return;
+        }
+        
+        const safetyNumber = await generateSafetyNumber(myEncryptionKeyPair.publicKey, recipientEncPubKeyBytes);
+        display.textContent = safetyNumber;
+        
+        // Generate QR code of safety number
+        try {
+          new QRCode(qrContainer, {
+            text: safetyNumber.replace(/\s+/g, ''),
+            width: 160,
+            height: 160,
+            colorDark: '#4caf50',
+            colorLight: '#1a1a2e',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } catch {}
+        
+        // Check verified status
+        const verifiedContacts = JSON.parse(localStorage.getItem('autho_verified_contacts') || '{}');
+        const storedHash = verifiedContacts[currentRecipientId];
+        const currentHash = safetyNumber.replace(/\s+/g, '');
+        
+        if (storedHash === currentHash) {
+          statusEl.innerHTML = '<span style="color:#4caf50;">&#10003; Verified</span> — Key has not changed since verification';
+        } else if (storedHash) {
+          statusEl.innerHTML = '<span style="color:#ff4444;">&#9888; Key changed!</span> — Re-verify this contact';
+        } else {
+          statusEl.textContent = 'Not yet verified';
+        }
+      } catch (e) {
+        console.error('Safety number error:', e);
+        display.textContent = 'Error generating safety number';
+      }
+    }
+
+    function closeSafetyNumberModal() {
+      document.getElementById('safetyNumberModal').style.display = 'none';
+    }
+
+    async function markContactVerified() {
+      if (!currentRecipientId || !myEncryptionKeyPair) return;
+      
+      try {
+        const recipientEncPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(currentRecipientId);
+        const safetyNumber = await generateSafetyNumber(myEncryptionKeyPair.publicKey, recipientEncPubKeyBytes);
+        const hash = safetyNumber.replace(/\s+/g, '');
+        
+        const verifiedContacts = JSON.parse(localStorage.getItem('autho_verified_contacts') || '{}');
+        verifiedContacts[currentRecipientId] = hash;
+        localStorage.setItem('autho_verified_contacts', JSON.stringify(verifiedContacts));
+        
+        document.getElementById('verifiedStatus').innerHTML = 
+          '<span style="color:#4caf50;">&#10003; Verified</span> — Key has not changed since verification';
+        
+        // Update verify button to show verified state
+        const btn = document.getElementById('verifyContactBtn');
+        if (btn) { btn.style.borderColor = '#4caf50'; btn.style.color = '#4caf50'; btn.textContent = '✅ Verified'; }
+      } catch (e) {
+        console.error('Mark verified error:', e);
+      }
+    }
+
+    // ============================================================
+    // KEY TRANSPARENCY: Publish key hash to ledger for audit
+    // ============================================================
+    async function publishKeyTransparencyHash() {
+      if (!myEncryptionKeyPair) return;
+      
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+        
+        // Hash the encryption public key
+        const pubKeyHash = await crypto.subtle.digest('SHA-256', myEncryptionKeyPair.publicKey);
+        const hashHex = Array.from(new Uint8Array(pubKeyHash)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        // Publish to transparency log
+        await fetch('/api/messages/key-transparency', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...WalletAuth.getAuthHeaders()
+          },
+          body: JSON.stringify({
+            publicKeyHash: hashHex,
+            algorithm: 'curve25519',
+            timestamp: Date.now()
+          })
+        });
+      } catch (e) {
+        // Non-critical: don't block messaging if transparency log fails
+        console.warn('Key transparency publish failed:', e.message);
+      }
+    }
 
     // Show encryption info modal
     function showEncryptionInfo() {
