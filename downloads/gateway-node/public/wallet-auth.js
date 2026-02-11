@@ -4,6 +4,35 @@
  */
 
 const WalletAuth = {
+  // --- PIN Security Utilities (PBKDF2) ---
+  async hashPinPBKDF2(pin) {
+    const enc = new TextEncoder();
+    const salt = enc.encode('autho_pin_salt_v1');
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+    const hashArray = Array.from(new Uint8Array(bits));
+    return 'pbkdf2v1:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  },
+
+  async verifyStoredPin(pin, stored) {
+    if (!stored || !pin) return false;
+    if (stored.startsWith('pbkdf2v1:')) {
+      const computed = await this.hashPinPBKDF2(pin);
+      return computed === stored;
+    }
+    // Legacy base64 format - verify and auto-upgrade
+    try {
+      if (btoa(pin) === stored) {
+        // Auto-upgrade to PBKDF2
+        try {
+          const upgraded = await this.hashPinPBKDF2(pin);
+          localStorage.setItem('autho_wallet_pin', upgraded);
+        } catch {}
+        return true;
+      }
+    } catch {}
+    return false;
+  },
   /**
    * Check if wallet exists
    */
@@ -85,13 +114,18 @@ const WalletAuth = {
       const existing = sessionStorage.getItem('autho_messaging_privateKey');
       if (existing) return true;
 
-      const pinHash = localStorage.getItem('autho_wallet_pin');
-      if (!pinHash) return false;
-      let pin = '';
-      try {
-        pin = atob(pinHash);
-      } catch {
-        return false;
+      // Try sessionStorage first (set during login), then fall back to localStorage legacy
+      let pin = sessionStorage.getItem('autho_session_pin') || '';
+      if (!pin) {
+        // Legacy fallback: try to read old base64-encoded PIN from localStorage
+        const pinStored = localStorage.getItem('autho_wallet_pin');
+        if (!pinStored) return false;
+        if (!pinStored.startsWith('pbkdf2v1:')) {
+          try { pin = atob(pinStored); } catch { return false; }
+        } else {
+          // PBKDF2 hash - can't reverse, need session PIN
+          return false;
+        }
       }
 
       const vaultStr = localStorage.getItem('autho_wallet_vault_local') || localStorage.getItem('autho_wallet_vault');
@@ -158,6 +192,7 @@ const WalletAuth = {
     sessionStorage.removeItem('autho_wallet_privateKey');
     sessionStorage.removeItem('autho_messaging_privateKey');
     sessionStorage.removeItem('autho_messaging_publicKey');
+    sessionStorage.removeItem('autho_session_pin');
     try {
       localStorage.removeItem('autho_session_id');
       localStorage.removeItem('autho_account_id');

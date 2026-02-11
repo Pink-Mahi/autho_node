@@ -1633,8 +1633,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+  <script src="/js/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
+  <script src="/js/nacl-util.min.js" integrity="sha384-qpU3wxGxaAPcz02pOLeZTv5B0rNzsh3CETsUqdHxRBP70bO0kHoBopr+f9AcGj04" crossorigin="anonymous"></script>
   <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
@@ -1872,6 +1872,29 @@
       return encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes);
     }
 
+    // Pad plaintext to nearest 256-byte boundary to prevent length-based analysis
+    function padMessage(messageBytes) {
+      const PAD_BLOCK = 256;
+      const len = messageBytes.length;
+      const paddedLen = Math.ceil((len + 4) / PAD_BLOCK) * PAD_BLOCK;
+      const padded = new Uint8Array(paddedLen);
+      padded[0] = (len >>> 24) & 0xff;
+      padded[1] = (len >>> 16) & 0xff;
+      padded[2] = (len >>> 8) & 0xff;
+      padded[3] = len & 0xff;
+      padded.set(messageBytes, 4);
+      const randomPad = nacl.randomBytes(paddedLen - 4 - len);
+      padded.set(randomPad, 4 + len);
+      return padded;
+    }
+
+    function unpadMessage(paddedBytes) {
+      if (paddedBytes.length < 4) return paddedBytes;
+      const len = (paddedBytes[0] << 24) | (paddedBytes[1] << 16) | (paddedBytes[2] << 8) | paddedBytes[3];
+      if (len <= 0 || len > paddedBytes.length - 4) return paddedBytes;
+      return paddedBytes.slice(4, 4 + len);
+    }
+
     async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes) {
       if (!myEncryptionKeyPair) {
         throw new Error('Encryption keys not initialized');
@@ -1879,17 +1902,17 @@
 
       const nonce = nacl.randomBytes(24);
       const messageBytes = nacl.util.decodeUTF8(plaintext);
-      const encrypted = nacl.box(messageBytes, nonce, recipientEncPubKeyBytes, myEncryptionKeyPair.secretKey);
+      const paddedBytes = padMessage(messageBytes);
+      const encrypted = nacl.box(paddedBytes, nonce, recipientEncPubKeyBytes, myEncryptionKeyPair.secretKey);
 
       return JSON.stringify({
-        v: 1,
+        v: 2,
         n: nacl.util.encodeBase64(nonce),
         c: nacl.util.encodeBase64(encrypted),
-        s: bytesToHex(myEncryptionKeyPair.publicKey),
       });
     }
 
-    // Decrypt message from sender
+    // Decrypt message from sender (supports v1 and v2 envelopes)
     async function decryptFromSender(encryptedJson, senderPublicKeyHex) {
       try {
         if (!myEncryptionKeyPair) {
@@ -1901,14 +1924,13 @@
 
         const envelope = JSON.parse(encryptedJson);
         
-        // Check if this is actually encrypted (v1 format)
-        if (envelope.v !== 1 || !envelope.n || !envelope.c) {
-          // Not encrypted, return as-is (legacy message)
+        if ((!envelope.v || (envelope.v !== 1 && envelope.v !== 2)) || !envelope.n || !envelope.c) {
           return null;
         }
         
         const nonce = nacl.util.decodeBase64(envelope.n);
         const ciphertext = nacl.util.decodeBase64(envelope.c);
+        const isV2 = envelope.v === 2;
 
         const candidateSenderKeys = [];
 
@@ -1928,10 +1950,17 @@
           } catch {}
         }
 
-        // Decrypt using NaCl box.open; try all candidates
+        if (myEncryptionKeyPair.publicKey) {
+          candidateSenderKeys.push(myEncryptionKeyPair.publicKey);
+        }
+
         for (const senderEncPubKey of candidateSenderKeys) {
           const decrypted = nacl.box.open(ciphertext, nonce, senderEncPubKey, myEncryptionKeyPair.secretKey);
           if (decrypted) {
+            if (isV2) {
+              const unpadded = unpadMessage(decrypted);
+              return nacl.util.encodeUTF8(unpadded);
+            }
             return nacl.util.encodeUTF8(decrypted);
           }
         }
@@ -3049,18 +3078,8 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // Check for v1 encrypted format
-        if (parsed.v === 1 && parsed.n && parsed.c && parsed.s) {
-          const ok = await ensureEncryptionInitialized();
-          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          if (decrypted) {
-            return decrypted;
-          }
-          return '[Could not decrypt]';
-        }
-
-        if (parsed.v === 1 && parsed.n && parsed.c && !parsed.s) {
+        // Check for v1 or v2 encrypted format
+        if ((parsed.v === 1 || parsed.v === 2) && parsed.n && parsed.c) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
           const decrypted = await decryptFromSender(encryptedContent, senderId);

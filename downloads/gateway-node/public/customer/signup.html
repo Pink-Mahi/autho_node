@@ -304,6 +304,16 @@
 
     <script src="/js/btc.bundle.js"></script>
     <script>
+        async function hashPinPBKDF2(pin) {
+            const enc = new TextEncoder();
+            const salt = enc.encode('autho_pin_salt_v1');
+            const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveBits']);
+            const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+            const hashArray = Array.from(new Uint8Array(bits));
+            return 'pbkdf2v1:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    </script>
+    <script>
         let accountData = {};
         let transientMnemonic = '';
 
@@ -516,7 +526,6 @@
                 await showSeedModal(transientMnemonic);
 
                 const emailHash = await sha256Hex(accountData.email.trim().toLowerCase());
-                const usernameHash = await sha256Hex(accountData.username.trim().toLowerCase());
                 const walletPayload = {
                     mnemonic: transientMnemonic,
                     publicKey,
@@ -538,24 +547,25 @@
                 }));
                 localStorage.setItem('autho_wallet_encrypted', btoa(JSON.stringify({ createdAt: Date.now() })));
                 localStorage.setItem('autho_wallet_vault', JSON.stringify(walletVault));
-                localStorage.setItem('autho_wallet_pin', btoa(walletPasscode));
+                localStorage.setItem('autho_wallet_pin', await hashPinPBKDF2(walletPasscode));
+                sessionStorage.setItem('autho_session_pin', walletPasscode);
                 sessionStorage.setItem('autho_wallet_unlocked', 'true');
                 sessionStorage.setItem('autho_wallet_unlock_time', Date.now().toString());
 
                 createBtn.textContent = 'Registering Account...';
 
                 // Step 2: Register account with wallet info
-                // NOTE: Only hashes are sent to ledger - no plaintext email/username stored
                 const registerResponse = await fetch('/api/users/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        usernameHash,  // Only hash - no plaintext username on ledger
-                        emailHash,  // Only hash - no plaintext email on ledger
+                        username: accountData.username,
+                        email: accountData.email,
                         password: accountData.password,
                         role: 'customer',
                         bitcoinAddress: address,
                         publicKey,
+                        emailHash,
                         walletVault,
                         passwordKdf: walletVault.kdf
                     })

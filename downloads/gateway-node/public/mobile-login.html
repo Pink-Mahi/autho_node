@@ -379,8 +379,33 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="/js/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
   <script src="/js/btc.bundle.js"></script>
+  <script>
+    // --- PIN Security: PBKDF2 hashing (shared inline) ---
+    async function hashPinPBKDF2(pin) {
+      const enc = new TextEncoder();
+      const salt = enc.encode('autho_pin_salt_v1');
+      const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveBits']);
+      const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+      const hashArray = Array.from(new Uint8Array(bits));
+      return 'pbkdf2v1:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    async function verifyStoredPin(pin, stored) {
+      if (!stored || !pin) return false;
+      if (stored.startsWith('pbkdf2v1:')) {
+        const computed = await hashPinPBKDF2(pin);
+        return computed === stored;
+      }
+      try {
+        if (btoa(pin) === stored) {
+          try { const upgraded = await hashPinPBKDF2(pin); localStorage.setItem('autho_wallet_pin', upgraded); } catch {}
+          return true;
+        }
+      } catch {}
+      return false;
+    }
+  </script>
   <script>
     let walletData = null;
 
@@ -438,9 +463,10 @@
           return;
         }
 
-        // Verify PIN
-        const enteredPinHash = btoa(pin);
-        if (enteredPinHash === storedPinHash) {
+        // Verify PIN (PBKDF2 with legacy base64 backward compat)
+        const pinValid = await verifyStoredPin(pin, storedPinHash);
+        if (pinValid) {
+          sessionStorage.setItem('autho_session_pin', pin);
           await unlockSuccess(pin);
         } else {
           showError('Incorrect passcode. Please try again.');
@@ -751,9 +777,10 @@
         localStorage.setItem('autho_wallet', JSON.stringify(wallet));
         localStorage.setItem('autho_wallet_encrypted', btoa(JSON.stringify({ createdAt: Date.now() })));
 
-        // Set new local PIN (device unlock)
-        const pinHash = btoa(newPin);
+        // Set new local PIN (device unlock) - PBKDF2 hashed
+        const pinHash = await hashPinPBKDF2(newPin);
         localStorage.setItem('autho_wallet_pin', pinHash);
+        sessionStorage.setItem('autho_session_pin', newPin);
 
         try {
           const walletPayload = {
