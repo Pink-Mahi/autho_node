@@ -688,9 +688,12 @@
           persistRestoredWallet(walletPayload);
 
           try {
-            const pinHash = localStorage.getItem('autho_wallet_pin');
-            if (pinHash) {
-              const pin = atob(pinHash);
+            let pin = sessionStorage.getItem('autho_session_pin') || '';
+            if (!pin) {
+              const pinStored = localStorage.getItem('autho_wallet_pin');
+              if (pinStored && !pinStored.startsWith('pbkdf2v1:')) { try { pin = atob(pinStored); } catch {} }
+            }
+            if (pin) {
               const localVault = await encryptWalletVault(walletPayload, pin);
               localStorage.setItem('autho_wallet_vault_local', JSON.stringify(localVault));
             }
@@ -704,10 +707,13 @@
               persistRestoredWallet(walletPayload);
 
               try {
-                const pinHash = localStorage.getItem('autho_wallet_pin');
-                if (pinHash) {
-                  const pin = atob(pinHash);
-                  const vaultLocal = await encryptWalletVault(walletPayload, pin);
+                let pin2 = sessionStorage.getItem('autho_session_pin') || '';
+                if (!pin2) {
+                  const pinStored2 = localStorage.getItem('autho_wallet_pin');
+                  if (pinStored2 && !pinStored2.startsWith('pbkdf2v1:')) { try { pin2 = atob(pinStored2); } catch {} }
+                }
+                if (pin2) {
+                  const vaultLocal = await encryptWalletVault(walletPayload, pin2);
                   localStorage.setItem('autho_wallet_vault_local', JSON.stringify(vaultLocal));
                 }
               } catch {}
