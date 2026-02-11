@@ -1663,6 +1663,7 @@
   <script src="/js/nacl-util.min.js" integrity="sha384-qpU3wxGxaAPcz02pOLeZTv5B0rNzsh3CETsUqdHxRBP70bO0kHoBopr+f9AcGj04" crossorigin="anonymous"></script>
   <script src="/js/double-ratchet.js" integrity="sha384-AgMXGk5+mUUw2YWWcFLVRj7sJM3eMskKVbdDgWwxBPCA/wk0FElqi4YtGso5LFfO" crossorigin="anonymous"></script>
   <script src="/js/mls-group.js" integrity="sha384-ikW8LAAJS8aZFWIq2eICz7MSnfHOUVLXBZrCc0oTBJs/x+DiRfsLsabPQqiunmOy" crossorigin="anonymous"></script>
+  <script src="/js/autho-wire.js" integrity="sha384-EwvW0hNJ1vdF1w9ZOAvuPCsWm1l16rxI20yZYvOx8cldFX0AyxIGJh1lJbgJf1h8" crossorigin="anonymous"></script>
   <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
@@ -1680,6 +1681,124 @@
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
     const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
+
+    // ============================================================
+    // WEBSOCKET REAL-TIME MESSAGING (replaces polling when connected)
+    // ============================================================
+    let messagingWs = null;
+    let messagingWsReconnectTimer = null;
+    let messagingWsConnected = false;
+
+    function connectMessagingWebSocket() {
+      if (messagingWs && messagingWs.readyState <= 1) return; // already open/connecting
+      try {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = proto + '//' + location.host + '/ws/messaging';
+        messagingWs = new WebSocket(wsUrl);
+
+        messagingWs.onopen = function() {
+          messagingWsConnected = true;
+          console.log('[WS] Messaging WebSocket connected');
+          // Authenticate
+          const wallet = WalletAuth.getWallet();
+          if (wallet) {
+            messagingWs.send(JSON.stringify({
+              type: 'auth',
+              publicKey: wallet.publicKey,
+              ...WalletAuth.getAuthHeaders()
+            }));
+          }
+          // Subscribe to current conversation
+          if (currentConversationId) {
+            messagingWs.send(JSON.stringify({
+              type: 'subscribe',
+              conversationId: currentConversationId
+            }));
+          }
+          if (currentGroupId) {
+            messagingWs.send(JSON.stringify({
+              type: 'subscribe_group',
+              groupId: currentGroupId
+            }));
+          }
+        };
+
+        messagingWs.onmessage = function(event) {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'new_message' && data.conversationId === currentConversationId) {
+              // Real-time message received — reload messages
+              if (currentConversationId) loadMessages(currentConversationId);
+            }
+            if (data.type === 'new_group_message' && data.groupId === currentGroupId) {
+              if (currentGroupId) loadGroupMessages(currentGroupId);
+            }
+            if (data.type === 'message_sent') {
+              // Server confirmed our optimistic message
+              updateOptimisticMessage(data.tempId, 'sent');
+            }
+          } catch {}
+        };
+
+        messagingWs.onclose = function() {
+          messagingWsConnected = false;
+          console.log('[WS] Messaging WebSocket closed, reconnecting in 3s...');
+          clearTimeout(messagingWsReconnectTimer);
+          messagingWsReconnectTimer = setTimeout(connectMessagingWebSocket, 3000);
+        };
+
+        messagingWs.onerror = function() {
+          messagingWsConnected = false;
+        };
+      } catch (e) {
+        console.warn('[WS] WebSocket connect failed:', e.message);
+      }
+    }
+
+    function sendViaWebSocket(payload) {
+      if (messagingWs && messagingWs.readyState === 1) {
+        messagingWs.send(JSON.stringify(payload));
+        return true;
+      }
+      return false;
+    }
+
+    // ============================================================
+    // OPTIMISTIC UI — show message instantly before server confirms
+    // ============================================================
+    let optimisticMsgCounter = 0;
+
+    function renderOptimisticMessage(text) {
+      const container = document.getElementById('chatMessages');
+      if (!container) return null;
+      const tempId = 'opt_' + (++optimisticMsgCounter) + '_' + Date.now();
+      const timeStr = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble sent';
+      bubble.id = tempId;
+      bubble.innerHTML = '<div class="message-text">' + escapeHtml(text) + '</div>' +
+        '<div class="message-meta">' + timeStr + ' <span class="msg-status" style="opacity:0.5;">sending...</span></div>';
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+      return tempId;
+    }
+
+    function updateOptimisticMessage(tempId, status) {
+      const el = document.getElementById(tempId);
+      if (!el) return;
+      const statusEl = el.querySelector('.msg-status');
+      if (statusEl) {
+        if (status === 'sent') {
+          statusEl.textContent = '✓';
+          statusEl.style.opacity = '1';
+          statusEl.style.color = '#4caf50';
+        } else if (status === 'failed') {
+          statusEl.textContent = '✗ failed';
+          statusEl.style.opacity = '1';
+          statusEl.style.color = '#ff4444';
+        }
+      }
+    }
 
     // Helper: Check response for auth errors and redirect to login
     function checkAuthAndRedirect(response) {
@@ -2353,7 +2472,15 @@
         body: plaintext                      // original message content
       });
 
-      const messageBytes = nacl.util.decodeUTF8(innerPayload);
+      // ── Wire protocol: compress before encrypt for smaller payloads ──
+      let messageBytes;
+      if (window.AutohoWire && innerPayload.length > 64) {
+        try {
+          messageBytes = await window.AutohoWire.compressText(innerPayload);
+        } catch { messageBytes = nacl.util.decodeUTF8(innerPayload); }
+      } else {
+        messageBytes = nacl.util.decodeUTF8(innerPayload);
+      }
       const paddedBytes = padMessage(messageBytes);
 
       // ── v4: Post-quantum hybrid (NaCl + ML-KEM-768) ──
@@ -2449,7 +2576,13 @@
             const decrypted = new Uint8Array(decryptedBuf);
 
             const unpadded = unpadMessage(decrypted);
-            const innerStr = nacl.util.encodeUTF8(unpadded);
+            // Wire protocol: try decompress, fall back to raw UTF8
+            let innerStr;
+            if (window.AutohoWire && unpadded.length > 1 && (unpadded[0] === 0x00 || unpadded[0] === 0x01)) {
+              try { innerStr = await window.AutohoWire.decompressText(unpadded); } catch { innerStr = nacl.util.encodeUTF8(unpadded); }
+            } else {
+              innerStr = nacl.util.encodeUTF8(unpadded);
+            }
 
             try {
               const inner = JSON.parse(innerStr);
@@ -2476,7 +2609,13 @@
           if (!decrypted) return null;
 
           const unpadded = unpadMessage(decrypted);
-          const innerStr = nacl.util.encodeUTF8(unpadded);
+          // Wire protocol: try decompress, fall back to raw UTF8
+          let innerStr;
+          if (window.AutohoWire && unpadded.length > 1 && (unpadded[0] === 0x00 || unpadded[0] === 0x01)) {
+            try { innerStr = await window.AutohoWire.decompressText(unpadded); } catch { innerStr = nacl.util.encodeUTF8(unpadded); }
+          } else {
+            innerStr = nacl.util.encodeUTF8(unpadded);
+          }
 
           try {
             const inner = JSON.parse(innerStr);
@@ -3669,6 +3808,8 @@
           publishKeyTransparencyHash().catch(() => {});
           // X3DH: publish/rotate signed pre-key bundle (non-blocking)
           maybeRotatePreKeys().catch(() => {});
+          // Real-time messaging: connect WebSocket (non-blocking)
+          try { connectMessagingWebSocket(); } catch {}
           return myEncryptionKeyPair;
         })();
       }
@@ -3838,6 +3979,10 @@
 
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.disabled = true;
+
+      // ── OPTIMISTIC UI: show message instantly ──
+      const tempId = renderOptimisticMessage(text);
+      input.value = '';
       
       try {
         // Create message envelope
@@ -3849,6 +3994,7 @@
         
         if (!await ensureEncryptionInitialized()) {
           WalletAuth.lock();
+          updateOptimisticMessage(tempId, 'failed');
           alert('Encryption not initialized. Please log in again.');
           WalletAuth.requireAuth();
           console.error('SECURITY: Attempted to send message without encryption keys');
@@ -3860,9 +4006,29 @@
         // Also encrypt for self (so we can read our own sent messages)
         const wallet = WalletAuth.getWallet();
         const encryptedForSender = await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey);
-        
+
+        // ── Wire protocol: compress encrypted content if available ──
+        let sendPayload = {
+          recipientId: currentRecipientId,
+          encryptedContent: encryptedForRecipient,
+          encryptedForSender: encryptedForSender,
+          itemId: currentItemId || undefined,
+          conversationId: currentConversationId || undefined,
+          mediaType: 'text'
+        };
+
         // Get disappearing message settings
         const disappearSettings = getDisappearSettings();
+        if (disappearSettings.selfDestructAfter) sendPayload.selfDestructAfter = disappearSettings.selfDestructAfter;
+        if (disappearSettings.expiresAfterView) sendPayload.expiresAfterView = disappearSettings.expiresAfterView;
+
+        // Add wire protocol size metrics (for debugging)
+        if (window.AutohoWire) {
+          try {
+            const metrics = window.AutohoWire.measureSavings(encryptedForRecipient);
+            console.log('[Wire] Envelope: ' + metrics.jsonSize + 'B → ' + metrics.binarySize + 'B (' + metrics.savedPercent + ' saved)');
+          } catch {}
+        }
         
         const response = await fetch('/api/messages/send', {
           method: 'POST',
@@ -3870,33 +4036,24 @@
             'Content-Type': 'application/json',
             ...WalletAuth.getAuthHeaders()
           },
-          body: JSON.stringify({
-            recipientId: currentRecipientId,
-            encryptedContent: encryptedForRecipient,
-            encryptedForSender: encryptedForSender,
-            itemId: currentItemId || undefined,
-            conversationId: currentConversationId || undefined,
-            mediaType: 'text',
-            selfDestructAfter: disappearSettings.selfDestructAfter,
-            expiresAfterView: disappearSettings.expiresAfterView
-          })
+          body: JSON.stringify(sendPayload)
         });
         
         const data = await response.json();
         if (data.success) {
-          input.value = '';
+          updateOptimisticMessage(tempId, 'sent');
           if (data.conversationId) {
             currentConversationId = data.conversationId;
           }
-          // Reload messages to show the new one
-          await loadMessages(currentConversationId);
           // Refresh inbox list so you can see the conversation immediately
           loadConversations();
         } else {
+          updateOptimisticMessage(tempId, 'failed');
           alert(data.error || 'Failed to send message');
         }
       } catch (error) {
         console.error('Send error:', error);
+        updateOptimisticMessage(tempId, 'failed');
         const errorMsg = error?.message || '';
         if (errorMsg.includes('recipient') || errorMsg.includes('Recipient') || errorMsg.includes('not found')) {
           alert('Cannot send: The recipient has not set up messaging yet. Ask them to log in first.');
@@ -4395,26 +4552,51 @@
       if (!file) return;
       
       try {
-        // For photos, we compress so tier check is usually not needed
-        const compressed = await compressImage(file, MAX_IMAGE_SIZE);
-        
-        // If original is large, show quality choice modal
-        if (file.size > FILE_TIERS.free.maxSize) {
-          pendingPhotoFile = file;
-          pendingPhotoCompressed = compressed;
-          showPhotoQualityModal(file, compressed);
-          event.target.value = '';
-          return;
+        // ── Wire protocol: optimize image (WebP + resize to 1600px max) ──
+        let optimized = null;
+        if (window.AutohoWire) {
+          try {
+            optimized = await window.AutohoWire.optimizeImage(file, 1600, 1600, 0.82);
+            console.log('[Wire] Image: ' + (file.size/1024).toFixed(0) + 'KB → ' + (optimized.blob.size/1024).toFixed(0) + 'KB (' + optimized.savings + ' saved)');
+          } catch (e) {
+            console.warn('[Wire] Image optimize failed, using fallback:', e.message);
+          }
         }
-        
-        // Small file - just use compressed
-        pendingMedia = {
-          type: 'image',
-          data: compressed.data,
-          name: file.name || 'Photo',
-          size: compressed.size
-        };
-        showMediaPreview();
+
+        if (optimized && optimized.blob.size < file.size) {
+          // Use optimized WebP/JPEG
+          const reader = new FileReader();
+          const data = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(optimized.blob);
+          });
+          pendingMedia = {
+            type: 'image',
+            data: data,
+            name: file.name || 'Photo',
+            size: optimized.blob.size,
+            mime: optimized.type
+          };
+          showMediaPreview();
+        } else {
+          // Fallback to existing compression
+          const compressed = await compressImage(file, MAX_IMAGE_SIZE);
+          if (file.size > FILE_TIERS.free.maxSize) {
+            pendingPhotoFile = file;
+            pendingPhotoCompressed = compressed;
+            showPhotoQualityModal(file, compressed);
+            event.target.value = '';
+            return;
+          }
+          pendingMedia = {
+            type: 'image',
+            data: compressed.data,
+            name: file.name || 'Photo',
+            size: compressed.size
+          };
+          showMediaPreview();
+        }
       } catch (e) {
         console.error('Photo processing error:', e);
         alert('Failed to process photo');
@@ -4814,12 +4996,42 @@
       
       const sendBtn = document.getElementById('sendBtn');
       sendBtn.disabled = true;
+
+      // ── OPTIMISTIC UI: show media message instantly ──
+      const mediaLabel = pendingMedia.type === 'image' ? '📷 Photo' :
+                         pendingMedia.type === 'video' ? '🎥 Video' :
+                         pendingMedia.type === 'audio' ? '🎵 Voice message' : '📎 File';
+      const tempId = renderOptimisticMessage(mediaLabel + ' (' + formatFileSize(pendingMedia.size) + ')');
       
       try {
+        // ── Strip EXIF metadata from JPEG images for privacy ──
+        let mediaData = pendingMedia.data;
+        if (pendingMedia.type === 'image' && typeof stripImageMetadata === 'function') {
+          try {
+            // Convert base64 to ArrayBuffer, strip, convert back
+            const b64Part = mediaData.split(',')[1];
+            if (b64Part) {
+              const raw = atob(b64Part);
+              const arr = new Uint8Array(raw.length);
+              for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+              const stripped = stripImageMetadata(arr.buffer);
+              if (stripped.byteLength < arr.buffer.byteLength) {
+                const strippedArr = new Uint8Array(stripped);
+                const b64 = btoa(String.fromCharCode.apply(null, strippedArr));
+                const prefix = mediaData.split(',')[0];
+                mediaData = prefix + ',' + b64;
+                console.log('[Wire] EXIF stripped: ' + arr.length + 'B → ' + strippedArr.length + 'B');
+              }
+            }
+          } catch (e) {
+            console.warn('[Wire] EXIF strip failed:', e.message);
+          }
+        }
+
         // Create media envelope
         const mediaEnvelope = JSON.stringify({
           type: pendingMedia.type,
-          content: pendingMedia.data,
+          content: mediaData,
           name: pendingMedia.name,
           size: pendingMedia.size,
           mime: pendingMedia.mime,
@@ -4827,6 +5039,7 @@
         });
         
         if (!await ensureEncryptionInitialized()) {
+          updateOptimisticMessage(tempId, 'failed');
           alert('Encryption not initialized. Please refresh the page and try again.');
           console.error('SECURITY: Attempted to send media without encryption keys');
           return;
@@ -4853,7 +5066,6 @@
             encryptedForSender: encryptedForSender,
             itemId: currentItemId || undefined,
             conversationId: currentConversationId || undefined,
-            // Include media type and disappearing settings
             mediaType: pendingMedia.type,
             selfDestructAfter: disappearSettings.selfDestructAfter,
             expiresAfterView: disappearSettings.expiresAfterView
@@ -4862,17 +5074,19 @@
         
         const data = await response.json();
         if (data.success) {
+          updateOptimisticMessage(tempId, 'sent');
           clearMediaPreview();
           if (data.conversationId) {
             currentConversationId = data.conversationId;
           }
-          await loadMessages(currentConversationId);
           loadConversations();
         } else {
+          updateOptimisticMessage(tempId, 'failed');
           alert(data.error || 'Failed to send media');
         }
       } catch (error) {
         console.error('Send media error:', error);
+        updateOptimisticMessage(tempId, 'failed');
         alert('Failed to send media');
       } finally {
         sendBtn.disabled = false;
