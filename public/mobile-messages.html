@@ -4028,25 +4028,15 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // v5: Double Ratchet, v4: PQ hybrid, v3: ephemeral key, v1/v2: legacy encrypted
-        if (parsed.v === 5 && parsed.h && parsed.iv && parsed.c) {
+        // All encrypted envelope versions (v1-v5): use unified decrypt
+        if (parsed.v && (parsed.c || parsed.h)) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          return decrypted || '[Could not decrypt - ratchet state missing]';
-        }
-        if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
-          const ok = await ensureEncryptionInitialized();
-          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          return decrypted || '[Could not decrypt - PQ keys missing]';
-        }
-        if ((parsed.v === 3 || parsed.v === 2 || parsed.v === 1) && parsed.n && parsed.c) {
-          const ok = await ensureEncryptionInitialized();
-          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          if (decrypted) {
-            return decrypted;
+          try {
+            const decrypted = await decryptFromSender(encryptedContent, senderId);
+            if (decrypted) return decrypted;
+          } catch (decErr) {
+            console.warn('[Decrypt] Failed for v' + parsed.v + ':', decErr.message);
           }
           return '[Could not decrypt]';
         }
