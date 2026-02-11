@@ -407,8 +407,22 @@
 
     // ── PWA: Service Worker Registration ──
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
         console.log('[PWA] Service worker registered');
+        // Force update check on every page load
+        reg.update().catch(function() {});
+        // Auto-activate new SW when found
+        reg.addEventListener('updatefound', function() {
+          var newSW = reg.installing;
+          if (newSW) {
+            newSW.addEventListener('statechange', function() {
+              if (newSW.state === 'activated') {
+                console.log('[PWA] New service worker activated, reloading...');
+                window.location.reload();
+              }
+            });
+          }
+        });
       }).catch(function(err) {
         console.warn('[PWA] SW registration failed:', err);
       });
