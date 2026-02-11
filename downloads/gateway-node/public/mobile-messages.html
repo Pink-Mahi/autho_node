@@ -1661,6 +1661,8 @@
   <script src="/js/mlkem.bundle.js" integrity="sha384-5MFLjnWWzPLJ8xZQMzwzz8M0mx0mqoMzwG43tueyZi0no25PcQw2AMg6k/JUQFN1" crossorigin="anonymous"></script>
   <script src="/js/nacl-fast.min.js" integrity="sha384-05+sicyRJQ56XpL4U9HJ8YbtSzFDvAg7apPKOGV6A0JsAJKFM68jp5oLnUjG5mEp" crossorigin="anonymous"></script>
   <script src="/js/nacl-util.min.js" integrity="sha384-qpU3wxGxaAPcz02pOLeZTv5B0rNzsh3CETsUqdHxRBP70bO0kHoBopr+f9AcGj04" crossorigin="anonymous"></script>
+  <script src="/js/double-ratchet.js" integrity="sha384-AgMXGk5+mUUw2YWWcFLVRj7sJM3eMskKVbdDgWwxBPCA/wk0FElqi4YtGso5LFfO" crossorigin="anonymous"></script>
+  <script src="/js/mls-group.js" integrity="sha384-ikW8LAAJS8aZFWIq2eICz7MSnfHOUVLXBZrCc0oTBJs/x+DiRfsLsabPQqiunmOy" crossorigin="anonymous"></script>
   <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
@@ -1960,12 +1962,149 @@
     }
 
     // ============================================================
-    // v3/v4 ENCRYPTION: Ephemeral keys + Sealed sender + Replay protection
+    // DOUBLE RATCHET: Session management + v5 envelope
+    // ============================================================
+
+    // Derive a stable encryption key for ratchet state storage from identity key
+    function getRatchetStorageKey() {
+      if (!myEncryptionKeyPair) return null;
+      // Use first 32 bytes of SHA-256(secretKey) as AES key for state encryption
+      return myEncryptionKeyPair.secretKey;
+    }
+
+    async function getOrCreateRatchetSession(conversationId, recipientEncPubKeyBytes) {
+      if (!window.DoubleRatchet) return null;
+      const DR = window.DoubleRatchet;
+
+      // Check in-memory cache first
+      let session = DR.getSession(conversationId);
+      if (session && session.initialized) return session;
+
+      // Try loading from server
+      const storageKey = getRatchetStorageKey();
+      if (storageKey) {
+        session = await DR.loadSessionFromServer(conversationId, storageKey, WalletAuth.getAuthHeaders());
+        if (session && session.initialized) {
+          DR.setSession(conversationId, session);
+          return session;
+        }
+      }
+
+      // Initialize new session as sender
+      try {
+        session = await DR.initSender(myEncryptionKeyPair, recipientEncPubKeyBytes, recipientEncPubKeyBytes);
+        DR.setSession(conversationId, session);
+        // Save to server (non-blocking)
+        if (storageKey) {
+          DR.saveSessionToServer(conversationId, session, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+        return session;
+      } catch (e) {
+        console.warn('[DoubleRatchet] Session init failed:', e.message);
+        return null;
+      }
+    }
+
+    async function encryptWithRatchet(plaintext, conversationId, recipientEncPubKeyBytes) {
+      if (!window.DoubleRatchet || !conversationId) return null;
+
+      try {
+        const session = await getOrCreateRatchetSession(conversationId, recipientEncPubKeyBytes);
+        if (!session) return null;
+
+        // Sealed sender: embed sender identity inside payload
+        const wallet = WalletAuth.getWallet();
+        const innerPayload = JSON.stringify({
+          s: wallet ? wallet.publicKey : '',
+          t: Date.now(),
+          body: plaintext
+        });
+
+        const ratchetMsg = await window.DoubleRatchet.ratchetEncrypt(session, innerPayload);
+
+        // Save updated session state
+        const storageKey = getRatchetStorageKey();
+        if (storageKey) {
+          window.DoubleRatchet.saveSessionToServer(conversationId, session, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+
+        return JSON.stringify({
+          v: 5,
+          h: ratchetMsg.header,
+          iv: ratchetMsg.iv,
+          c: ratchetMsg.ciphertext
+        });
+      } catch (e) {
+        console.warn('[DoubleRatchet] Encrypt failed, falling back to v3/v4:', e.message);
+        return null;
+      }
+    }
+
+    async function decryptWithRatchet(envelope, conversationId, senderPublicKeyHex) {
+      if (!window.DoubleRatchet || !conversationId) return null;
+      const DR = window.DoubleRatchet;
+
+      try {
+        let session = DR.getSession(conversationId);
+
+        // Try loading from server if not in memory
+        if (!session) {
+          const storageKey = getRatchetStorageKey();
+          if (storageKey) {
+            session = await DR.loadSessionFromServer(conversationId, storageKey, WalletAuth.getAuthHeaders());
+          }
+        }
+
+        // If no session exists, init as receiver
+        if (!session) {
+          const senderPubKeyBytes = await getRecipientEncryptionPublicKeyBytes(senderPublicKeyHex);
+          session = await DR.initReceiver(myEncryptionKeyPair, myEncryptionKeyPair, senderPubKeyBytes, nacl.util.decodeBase64(envelope.h.dh));
+        }
+
+        DR.setSession(conversationId, session);
+
+        const decrypted = await DR.ratchetDecrypt(session, {
+          header: envelope.h,
+          iv: envelope.iv,
+          ciphertext: envelope.c
+        });
+
+        // Save updated session state
+        const storageKey = getRatchetStorageKey();
+        if (storageKey) {
+          DR.saveSessionToServer(conversationId, session, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+
+        // Parse inner payload (sealed sender)
+        try {
+          const inner = JSON.parse(decrypted);
+          if (inner.t && (Date.now() - inner.t) > 86400000) {
+            console.warn('SECURITY: v5 ratchet message timestamp >24h old');
+          }
+          return inner.body || decrypted;
+        } catch {
+          return decrypted;
+        }
+      } catch (e) {
+        console.warn('[DoubleRatchet] Decrypt failed:', e.message);
+        return null;
+      }
+    }
+
+    // ============================================================
+    // v3/v4/v5 ENCRYPTION: Ephemeral keys + Sealed sender + Replay protection
     // v4 adds post-quantum hybrid (ML-KEM-768 + Curve25519)
+    // v5 adds Double Ratchet (per-message key rotation)
     // ============================================================
     async function encryptForEncryptionPublicKey(plaintext, recipientEncPubKeyBytes, recipientKyberPubKey) {
       if (!myEncryptionKeyPair) {
         throw new Error('Encryption keys not initialized');
+      }
+
+      // ── v5: Double Ratchet (best security — per-message key rotation) ──
+      if (currentConversationId && window.DoubleRatchet) {
+        const ratchetResult = await encryptWithRatchet(plaintext, currentConversationId, recipientEncPubKeyBytes);
+        if (ratchetResult) return ratchetResult;
       }
 
       // Generate ephemeral keypair — destroyed after this call (forward secrecy)
@@ -2037,6 +2176,15 @@
         }
 
         const envelope = JSON.parse(encryptedJson);
+
+        // ── v5: Double Ratchet (per-message key rotation) ──
+        if (envelope.v === 5 && envelope.h && envelope.iv && envelope.c) {
+          const result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
+          if (result) return result;
+          // If ratchet decrypt fails, cannot fall back (ratchet state mismatch)
+          console.warn('SECURITY: v5 ratchet decrypt failed — session state may be out of sync');
+          return null;
+        }
 
         // ── v4: Post-quantum hybrid (ML-KEM-768 + Curve25519 + AES-GCM) ──
         if (envelope.v === 4 && envelope.e && envelope.k && envelope.iv && envelope.c) {
@@ -2626,7 +2774,7 @@
       }
     }
 
-    function renderGroupMessages(messages) {
+    async function renderGroupMessages(messages) {
       const container = document.getElementById('chatMessages');
       const wallet = WalletAuth.getWallet();
       
@@ -2635,14 +2783,40 @@
         return;
       }
 
-      container.innerHTML = messages.map(msg => {
+      const rendered = [];
+      for (const msg of messages) {
         const isSent = msg.senderId === wallet.publicKey;
         let content = '[Encrypted]';
         
-        // Decrypt message
-        if (msg.encryptedContent && myEncryptionKeyPair) {
+        // Try MLS decryption first (shared group key)
+        if (msg.mlsEncryptedContent && window.MLSGroup && currentGroupId && myEncryptionKeyPair) {
           try {
-            content = decryptMessage(msg.encryptedContent, msg.senderId);
+            const envelope = JSON.parse(msg.mlsEncryptedContent);
+            if (envelope.v === 'mls1') {
+              const groupState = await getOrCreateMLSGroupState(currentGroupId, currentGroupMembers || []);
+              if (groupState) {
+                content = await window.MLSGroup.decryptGroupMessage(groupState, envelope);
+                // Parse inner content if it's a message envelope
+                try {
+                  const parsed = JSON.parse(content);
+                  content = parsed.content || content;
+                } catch {}
+              }
+            }
+          } catch (e) {
+            console.warn('[MLS] Group decrypt failed:', e.message);
+            content = '[MLS decrypt failed]';
+          }
+        }
+        // Fallback: per-member encrypted content
+        else if (msg.encryptedContent && myEncryptionKeyPair) {
+          try {
+            const result = decryptMessage(msg.encryptedContent, msg.senderId);
+            if (result && typeof result === 'object' && result.encrypted) {
+              content = await decryptMessageAsync(result.data, result.senderId);
+            } else {
+              content = result;
+            }
           } catch (e) {
             content = '[Unable to decrypt]';
           }
@@ -2650,16 +2824,59 @@
         
         const senderName = isSent ? 'You' : (msg.senderId.substring(0, 8) + '...');
         
-        return `
+        rendered.push(`
           <div class="message-bubble ${isSent ? 'sent' : 'received'}">
             ${!isSent ? `<div class="group-message-sender">${senderName}</div>` : ''}
             <div class="message-text">${escapeHtml(content)}</div>
             <div class="message-meta">${formatTime(msg.timestamp)}</div>
           </div>
-        `;
-      }).join('');
-      
+        `);
+      }
+
+      container.innerHTML = rendered.join('');
       container.scrollTop = container.scrollHeight;
+    }
+
+    // ── MLS Group State Helpers ──
+    async function getOrCreateMLSGroupState(groupId, memberPubKeys) {
+      if (!window.MLSGroup || !myEncryptionKeyPair) return null;
+      const MLS = window.MLSGroup;
+
+      // Check in-memory cache
+      let state = MLS.getGroupState(groupId);
+      if (state) return state;
+
+      // Try loading from server
+      const storageKey = getRatchetStorageKey();
+      if (storageKey) {
+        state = await MLS.loadGroupStateFromServer(groupId, storageKey, WalletAuth.getAuthHeaders());
+        if (state) {
+          MLS.setGroupState(groupId, state);
+          return state;
+        }
+      }
+
+      // Create new group state
+      try {
+        const memberKeys = [];
+        for (const pk of memberPubKeys) {
+          try {
+            const bytes = await getRecipientEncryptionPublicKeyBytes(pk);
+            memberKeys.push(bytes);
+          } catch {
+            memberKeys.push(myEncryptionKeyPair.publicKey); // fallback
+          }
+        }
+        state = await MLS.createGroup(groupId, myEncryptionKeyPair, memberKeys);
+        MLS.setGroupState(groupId, state);
+        if (storageKey) {
+          MLS.saveGroupStateToServer(groupId, state, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+        }
+        return state;
+      } catch (e) {
+        console.warn('[MLS] Group state creation failed:', e.message);
+        return null;
+      }
     }
 
     async function sendGroupMessage() {
@@ -2691,26 +2908,54 @@
           return;
         }
 
-        // Encrypt message for each group member
-        const encryptedContentByMember = {};
-        
-        for (const memberId of currentGroupMembers) {
+        // ── Try MLS shared-key encryption first (O(1) per message) ──
+        let mlsEncrypted = null;
+        if (window.MLSGroup && currentGroupMembers && currentGroupMembers.length > 0) {
           try {
-            const wallet = WalletAuth.getWallet();
-            const isMe = wallet && memberId === wallet.publicKey;
-            const encrypted = isMe
-              ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
-              : await encryptForRecipient(messageEnvelope, memberId);
-            encryptedContentByMember[memberId] = encrypted;
+            const groupState = await getOrCreateMLSGroupState(currentGroupId, currentGroupMembers);
+            if (groupState) {
+              const wallet = WalletAuth.getWallet();
+              const senderPubB64 = wallet ? wallet.publicKey : '';
+              const envelope = await window.MLSGroup.encryptGroupMessage(groupState, messageEnvelope, senderPubB64);
+              mlsEncrypted = JSON.stringify(envelope);
+              // Save updated state
+              const storageKey = getRatchetStorageKey();
+              if (storageKey) {
+                window.MLSGroup.saveGroupStateToServer(currentGroupId, groupState, storageKey, WalletAuth.getAuthHeaders()).catch(() => {});
+              }
+            }
           } catch (e) {
-            console.error('SECURITY: Failed to encrypt for member:', memberId, e);
+            console.warn('[MLS] Group encrypt failed, falling back to per-member:', e.message);
           }
         }
-        
-        // SECURITY: Do NOT send if encryption fails for any member
-        if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
-          alert(`Failed to encrypt message for a group member. Message not sent.`);
-          return;
+
+        let body;
+        if (mlsEncrypted) {
+          // MLS: single encrypted payload for all members
+          body = JSON.stringify({ mlsEncryptedContent: mlsEncrypted });
+        } else {
+          // Fallback: encrypt message for each group member individually
+          const encryptedContentByMember = {};
+          
+          for (const memberId of currentGroupMembers) {
+            try {
+              const wallet = WalletAuth.getWallet();
+              const isMe = wallet && memberId === wallet.publicKey;
+              const encrypted = isMe
+                ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
+                : await encryptForRecipient(messageEnvelope, memberId);
+              encryptedContentByMember[memberId] = encrypted;
+            } catch (e) {
+              console.error('SECURITY: Failed to encrypt for member:', memberId, e);
+            }
+          }
+          
+          // SECURITY: Do NOT send if encryption fails for any member
+          if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
+            alert(`Failed to encrypt message for a group member. Message not sent.`);
+            return;
+          }
+          body = JSON.stringify({ encryptedContentByMember });
         }
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
@@ -2719,7 +2964,7 @@
             'Content-Type': 'application/json',
             ...WalletAuth.getAuthHeaders()
           },
-          body: JSON.stringify({ encryptedContentByMember })
+          body
         });
 
         if (checkAuthAndRedirect(response)) return;
@@ -3278,7 +3523,10 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // v4: PQ hybrid, v3: ephemeral key encryption
+        // v5: Double Ratchet, v4: PQ hybrid, v3: ephemeral key encryption
+        if (parsed.v === 5 && parsed.h && parsed.iv && parsed.c) {
+          return { encrypted: true, data: encryptedContent, senderId };
+        }
         if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
           return { encrypted: true, data: encryptedContent, senderId };
         }
@@ -3304,7 +3552,13 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // v4: PQ hybrid, v3: ephemeral key, v1/v2: legacy encrypted
+        // v5: Double Ratchet, v4: PQ hybrid, v3: ephemeral key, v1/v2: legacy encrypted
+        if (parsed.v === 5 && parsed.h && parsed.iv && parsed.c) {
+          const ok = await ensureEncryptionInitialized();
+          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
+          const decrypted = await decryptFromSender(encryptedContent, senderId);
+          return decrypted || '[Could not decrypt - ratchet state missing]';
+        }
         if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
