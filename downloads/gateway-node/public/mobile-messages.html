@@ -1962,6 +1962,240 @@
     }
 
     // ============================================================
+    // TIER 4: SIGNED PRE-KEYS WITH ROTATION (X3DH pre-key bundle)
+    // ============================================================
+    let mySignedPreKeyPair = null;
+    let myOneTimePreKeys = [];
+    const SIGNED_PREKEY_ROTATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+    async function generateSignedPreKey() {
+      const preKeyPair = nacl.box.keyPair();
+      // Sign the pre-key with our identity key for authentication
+      const preKeyPubB64 = nacl.util.encodeBase64(preKeyPair.publicKey);
+      const sigPayload = nacl.util.decodeUTF8('AuthoSignedPreKey:' + preKeyPubB64);
+      // Use HMAC-SHA256 as signature (identity secret key as HMAC key)
+      const hmacKey = await crypto.subtle.importKey('raw', myEncryptionKeyPair.secretKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+      const sig = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, sigPayload));
+      return {
+        keyPair: preKeyPair,
+        publicKeyB64: preKeyPubB64,
+        signatureB64: nacl.util.encodeBase64(sig),
+        createdAt: Date.now()
+      };
+    }
+
+    async function generateOneTimePreKeys(count) {
+      const keys = [];
+      for (let i = 0; i < count; i++) {
+        const kp = nacl.box.keyPair();
+        keys.push({
+          keyPair: kp,
+          publicKeyB64: nacl.util.encodeBase64(kp.publicKey),
+          id: crypto.getRandomValues(new Uint8Array(8)).reduce((s, b) => s + b.toString(16).padStart(2, '0'), '')
+        });
+      }
+      return keys;
+    }
+
+    async function publishPreKeyBundle() {
+      if (!myEncryptionKeyPair) return;
+      try {
+        const signedPreKey = await generateSignedPreKey();
+        mySignedPreKeyPair = signedPreKey;
+        const oneTimeKeys = await generateOneTimePreKeys(10);
+        myOneTimePreKeys = oneTimeKeys;
+
+        const bundle = {
+          identityKeyB64: nacl.util.encodeBase64(myEncryptionKeyPair.publicKey),
+          signedPreKeyB64: signedPreKey.publicKeyB64,
+          signedPreKeySigB64: signedPreKey.signatureB64,
+          oneTimePreKeys: oneTimeKeys.map(k => ({ id: k.id, keyB64: k.publicKeyB64 })),
+          timestamp: Date.now()
+        };
+
+        await fetch('/api/messages/prekey-bundle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
+          body: JSON.stringify(bundle)
+        });
+        console.log('[X3DH] Pre-key bundle published (' + oneTimeKeys.length + ' one-time keys)');
+
+        // Store rotation timestamp
+        localStorage.setItem('autho_prekey_published_at', String(Date.now()));
+      } catch (e) {
+        console.warn('[X3DH] Pre-key bundle publish failed:', e.message);
+      }
+    }
+
+    async function maybeRotatePreKeys() {
+      const lastPublished = parseInt(localStorage.getItem('autho_prekey_published_at') || '0');
+      if (Date.now() - lastPublished > SIGNED_PREKEY_ROTATION_MS) {
+        await publishPreKeyBundle();
+      }
+    }
+
+    async function fetchPreKeyBundle(recipientId) {
+      try {
+        const r = await fetch(`/api/messages/prekey-bundle/${encodeURIComponent(recipientId)}`, {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch {
+        return null;
+      }
+    }
+
+    // ============================================================
+    // TIER 4: ENCRYPTED ATTACHMENTS (client-side encrypt before upload)
+    // ============================================================
+
+    async function encryptAttachment(fileArrayBuffer) {
+      // Generate random file key
+      const fileKey = crypto.getRandomValues(new Uint8Array(32));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const aesKey = await crypto.subtle.importKey('raw', fileKey, 'AES-GCM', false, ['encrypt']);
+      const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, fileArrayBuffer));
+
+      // Compute SHA-256 digest of plaintext for integrity verification
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', fileArrayBuffer));
+
+      return {
+        encryptedData: encrypted,
+        fileKeyB64: nacl.util.encodeBase64(fileKey),
+        ivB64: nacl.util.encodeBase64(iv),
+        digestB64: nacl.util.encodeBase64(digest),
+        size: fileArrayBuffer.byteLength
+      };
+    }
+
+    async function decryptAttachment(encryptedData, fileKeyB64, ivB64, expectedDigestB64) {
+      const fileKey = nacl.util.decodeBase64(fileKeyB64);
+      const iv = nacl.util.decodeBase64(ivB64);
+      const aesKey = await crypto.subtle.importKey('raw', fileKey, 'AES-GCM', false, ['decrypt']);
+      const decrypted = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, encryptedData));
+
+      // Verify integrity
+      if (expectedDigestB64) {
+        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', decrypted));
+        const digestB64 = nacl.util.encodeBase64(digest);
+        if (digestB64 !== expectedDigestB64) {
+          throw new Error('SECURITY: Attachment integrity check failed — file may have been tampered with');
+        }
+      }
+
+      return decrypted;
+    }
+
+    function stripImageMetadata(arrayBuffer) {
+      // Strip EXIF/GPS metadata from JPEG files for privacy
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) return arrayBuffer;
+      // Check JPEG magic bytes
+      if (view.getUint8(0) !== 0xFF || view.getUint8(1) !== 0xD8) return arrayBuffer;
+
+      // Find and remove APP1 (EXIF) segments
+      const cleaned = [];
+      let i = 0;
+      cleaned.push(0xFF, 0xD8); // SOI
+      i = 2;
+      while (i < view.byteLength - 1) {
+        const marker = view.getUint8(i);
+        if (marker !== 0xFF) { i++; continue; }
+        const type = view.getUint8(i + 1);
+        if (type === 0xD9) { // EOI
+          cleaned.push(0xFF, 0xD9);
+          break;
+        }
+        if (type === 0xDA) { // SOS — rest is image data, copy all
+          for (let j = i; j < view.byteLength; j++) {
+            cleaned.push(view.getUint8(j));
+          }
+          break;
+        }
+        if (i + 3 >= view.byteLength) break;
+        const segLen = view.getUint16(i + 2);
+        if (type === 0xE1) {
+          // APP1 (EXIF/GPS) — skip entirely
+          i += 2 + segLen;
+          continue;
+        }
+        // Keep other segments
+        for (let j = 0; j < segLen + 2; j++) {
+          if (i + j < view.byteLength) cleaned.push(view.getUint8(i + j));
+        }
+        i += 2 + segLen;
+      }
+      return new Uint8Array(cleaned).buffer;
+    }
+
+    // ============================================================
+    // TIER 4: SESSION / DEVICE BINDING
+    // ============================================================
+
+    function getDeviceFingerprint() {
+      let fp = sessionStorage.getItem('autho_device_fingerprint');
+      if (fp) return fp;
+      // Generate a stable-ish fingerprint from browser properties
+      const components = [
+        navigator.userAgent || '',
+        navigator.language || '',
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset().toString(),
+        navigator.hardwareConcurrency || '0'
+      ];
+      fp = components.join('|');
+      // Hash it
+      let hash = 0;
+      for (let i = 0; i < fp.length; i++) {
+        hash = ((hash << 5) - hash + fp.charCodeAt(i)) | 0;
+      }
+      fp = 'dev_' + Math.abs(hash).toString(36);
+      sessionStorage.setItem('autho_device_fingerprint', fp);
+      return fp;
+    }
+
+    function bindSessionToDevice(sessionObj) {
+      if (!sessionObj) return sessionObj;
+      sessionObj._deviceFingerprint = getDeviceFingerprint();
+      sessionObj._boundAt = Date.now();
+      return sessionObj;
+    }
+
+    function verifySessionDevice(sessionObj) {
+      if (!sessionObj || !sessionObj._deviceFingerprint) return true; // no binding = ok
+      if (sessionObj._deviceFingerprint !== getDeviceFingerprint()) {
+        console.warn('SECURITY: Ratchet session was created on a different device — re-initializing');
+        return false;
+      }
+      return true;
+    }
+
+    // ============================================================
+    // TIER 4: METADATA PROTECTION
+    // ============================================================
+
+    // Randomize polling interval to prevent timing analysis
+    function getRandomizedPollInterval() {
+      // Base 5s ± 2s random jitter
+      return 3000 + Math.floor(Math.random() * 4000);
+    }
+
+    // Uniform message size padding (already have padMessage, this adds extra)
+    function padToUniformSize(messageBytes, targetSize) {
+      if (!targetSize) targetSize = 1024; // 1KB minimum
+      const minSize = Math.max(targetSize, messageBytes.length);
+      const paddedSize = Math.ceil(minSize / 1024) * 1024; // Round up to nearest KB
+      if (paddedSize <= messageBytes.length) return messageBytes;
+      const padded = new Uint8Array(paddedSize);
+      padded.set(messageBytes, 0);
+      // Fill rest with random bytes
+      const randomPad = crypto.getRandomValues(new Uint8Array(paddedSize - messageBytes.length));
+      padded.set(randomPad, messageBytes.length);
+      return padded;
+    }
+
+    // ============================================================
     // DOUBLE RATCHET: Session management + v5 envelope
     // ============================================================
 
@@ -3192,11 +3426,17 @@
     
     function startMessagePolling() {
       stopMessagePolling(); // Clear any existing interval
-      messagePollingInterval = setInterval(async () => {
-        if (currentConversationId) {
-          await pollForNewMessages(currentConversationId);
-        }
-      }, POLL_INTERVAL_MS);
+      // Use randomized interval for metadata protection (anti-timing analysis)
+      function scheduleNext() {
+        const jitteredInterval = getRandomizedPollInterval();
+        messagePollingInterval = setTimeout(async () => {
+          if (currentConversationId) {
+            await pollForNewMessages(currentConversationId);
+          }
+          scheduleNext();
+        }, jitteredInterval);
+      }
+      scheduleNext();
     }
     
     async function pollForNewMessages(conversationId) {
@@ -3228,7 +3468,7 @@
     
     function stopMessagePolling() {
       if (messagePollingInterval) {
-        clearInterval(messagePollingInterval);
+        clearTimeout(messagePollingInterval);
         messagePollingInterval = null;
       }
     }
@@ -3427,6 +3667,8 @@
           await publishMyEncryptionPublicKey();
           // Key transparency: publish hash for audit (non-blocking)
           publishKeyTransparencyHash().catch(() => {});
+          // X3DH: publish/rotate signed pre-key bundle (non-blocking)
+          maybeRotatePreKeys().catch(() => {});
           return myEncryptionKeyPair;
         })();
       }
