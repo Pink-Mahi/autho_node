@@ -2536,11 +2536,12 @@
         throw new Error('Encryption keys not initialized');
       }
 
-      // ── v5: Double Ratchet (best security — per-message key rotation) ──
-      if (currentConversationId && window.DoubleRatchet) {
-        const ratchetResult = await encryptWithRatchet(plaintext, currentConversationId, recipientEncPubKeyBytes);
-        if (ratchetResult) return ratchetResult;
-      }
+      // ── v5: Double Ratchet DISABLED — stateless v3/v4 is more reliable ──
+      // Ratchet state sync issues cause permanent message loss; v3/v4 always work.
+      // if (currentConversationId && window.DoubleRatchet) {
+      //   const ratchetResult = await encryptWithRatchet(plaintext, currentConversationId, recipientEncPubKeyBytes);
+      //   if (ratchetResult) return ratchetResult;
+      // }
 
       // Generate ephemeral keypair — destroyed after this call (forward secrecy)
       const ephemeralKeyPair = nacl.box.keyPair();
@@ -2622,11 +2623,21 @@
 
         // ── v5: Double Ratchet (per-message key rotation) ──
         if (envelope.v === 5 && envelope.h && envelope.iv && envelope.c) {
-          const result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
+          // First attempt
+          let result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
           if (result) return result;
-          // If ratchet decrypt fails, cannot fall back (ratchet state mismatch)
-          console.warn('SECURITY: v5 ratchet decrypt failed — session state may be out of sync');
-          return null;
+          // Session might be stale — reset and retry as fresh receiver
+          if (window.DoubleRatchet) {
+            try {
+              window.DoubleRatchet.clearSession(currentConversationId);
+              result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
+              if (result) return result;
+            } catch (retryErr) {
+              console.warn('[DoubleRatchet] Retry after reset also failed:', retryErr.message);
+            }
+          }
+          console.warn('SECURITY: v5 ratchet decrypt failed — session state out of sync');
+          return '[Encrypted with outdated session key]';
         }
 
         // ── v4: Post-quantum hybrid (ML-KEM-768 + Curve25519 + AES-GCM) ──
