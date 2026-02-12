@@ -324,6 +324,12 @@ export class EphemeralEventStore extends EventEmitter {
     
     // Start auto-pruning
     this.startPruning();
+
+    // Log startup configuration so operators can see what their node is using
+    const isGw = process.env.AUTHO_NODE_TYPE === 'gateway' || process.env.GATEWAY_MODE === 'true';
+    const maxMsgs = Number(process.env.AUTHO_MAX_MESSAGES) || (isGw ? 5000 : 50000);
+    const maxHeap = Number(process.env.AUTHO_MAX_HEAP_MB) || (isGw ? 512 : 2048);
+    console.log(`[Ephemeral] 📋 Config: nodeType=${isGw ? 'gateway' : 'operator'}, retention=${RETENTION_DAYS}d, maxMessages=${maxMsgs}, maxHeapMB=${maxHeap}, loaded=${this.events.size} events`);
   }
 
   /**

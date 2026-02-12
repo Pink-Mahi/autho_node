@@ -61,12 +61,28 @@ export class EventStore {
   private sequenceIndex: SequenceIndex;
   private integrityVerified: boolean = false;
 
+  // LRU event cache — avoids repeated disk reads for hot events
+  // Configurable: AUTHO_EVENT_CACHE_SIZE (default 10000 operators, 2000 gateways)
+  private eventCache: Map<string, Event> = new Map();
+  private eventCacheMaxSize: number;
+  private eventCacheHits: number = 0;
+  private eventCacheMisses: number = 0;
+
   constructor(dataDir: string) {
     this.dataDir = dataDir;
     this.eventsDir = path.join(dataDir, 'events');
     this.stateFile = path.join(dataDir, 'event-store-state.json');
     this.indexFile = path.join(dataDir, 'sequence-index.json');
     this.walFile = path.join(dataDir, 'wal.json');
+
+    // Set cache size based on node type
+    const envCacheSize = Number(process.env.AUTHO_EVENT_CACHE_SIZE);
+    if (envCacheSize > 0) {
+      this.eventCacheMaxSize = envCacheSize;
+    } else {
+      const isGateway = process.env.AUTHO_NODE_TYPE === 'gateway' || process.env.GATEWAY_MODE === 'true';
+      this.eventCacheMaxSize = isGateway ? 2000 : 10000;
+    }
 
     // Initialize directories
     if (!fs.existsSync(this.dataDir)) {
@@ -227,9 +243,21 @@ export class EventStore {
   }
 
   /**
-   * Get event by hash with checksum verification
+   * Get event by hash — uses LRU cache to avoid disk reads for hot events
    */
   async getEvent(eventHash: string): Promise<Event | null> {
+    // Check LRU cache first
+    const cached = this.eventCache.get(eventHash);
+    if (cached) {
+      this.eventCacheHits++;
+      // Move to end (most recently used) by re-inserting
+      this.eventCache.delete(eventHash);
+      this.eventCache.set(eventHash, cached);
+      return cached;
+    }
+
+    this.eventCacheMisses++;
+
     const eventFile = path.join(this.eventsDir, `${eventHash}.json`);
     
     if (!AtomicStorage.exists(eventFile)) {
@@ -241,11 +269,40 @@ export class EventStore {
       if (result.recoveredFromBackup) {
         console.warn(`[EventStore] Event ${eventHash} recovered from backup`);
       }
+      // Add to LRU cache
+      this.addToCache(eventHash, result.data);
       return result.data;
     }
     
     console.error(`[EventStore] Failed to read event ${eventHash}:`, result.error);
     return null;
+  }
+
+  /**
+   * Add event to LRU cache, evicting oldest entries if over max size
+   */
+  private addToCache(eventHash: string, event: Event): void {
+    // Evict oldest entries if cache is full
+    while (this.eventCache.size >= this.eventCacheMaxSize) {
+      const oldestKey = this.eventCache.keys().next().value;
+      if (oldestKey) this.eventCache.delete(oldestKey);
+      else break;
+    }
+    this.eventCache.set(eventHash, event);
+  }
+
+  /**
+   * Get cache statistics for monitoring
+   */
+  getCacheStats(): { size: number; maxSize: number; hits: number; misses: number; hitRate: string } {
+    const total = this.eventCacheHits + this.eventCacheMisses;
+    return {
+      size: this.eventCache.size,
+      maxSize: this.eventCacheMaxSize,
+      hits: this.eventCacheHits,
+      misses: this.eventCacheMisses,
+      hitRate: total > 0 ? `${((this.eventCacheHits / total) * 100).toFixed(1)}%` : '0%',
+    };
   }
 
   /**
