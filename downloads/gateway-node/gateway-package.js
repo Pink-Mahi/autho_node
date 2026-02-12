@@ -260,6 +260,10 @@ class GatewayNode {
     this.connectionEvents = [];
     this.maxConnectionEvents = 100;
     
+    // Messaging WebSocket connections (for /ws/messaging on HTTP port)
+    this.messagingClients = new Map(); // ws -> { publicKey, conversationId, groupId }
+    this.messagingWss = null;
+    
     // Startup diagnostics
     this.diagnostics = {
       startupTime: null,
@@ -4382,6 +4386,112 @@ class GatewayNode {
     }
   }
 
+  setupMessagingWebSocket() {
+    if (!this.messagingWss) return;
+
+    this.messagingWss.on('connection', (ws, req) => {
+      const clientInfo = { publicKey: null, conversationId: null, groupId: null };
+      this.messagingClients.set(ws, clientInfo);
+      console.log(`💬 [Messaging WS] Client connected (${this.messagingClients.size} total)`);
+
+      ws.on('message', (raw) => {
+        try {
+          const data = JSON.parse(raw.toString());
+
+          if (data.type === 'auth' && data.publicKey) {
+            clientInfo.publicKey = String(data.publicKey).trim();
+            ws.send(JSON.stringify({ type: 'auth_ok' }));
+            return;
+          }
+
+          if (data.type === 'subscribe' && data.conversationId) {
+            clientInfo.conversationId = String(data.conversationId).trim();
+            return;
+          }
+
+          if (data.type === 'subscribe_group' && data.groupId) {
+            clientInfo.groupId = String(data.groupId).trim();
+            return;
+          }
+
+          if (data.type === 'call_signal' && data.targetId && data.signal) {
+            const senderId = clientInfo.publicKey;
+            if (!senderId) {
+              ws.send(JSON.stringify({ type: 'error', error: 'Not authenticated for calls' }));
+              return;
+            }
+            const targetId = String(data.targetId).trim();
+            let delivered = false;
+
+            for (const [clientWs, meta] of this.messagingClients.entries()) {
+              if (meta.publicKey === targetId && clientWs !== ws && clientWs.readyState === WebSocket.OPEN) {
+                clientWs.send(JSON.stringify({
+                  type: 'call_signal',
+                  fromId: senderId,
+                  signal: data.signal
+                }));
+                delivered = true;
+                break;
+              }
+            }
+
+            if (!delivered) {
+              this.relayCallSignalToOperators(targetId, senderId, data.signal).catch(() => {});
+            }
+            return;
+          }
+
+          if (data.type === 'typing' || data.type === 'read_receipt' || data.type === 'reaction') {
+            const convId = data.conversationId || clientInfo.conversationId;
+            if (convId) {
+              for (const [clientWs, meta] of this.messagingClients.entries()) {
+                if (clientWs !== ws && clientWs.readyState === WebSocket.OPEN &&
+                    (meta.conversationId === convId || meta.groupId === convId)) {
+                  clientWs.send(JSON.stringify(data));
+                }
+              }
+            }
+            return;
+          }
+
+        } catch (e) {
+          console.error('💬 [Messaging WS] Invalid message:', e.message);
+        }
+      });
+
+      ws.on('close', () => {
+        this.messagingClients.delete(ws);
+      });
+
+      ws.on('error', () => {
+        this.messagingClients.delete(ws);
+      });
+    });
+  }
+
+  async relayCallSignalToOperators(targetId, fromId, signal) {
+    const timeoutMs = 3000;
+    for (const baseUrl of this.operatorUrls) {
+      try {
+        const fetchUrl = `${baseUrl.replace(/\/+$/, '')}/api/messages/call-signal`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const resp = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Internal-Request': 'operator-to-operator' },
+          body: JSON.stringify({ targetId, fromId, signal }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          if (data && data.delivered) return true;
+        }
+      } catch {}
+    }
+    return false;
+  }
+
   connectToSeeds() {
     const seeds = this.getSeedNodes();
     console.log(' Connecting to ALL seed nodes simultaneously...');
@@ -6399,13 +6509,30 @@ class GatewayNode {
     // Start message pruning (10-day retention, hourly cleanup)
     this.startMessagePruning();
 
-    // Start HTTP server
-    this.app.listen(EFFECTIVE_HTTP_PORT, () => {
+    // Start HTTP server with messaging WebSocket upgrade support
+    const httpServer = require('http').createServer(this.app);
+    this.messagingWss = new WebSocket.Server({ noServer: true });
+    this.setupMessagingWebSocket();
+
+    httpServer.on('upgrade', (request, socket, head) => {
+      const url = require('url');
+      const pathname = url.parse(request.url).pathname;
+      if (pathname === '/ws/messaging') {
+        this.messagingWss.handleUpgrade(request, socket, head, (ws) => {
+          this.messagingWss.emit('connection', ws, request);
+        });
+      } else {
+        socket.destroy();
+      }
+    });
+
+    httpServer.listen(EFFECTIVE_HTTP_PORT, () => {
       console.log('');
       console.log('✅ Gateway Node is running!');
       console.log('========================');
       console.log(`🌐 HTTP API: http://localhost:${EFFECTIVE_HTTP_PORT}`);
       console.log(`📡 WebSocket: ws://localhost:${EFFECTIVE_WS_PORT}`);
+      console.log(`💬 Messaging WS: ws://localhost:${EFFECTIVE_HTTP_PORT}/ws/messaging`);
       console.log(`📊 Health: http://localhost:${EFFECTIVE_HTTP_PORT}/health`);
       console.log(`📈 Stats: http://localhost:${EFFECTIVE_HTTP_PORT}/stats`);
       console.log(`🔍 Registry: http://localhost:${EFFECTIVE_HTTP_PORT}/api/registry/state`);
