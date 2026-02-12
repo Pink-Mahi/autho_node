@@ -1739,6 +1739,8 @@
     let conversations = [];
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
+    let lastIncomingCallerId = null;
+    let lastIncomingCallerName = null;
     const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
 
     // ============================================================
@@ -1870,7 +1872,15 @@
             }
             // ── Call signaling ──
             if (data.type === 'call_signal' && data.signal && typeof AutohoCall !== 'undefined') {
-              data.signal.from = data.fromId;
+              const fromId = data.fromId || data.signal.from;
+              if (fromId) {
+                data.signal.from = fromId;
+                lastIncomingCallerId = fromId;
+                lastIncomingCallerName = resolveCallerName(fromId);
+                setCallPeerName(lastIncomingCallerName || fromId);
+              } else {
+                console.warn('[Call] Incoming call signal missing fromId');
+              }
               AutohoCall.handleSignal(data.signal, sendCallSignal);
             }
           } catch {}
@@ -6217,6 +6227,18 @@
       document.getElementById('remoteAudio').srcObject = null;
     }
 
+    function resolveCallerName(callerId) {
+      if (!callerId) return 'Unknown';
+      const conv = conversations.find(c => (c.participantInfo || []).some(p => p.accountId === callerId));
+      const participant = conv?.participantInfo?.find(p => p.accountId === callerId);
+      return participant?.displayName || (callerId.substring(0, 12) + '...');
+    }
+
+    function setCallPeerName(name) {
+      const el = document.getElementById('callPeerName');
+      if (el) el.textContent = name || 'Unknown';
+    }
+
     // Wire AutohoCall callbacks
     if (typeof AutohoCall !== 'undefined') {
       AutohoCall.onStateChange(function(state, type, peerId) {
@@ -6228,6 +6250,7 @@
             break;
           case 'ringing':
             statusEl.textContent = 'Incoming ' + (type === 'video' ? 'video' : 'voice') + ' call...';
+            setCallPeerName(lastIncomingCallerName || resolveCallerName(peerId));
             showCallOverlay('ringing', type);
             // Play ringtone sound (simple oscillator)
             try {
