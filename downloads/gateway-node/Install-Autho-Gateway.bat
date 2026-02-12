@@ -63,6 +63,27 @@ cd /d "%INSTALL_DIR%"
 call npm install --silent 2>nul
 echo  [OK] Dependencies installed
 
+:: Auto-setup TURN (coturn) + secret
+if not exist "%INSTALL_DIR%\gateway-data" mkdir "%INSTALL_DIR%\gateway-data"
+for /f "delims=" %%s in ('powershell -NoProfile -Command "[Guid]::NewGuid().ToString('N')"') do set TURN_SECRET=%%s
+(
+echo {"username":"autho","credential":"%TURN_SECRET%"}
+) > "%INSTALL_DIR%\gateway-data\turn.json"
+
+where docker >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo  Starting coturn via Docker...
+    docker rm -f autho-turn >nul 2>&1
+    docker run -d --name autho-turn --restart unless-stopped -p 3478:3478/tcp -p 3478:3478/udp -p 49152-49200:49152-49200/udp instrumentisto/coturn -n --log-file=stdout --use-auth-secret --static-auth-secret=%TURN_SECRET% --realm=autho --min-port=49152 --max-port=49200 >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        echo  [OK] coturn running (Docker)
+    ) else (
+        echo  [WARN] Could not start coturn via Docker
+    )
+) else (
+    echo  [WARN] Docker not found. Install Docker Desktop or use WSL for TURN.
+)
+
 :: Install cloudflared for public gateway mode
 echo [5/6] Setting up public gateway support...
 where cloudflared >nul 2>&1

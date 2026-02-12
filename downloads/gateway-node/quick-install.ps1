@@ -66,6 +66,41 @@ try {
 
 Pop-Location
 
+# --- Auto-setup TURN (coturn) + secret ---
+$turnDir = Join-Path $installDir "gateway-data"
+New-Item -ItemType Directory -Force -Path $turnDir | Out-Null
+
+$secretBytes = New-Object byte[] 16
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($secretBytes)
+$turnSecret = ($secretBytes | ForEach-Object { $_.ToString('x2') }) -join ''
+
+$turnJson = @{
+    username   = "autho"
+    credential = $turnSecret
+} | ConvertTo-Json
+
+Set-Content -Path (Join-Path $turnDir "turn.json") -Value $turnJson -Encoding UTF8
+Write-Host "🔐 TURN secret generated" -ForegroundColor Green
+
+$dockerAvailable = Get-Command docker -ErrorAction SilentlyContinue
+if ($dockerAvailable) {
+    Write-Host "🧩 Starting coturn via Docker..." -ForegroundColor Cyan
+    try {
+        docker rm -f autho-turn 2>$null | Out-Null
+        docker run -d --name autho-turn --restart unless-stopped `
+          -p 3478:3478/tcp -p 3478:3478/udp `
+          -p 49152-49200:49152-49200/udp `
+          instrumentisto/coturn `
+          -n --log-file=stdout --use-auth-secret --static-auth-secret=$turnSecret `
+          --realm=autho --min-port=49152 --max-port=49200 | Out-Null
+        Write-Host "✅ coturn running (Docker)" -ForegroundColor Green
+    } catch {
+        Write-Host "⚠️  Could not start coturn via Docker" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "⚠️  Docker not found. To enable TURN on Windows, install Docker Desktop or use WSL." -ForegroundColor Yellow
+}
+
 # Install cloudflared for public access (optional but recommended)
 Write-Host "🌐 Checking for Cloudflare Tunnel (cloudflared)..." -ForegroundColor Cyan
 

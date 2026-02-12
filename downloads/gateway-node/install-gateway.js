@@ -36,6 +36,57 @@ if (!fs.existsSync(installDir)) {
   console.log('✅ Created installation directory');
 }
 
+// --- Auto-setup TURN (coturn) + secret ---
+try {
+  const turnDir = path.join(installDir, 'gateway-data');
+  if (!fs.existsSync(turnDir)) fs.mkdirSync(turnDir, { recursive: true });
+
+  const turnSecret = require('crypto').randomBytes(16).toString('hex');
+  const turnJson = {
+    username: 'autho',
+    credential: turnSecret,
+  };
+  fs.writeFileSync(path.join(turnDir, 'turn.json'), JSON.stringify(turnJson, null, 2));
+
+  const platform = os.platform();
+  if (platform === 'linux') {
+    try {
+      execSync('which apt-get', { stdio: 'ignore' });
+      execSync('sudo apt-get update -y', { stdio: 'inherit' });
+      execSync('sudo apt-get install -y coturn', { stdio: 'inherit' });
+    } catch {
+      try {
+        execSync('sudo yum install -y coturn', { stdio: 'inherit' });
+      } catch {
+        try { execSync('sudo dnf install -y coturn', { stdio: 'inherit' }); } catch {}
+      }
+    }
+    try {
+      const conf = `listening-port=3478\n` +
+        `fingerprint\n` +
+        `use-auth-secret\n` +
+        `static-auth-secret=${turnSecret}\n` +
+        `realm=autho\n` +
+        `no-cli\n`;
+      execSync(`sudo tee /etc/turnserver.conf > /dev/null <<EOF\n${conf}EOF`, { stdio: 'ignore', shell: '/bin/bash' });
+    } catch {}
+    try { execSync('sudo systemctl enable --now coturn', { stdio: 'inherit' }); } catch {}
+  } else if (platform === 'darwin') {
+    try {
+      execSync('brew install coturn', { stdio: 'inherit' });
+      const confPath = execSync('brew --prefix', { stdio: 'pipe' }).toString().trim() + '/etc/turnserver.conf';
+      const conf = `listening-port=3478\n` +
+        `fingerprint\n` +
+        `use-auth-secret\n` +
+        `static-auth-secret=${turnSecret}\n` +
+        `realm=autho\n` +
+        `no-cli\n`;
+      fs.writeFileSync(confPath, conf);
+      execSync('brew services restart coturn', { stdio: 'inherit' });
+    } catch {}
+  }
+} catch {}
+
 // Copy files
 const filesToCopy = [
   'gateway-package.js',

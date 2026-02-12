@@ -1561,14 +1561,42 @@ export class OperatorNode extends EventEmitter {
     });
 
     // TURN discovery endpoint (self-hosted relay configuration)
-    this.app.get('/api/network/turn', async (_req: Request, res: Response) => {
+    this.app.get('/api/network/turn', async (req: Request, res: Response) => {
       try {
         const urlsRaw = String(process.env.AUTHO_TURN_URLS || process.env.TURN_URLS || '').trim();
-        const urls = urlsRaw
+        const envUrls = urlsRaw
           ? urlsRaw.split(',').map(s => s.trim()).filter(Boolean)
           : [];
-        const username = String(process.env.AUTHO_TURN_USER || process.env.TURN_USER || '').trim();
-        const credential = String(process.env.AUTHO_TURN_CRED || process.env.TURN_CRED || '').trim();
+        const envUser = String(process.env.AUTHO_TURN_USER || process.env.TURN_USER || '').trim();
+        const envCred = String(process.env.AUTHO_TURN_CRED || process.env.TURN_CRED || '').trim();
+
+        let urls = envUrls;
+        let username = envUser;
+        let credential = envCred;
+
+        if ((!urls.length || !credential) && !envUrls.length) {
+          try {
+            const dataDir = process.env.OPERATOR_DATA_DIR || './operator-data';
+            const turnPath = path.join(dataDir, 'turn.json');
+            if (fs.existsSync(turnPath)) {
+              const raw = JSON.parse(fs.readFileSync(turnPath, 'utf8')) as any;
+              const fileUrls = Array.isArray(raw?.urls) ? raw.urls : [];
+              if (fileUrls.length) urls = fileUrls;
+              if (!username) username = String(raw?.username || '').trim();
+              if (!credential) credential = String(raw?.credential || '').trim();
+            }
+          } catch {}
+        }
+
+        if ((!urls || !urls.length) && credential) {
+          const host = String(req.headers.host || '').trim();
+          if (host) {
+            urls = [
+              `turn:${host}:3478?transport=udp`,
+              `turn:${host}:3478?transport=tcp`,
+            ];
+          }
+        }
 
         res.json({
           success: true,

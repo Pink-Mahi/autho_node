@@ -1547,6 +1547,45 @@ class GatewayNode {
       });
     });
 
+    // TURN discovery endpoint (self-hosted relay configuration)
+    this.app.get('/api/network/turn', (req, res) => {
+      try {
+        const dataDir = CONFIG.dataDir || './gateway-data';
+        const turnPath = path.join(dataDir, 'turn.json');
+        let urls = [];
+        let username = '';
+        let credential = '';
+
+        if (fs.existsSync(turnPath)) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(turnPath, 'utf8')) || {};
+            if (Array.isArray(raw.urls)) urls = raw.urls;
+            if (raw.username) username = String(raw.username).trim();
+            if (raw.credential) credential = String(raw.credential).trim();
+          } catch {}
+        }
+
+        if ((!urls || !urls.length) && credential) {
+          const host = String(req.headers.host || '').trim();
+          if (host) {
+            urls = [
+              `turn:${host}:3478?transport=udp`,
+              `turn:${host}:3478?transport=tcp`,
+            ];
+          }
+        }
+
+        res.json({
+          success: true,
+          turn: urls.length
+            ? { urls, username: username || undefined, credential: credential || undefined }
+            : null,
+        });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || 'Failed to load TURN config' });
+      }
+    });
+
     // Serve cached UI files for public gateways (before API routes)
     this.app.use((req, res, next) => {
       // Skip API routes
