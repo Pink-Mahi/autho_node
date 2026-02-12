@@ -134,6 +134,10 @@
 
   // ── Handle incoming call offer (recipient side) ──
   Call.handleOffer = async function(signal, sendSignal) {
+    if (callState === 'ringing' && Call._pendingOffer?.sdp === signal?.sdp) {
+      console.log('[Call] Duplicate offer ignored');
+      return;
+    }
     if (callState !== 'idle') {
       // Already in a call — reject
       sendSignal({ type: 'call_busy', timestamp: Date.now() });
@@ -233,6 +237,11 @@
   // ── Handle incoming answer (caller side) ──
   Call.handleAnswer = async function(signal) {
     if (!peerConnection || callState !== 'calling') return;
+
+    if (peerConnection.signalingState === 'stable') {
+      console.log('[Call] Duplicate answer ignored (already stable)');
+      return;
+    }
 
     try {
       await peerConnection.setRemoteDescription(new RTCSessionDescription({
