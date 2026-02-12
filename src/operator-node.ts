@@ -6953,7 +6953,7 @@ export class OperatorNode extends EventEmitter {
           // Forward to all connected gateway nodes so they can check their local messaging clients
           if (!relayDelivered) {
             const hops = Number(message.hops || 0);
-            if (hops < 3) {
+            if (hops < 10) {
               const fwdMsg = JSON.stringify({
                 type: 'call_signal_relay',
                 targetId: relayTargetId,
@@ -7046,7 +7046,7 @@ export class OperatorNode extends EventEmitter {
       case 'transient_signal':
         try {
           const hops = Number(message?.hops || 0);
-          if (hops >= 3) break;
+          if (hops >= 10) break;
           const signalData = message?.data;
           const convId = signalData?.conversationId;
           // Deliver to local messaging clients
@@ -7430,6 +7430,7 @@ export class OperatorNode extends EventEmitter {
 
     this.peerDiscovery = new OperatorPeerDiscovery({
       mainSeedHttpUrl: base,
+      fallbackSeedUrls: this.config.fallbackSeedUrls || [],
       myOperatorId,
       discoveryIntervalMs: 5 * 60 * 1000,
     });
@@ -7698,7 +7699,7 @@ export class OperatorNode extends EventEmitter {
           // Forward to all connected gateway nodes (they may have the target as a messaging client)
           if (!peerRelayDelivered) {
             const hops = Number(message.hops || 0);
-            if (hops < 3) {
+            if (hops < 10) {
               const fwdMsg = JSON.stringify({
                 type: 'call_signal_relay',
                 targetId: peerRelayTargetId,
@@ -7721,7 +7722,7 @@ export class OperatorNode extends EventEmitter {
       case 'transient_signal':
         try {
           const tsHops = Number(message?.hops || 0);
-          if (tsHops >= 3) break;
+          if (tsHops >= 10) break;
           const tsData = message?.data;
           const tsConvId = tsData?.conversationId;
           if (tsConvId) {

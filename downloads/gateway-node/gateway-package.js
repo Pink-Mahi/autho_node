@@ -95,6 +95,12 @@ const CONFIG = {
   seedNodes: ['autho.pinkmahi.com', 'autho.cartpathcleaning.com', 'autho2.cartpathcleaning.com'],
 
   operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'https://autho2.cartpathcleaning.com'],
+
+  // Optional bridge operator URLs (censorship bypass) - can be filled by env or community
+  bridgeOperatorUrls: [],
+
+  // Optional bridge seed hosts (censorship bypass)
+  bridgeSeedNodes: [],
   
   // Community seeds URL (GitHub-hosted, anyone can PR new seeds)
   communitySeedsUrl: 'https://raw.githubusercontent.com/Pink-Mahi/autho_node/main/seeds.txt',
@@ -621,7 +627,15 @@ class GatewayNode {
     
     // Layer 0: Load cached seeds from previous sessions (highest priority)
     const cachedSeeds = this.loadCachedSeeds();
-    const discoveredUrls = new Set([...cachedSeeds, ...CONFIG.operatorUrls]);
+    const bridgeRaw = process.env.AUTHO_BRIDGE_OPERATOR_URLS || process.env.BRIDGE_OPERATOR_URLS;
+    const bridgeList = bridgeRaw
+      ? bridgeRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : (CONFIG.bridgeOperatorUrls || []);
+    const discoveredUrls = new Set([
+      ...cachedSeeds,
+      ...CONFIG.operatorUrls,
+      ...bridgeList,
+    ]);
 
     // Layer 1: Try community seeds from GitHub
     try {
@@ -911,7 +925,13 @@ class GatewayNode {
     const list = raw
       ? raw.split(',').map(s => s.trim()).filter(Boolean)
       : CONFIG.operatorUrls;
-    const normalized = list.map(u => this.normalizeOperatorUrl(u)).filter(Boolean);
+    const bridgeRaw = process.env.AUTHO_BRIDGE_OPERATOR_URLS || process.env.BRIDGE_OPERATOR_URLS;
+    const bridgeList = bridgeRaw
+      ? bridgeRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : (CONFIG.bridgeOperatorUrls || []);
+    const normalized = [...list, ...bridgeList]
+      .map(u => this.normalizeOperatorUrl(u))
+      .filter(Boolean);
     return normalized.length ? normalized : CONFIG.operatorUrls;
   }
 
@@ -959,9 +979,14 @@ class GatewayNode {
     const raw = process.env.GATEWAY_SEEDS || process.env.AUTHO_GATEWAY_SEEDS;
     const requested = raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
+    const bridgeRaw = process.env.AUTHO_BRIDGE_SEEDS || process.env.BRIDGE_SEEDS;
+    const bridgeRequested = bridgeRaw ? bridgeRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
     const fromEnv = requested.map(s => this.normalizeSeed(s)).filter(Boolean);
+    const fromBridgeEnv = bridgeRequested.map(s => this.normalizeSeed(s)).filter(Boolean);
 
     const fromConfig = (CONFIG.seedNodes || []).map(s => this.normalizeSeed(s)).filter(Boolean);
+    const fromBridgeConfig = (CONFIG.bridgeSeedNodes || []).map(s => this.normalizeSeed(s)).filter(Boolean);
     const fromOperators = (this.operatorUrls || [])
       .map((u) => {
         try {
@@ -974,7 +999,7 @@ class GatewayNode {
 
     const out = [];
     const seen = new Set();
-    for (const s of [...fromEnv, ...fromConfig, ...fromOperators]) {
+    for (const s of [...fromBridgeEnv, ...fromBridgeConfig, ...fromEnv, ...fromConfig, ...fromOperators]) {
       if (!s) continue;
       if (seen.has(s)) continue;
       seen.add(s);
@@ -6606,7 +6631,7 @@ class GatewayNode {
       case 'transient_signal':
         if (message.data && message.data.conversationId) {
           const hops = Number(message.hops || 0);
-          if (hops < 3) {
+          if (hops < 10) {
             const signalData = message.data;
             const convId = signalData.conversationId;
             const localMsg = JSON.stringify(signalData);
