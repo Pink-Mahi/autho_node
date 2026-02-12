@@ -7,6 +7,9 @@
 
 import { EventStore } from './event-store';
 import { Event, EventType, PlatformFeePayoutSnapshot } from './types';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 
 export interface ItemState {
   itemId: string;
@@ -426,8 +429,22 @@ export class StateBuilder {
   private cacheBuilding: boolean = false;
   private cacheBuildPromise: Promise<RegistryState> | null = null;
 
+  // State snapshots — like Bitcoin's assumeutxo
+  // New nodes load snapshot + replay only recent events instead of full history
+  private snapshotDir: string;
+  private snapshotInterval: number; // Create snapshot every N events
+  private lastSnapshotSequence: number = 0;
+
   constructor(eventStore: EventStore) {
     this.eventStore = eventStore;
+    // Snapshot directory alongside event store data
+    const dataDir = (eventStore as any).dataDir || '.';
+    this.snapshotDir = path.join(dataDir, 'snapshots');
+    if (!fs.existsSync(this.snapshotDir)) {
+      fs.mkdirSync(this.snapshotDir, { recursive: true });
+    }
+    // Configurable: AUTHO_SNAPSHOT_INTERVAL (default 1000 events)
+    this.snapshotInterval = Number(process.env.AUTHO_SNAPSHOT_INTERVAL) || 1000;
   }
 
   /**
@@ -475,9 +492,42 @@ export class StateBuilder {
   }
 
   /**
-   * Full state rebuild from all events (only on first call or after invalidation)
+   * Full state rebuild — tries snapshot first, falls back to full replay.
+   * Like Bitcoin's assumeutxo: load a checkpoint, then replay only recent events.
    */
   private async fullBuild(): Promise<RegistryState> {
+    const storeState = this.eventStore.getState();
+    const currentSequence = storeState.sequenceNumber;
+
+    // Try loading the latest snapshot to skip full replay
+    const snapshot = this.loadLatestSnapshot();
+    if (snapshot && snapshot.sequence > 0 && snapshot.sequence <= currentSequence) {
+      const startTime = Date.now();
+      const state = snapshot.state;
+
+      // Replay only events since snapshot
+      if (snapshot.sequence < currentSequence) {
+        let applied = 0;
+        for (let seq = snapshot.sequence + 1; seq <= currentSequence; seq++) {
+          const event = await this.eventStore.getEventBySequence(seq);
+          if (event) {
+            this.applyEvent(state, event);
+            applied++;
+          }
+        }
+        const elapsed = Date.now() - startTime;
+        console.log(`[StateBuilder] Snapshot bootstrap: loaded seq ${snapshot.sequence}, replayed ${applied} new events in ${elapsed}ms (skipped ${snapshot.sequence} events)`);
+      } else {
+        console.log(`[StateBuilder] Snapshot bootstrap: loaded seq ${snapshot.sequence} — fully current`);
+      }
+
+      this.cachedState = state;
+      this.cachedSequence = state.lastEventSequence;
+      this.lastSnapshotSequence = snapshot.sequence;
+      return state;
+    }
+
+    // No snapshot — full replay from genesis
     const state: RegistryState = {
       items: new Map(),
       settlements: new Map(),
@@ -515,6 +565,11 @@ export class StateBuilder {
     const elapsed = Date.now() - startTime;
     console.log(`[StateBuilder] Full rebuild: ${events.length} events in ${elapsed}ms`);
 
+    // Auto-save snapshot after full rebuild if enough events
+    if (events.length >= this.snapshotInterval) {
+      this.saveSnapshot(state);
+    }
+
     return state;
   }
 
@@ -541,6 +596,12 @@ export class StateBuilder {
       console.log(`[StateBuilder] Incremental update: ${applied} new events in ${elapsed}ms (seq ${fromSequence}-${toSequence})`);
     }
 
+    // Auto-snapshot if enough events have passed since last snapshot
+    if (this.lastSnapshotSequence > 0 && 
+        (state.lastEventSequence - this.lastSnapshotSequence) >= this.snapshotInterval) {
+      this.saveSnapshot(state);
+    }
+
     return state;
   }
 
@@ -551,6 +612,228 @@ export class StateBuilder {
     this.cachedState = null;
     this.cachedSequence = 0;
     console.log('[StateBuilder] Cache invalidated — next buildState() will do full rebuild');
+  }
+
+  // =====================================================================
+  // State Snapshots — like Bitcoin's assumeutxo
+  // Allows new nodes to bootstrap from a checkpoint instead of full replay
+  // Snapshots are verifiable: SHA-256 hash of serialized state is stored
+  // Any node can verify a snapshot by replaying events and comparing hashes
+  // =====================================================================
+
+  /**
+   * Save current state as a snapshot to disk.
+   * Snapshot format: { version, sequence, eventHash, stateHash, state (serialized) }
+   */
+  saveSnapshot(state: RegistryState): void {
+    try {
+      const serialized = this.serializeState(state);
+      const stateHash = crypto.createHash('sha256').update(JSON.stringify(serialized)).digest('hex');
+      const snapshot = {
+        version: 1,
+        sequence: state.lastEventSequence,
+        eventHash: state.lastEventHash,
+        stateHash,
+        createdAt: Date.now(),
+        state: serialized,
+      };
+
+      const filename = `snapshot-${state.lastEventSequence}.json`;
+      const filepath = path.join(this.snapshotDir, filename);
+      fs.writeFileSync(filepath, JSON.stringify(snapshot), 'utf-8');
+
+      this.lastSnapshotSequence = state.lastEventSequence;
+
+      // Clean up old snapshots — keep only the 3 most recent
+      this.cleanOldSnapshots(3);
+
+      console.log(`[StateBuilder] 📸 Snapshot saved at seq ${state.lastEventSequence} (hash: ${stateHash.slice(0, 12)}..., accounts: ${state.accounts.size}, items: ${state.items.size})`);
+    } catch (err: any) {
+      console.error('[StateBuilder] Failed to save snapshot:', err.message);
+    }
+  }
+
+  /**
+   * Load the latest valid snapshot from disk.
+   * Returns null if no snapshot exists or all are corrupted.
+   */
+  private loadLatestSnapshot(): { sequence: number; state: RegistryState } | null {
+    try {
+      if (!fs.existsSync(this.snapshotDir)) return null;
+
+      const files = fs.readdirSync(this.snapshotDir)
+        .filter(f => f.startsWith('snapshot-') && f.endsWith('.json'))
+        .sort((a, b) => {
+          const seqA = parseInt(a.replace('snapshot-', '').replace('.json', ''), 10);
+          const seqB = parseInt(b.replace('snapshot-', '').replace('.json', ''), 10);
+          return seqB - seqA; // newest first
+        });
+
+      for (const file of files) {
+        try {
+          const filepath = path.join(this.snapshotDir, file);
+          const raw = fs.readFileSync(filepath, 'utf-8');
+          const snapshot = JSON.parse(raw);
+
+          if (!snapshot.state || !snapshot.sequence || !snapshot.stateHash) continue;
+
+          // Verify integrity
+          const checkHash = crypto.createHash('sha256').update(JSON.stringify(snapshot.state)).digest('hex');
+          if (checkHash !== snapshot.stateHash) {
+            console.warn(`[StateBuilder] Snapshot ${file} failed integrity check — skipping`);
+            continue;
+          }
+
+          const state = this.deserializeState(snapshot.state);
+          console.log(`[StateBuilder] 📸 Loaded snapshot at seq ${snapshot.sequence} (verified hash: ${snapshot.stateHash.slice(0, 12)}...)`);
+          return { sequence: snapshot.sequence, state };
+        } catch (err: any) {
+          console.warn(`[StateBuilder] Failed to load snapshot ${file}: ${err.message}`);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[StateBuilder] Error reading snapshots dir:', err.message);
+    }
+    return null;
+  }
+
+  /**
+   * Keep only the N most recent snapshots, delete older ones
+   */
+  private cleanOldSnapshots(keep: number): void {
+    try {
+      const files = fs.readdirSync(this.snapshotDir)
+        .filter(f => f.startsWith('snapshot-') && f.endsWith('.json'))
+        .sort((a, b) => {
+          const seqA = parseInt(a.replace('snapshot-', '').replace('.json', ''), 10);
+          const seqB = parseInt(b.replace('snapshot-', '').replace('.json', ''), 10);
+          return seqB - seqA;
+        });
+
+      for (let i = keep; i < files.length; i++) {
+        try {
+          fs.unlinkSync(path.join(this.snapshotDir, files[i]));
+        } catch {}
+      }
+    } catch {}
+  }
+
+  /**
+   * Serialize RegistryState to a JSON-safe object (Maps → objects, Sets → arrays)
+   */
+  private serializeState(state: RegistryState): any {
+    const mapToObj = (map: Map<string, any>) => {
+      const obj: any = {};
+      for (const [k, v] of map) {
+        // Nested Maps (e.g., votes inside applications) need recursive serialization
+        if (v && typeof v === 'object' && !(v instanceof Map) && !(v instanceof Set)) {
+          const serialized: any = { ...v };
+          for (const [prop, val] of Object.entries(serialized)) {
+            if (val instanceof Map) {
+              serialized[prop] = mapToObj(val);
+            } else if (val instanceof Set) {
+              serialized[prop] = Array.from(val);
+            }
+          }
+          obj[k] = serialized;
+        } else {
+          obj[k] = v;
+        }
+      }
+      return obj;
+    };
+
+    return {
+      items: mapToObj(state.items),
+      settlements: mapToObj(state.settlements),
+      consignments: mapToObj(state.consignments),
+      verificationRequests: mapToObj(state.verificationRequests),
+      operators: mapToObj(state.operators),
+      accounts: mapToObj(state.accounts),
+      roleApplications: mapToObj(state.roleApplications),
+      roleInvites: mapToObj(state.roleInvites),
+      verifierActions: mapToObj(state.verifierActions),
+      verifierRatings: mapToObj(state.verifierRatings),
+      verifierReports: mapToObj(state.verifierReports),
+      verifierRatingFeeTxids: mapToObj(state.verifierRatingFeeTxids),
+      retailerVerificationApplications: mapToObj(state.retailerVerificationApplications),
+      retailerActions: mapToObj(state.retailerActions),
+      retailerRatings: mapToObj(state.retailerRatings),
+      retailerReports: mapToObj(state.retailerReports),
+      imageTombstoneProposals: mapToObj(state.imageTombstoneProposals),
+      tombstonedImages: Array.from(state.tombstonedImages),
+      ownership: mapToObj(state.ownership),
+      feePayoutCursor: state.feePayoutCursor,
+      lastEventSequence: state.lastEventSequence,
+      lastEventHash: state.lastEventHash,
+    };
+  }
+
+  /**
+   * Deserialize a JSON object back into a RegistryState (objects → Maps, arrays → Sets)
+   */
+  private deserializeState(data: any): RegistryState {
+    const objToMap = (obj: any, nestedMapFields?: string[]): Map<string, any> => {
+      const map = new Map<string, any>();
+      if (!obj || typeof obj !== 'object') return map;
+      for (const [k, v] of Object.entries(obj)) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && nestedMapFields) {
+          const restored: any = { ...v as any };
+          for (const field of nestedMapFields) {
+            if (restored[field] && typeof restored[field] === 'object' && !Array.isArray(restored[field])) {
+              restored[field] = objToMap(restored[field]);
+            }
+          }
+          map.set(k, restored);
+        } else {
+          map.set(k, v);
+        }
+      }
+      return map;
+    };
+
+    // Fields that contain nested Maps (votes maps inside applications/actions)
+    const voteFields = ['votes'];
+
+    return {
+      items: objToMap(data.items),
+      settlements: objToMap(data.settlements),
+      consignments: objToMap(data.consignments),
+      verificationRequests: objToMap(data.verificationRequests),
+      operators: objToMap(data.operators, voteFields),
+      accounts: objToMap(data.accounts),
+      roleApplications: objToMap(data.roleApplications, voteFields),
+      roleInvites: objToMap(data.roleInvites),
+      verifierActions: objToMap(data.verifierActions, voteFields),
+      verifierRatings: objToMap(data.verifierRatings),
+      verifierReports: objToMap(data.verifierReports),
+      verifierRatingFeeTxids: objToMap(data.verifierRatingFeeTxids),
+      retailerVerificationApplications: objToMap(data.retailerVerificationApplications, voteFields),
+      retailerActions: objToMap(data.retailerActions, voteFields),
+      retailerRatings: objToMap(data.retailerRatings),
+      retailerReports: objToMap(data.retailerReports),
+      imageTombstoneProposals: objToMap(data.imageTombstoneProposals, voteFields),
+      tombstonedImages: new Set(Array.isArray(data.tombstonedImages) ? data.tombstonedImages : []),
+      ownership: objToMap(data.ownership),
+      feePayoutCursor: data.feePayoutCursor || 0,
+      lastEventSequence: data.lastEventSequence || 0,
+      lastEventHash: data.lastEventHash || '',
+    };
+  }
+
+  /**
+   * Get snapshot info for diagnostics
+   */
+  getSnapshotInfo(): { lastSnapshotSequence: number; snapshotCount: number; snapshotDir: string } {
+    let count = 0;
+    try {
+      count = fs.readdirSync(this.snapshotDir).filter(f => f.startsWith('snapshot-')).length;
+    } catch {}
+    return {
+      lastSnapshotSequence: this.lastSnapshotSequence,
+      snapshotCount: count,
+      snapshotDir: this.snapshotDir,
+    };
   }
 
   /**
