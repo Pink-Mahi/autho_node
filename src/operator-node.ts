@@ -6937,6 +6937,7 @@ export class OperatorNode extends EventEmitter {
         if (message.targetId && message.fromId && message.signal) {
           const relayTargetId = String(message.targetId).trim();
           const relayFromId = String(message.fromId).trim();
+          let relayDelivered = false;
           for (const [clientWs, meta] of this.gatewayConnections.entries()) {
             if ((meta as any)?.messagingPublicKey === relayTargetId && clientWs.readyState === WebSocket.OPEN) {
               clientWs.send(JSON.stringify({
@@ -6944,8 +6945,28 @@ export class OperatorNode extends EventEmitter {
                 fromId: relayFromId,
                 signal: message.signal,
               }));
+              relayDelivered = true;
               console.log(`📞 [Call] Relayed signal to local client ${relayTargetId.substring(0, 12)}...`);
               break;
+            }
+          }
+          // Forward to all connected gateway nodes so they can check their local messaging clients
+          if (!relayDelivered) {
+            const hops = Number(message.hops || 0);
+            if (hops < 3) {
+              const fwdMsg = JSON.stringify({
+                type: 'call_signal_relay',
+                targetId: relayTargetId,
+                fromId: relayFromId,
+                signal: message.signal,
+                sourceOperatorId: this.config.operatorId,
+                hops: hops + 1,
+              });
+              for (const [gwWs] of this.gatewayConnections.entries()) {
+                if (gwWs !== ws && gwWs.readyState === WebSocket.OPEN) {
+                  try { gwWs.send(fwdMsg); } catch {}
+                }
+              }
             }
           }
         }
@@ -7261,10 +7282,9 @@ export class OperatorNode extends EventEmitter {
       }
     }
 
-    // Layer 2: HTTP POST to peer operator URLs (fallback)
-    if (sentViaWs) return true;
+    // Layer 2: HTTP POST to peer operator URLs (always try, WS broadcast only reaches local clients)
     if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
-      return false;
+      return sentViaWs;
     }
 
     const peers = Array.from(this.operatorPeerConnections.entries());
@@ -7569,19 +7589,40 @@ export class OperatorNode extends EventEmitter {
         break;
 
       case 'call_signal_relay':
-        // Receive relayed call signal from a peer operator — deliver to local client
+        // Receive relayed call signal from a peer operator — deliver to local client or forward to gateways
         if (message.targetId && message.fromId && message.signal) {
-          const relayTargetId = String(message.targetId).trim();
-          const relayFromId = String(message.fromId).trim();
+          const peerRelayTargetId = String(message.targetId).trim();
+          const peerRelayFromId = String(message.fromId).trim();
+          let peerRelayDelivered = false;
           for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
-            if ((clientMeta as any)?.messagingPublicKey === relayTargetId && clientWs.readyState === WebSocket.OPEN) {
+            if ((clientMeta as any)?.messagingPublicKey === peerRelayTargetId && clientWs.readyState === WebSocket.OPEN) {
               clientWs.send(JSON.stringify({
                 type: 'call_signal',
-                fromId: relayFromId,
+                fromId: peerRelayFromId,
                 signal: message.signal,
               }));
-              console.log(`📞 [Call] Peer relay → delivered to local client ${relayTargetId.substring(0, 12)}...`);
+              peerRelayDelivered = true;
+              console.log(`📞 [Call] Peer relay → delivered to local client ${peerRelayTargetId.substring(0, 12)}...`);
               break;
+            }
+          }
+          // Forward to all connected gateway nodes (they may have the target as a messaging client)
+          if (!peerRelayDelivered) {
+            const hops = Number(message.hops || 0);
+            if (hops < 3) {
+              const fwdMsg = JSON.stringify({
+                type: 'call_signal_relay',
+                targetId: peerRelayTargetId,
+                fromId: peerRelayFromId,
+                signal: message.signal,
+                sourceOperatorId: this.config.operatorId,
+                hops: hops + 1,
+              });
+              for (const [gwWs] of this.gatewayConnections.entries()) {
+                if (gwWs.readyState === WebSocket.OPEN) {
+                  try { gwWs.send(fwdMsg); } catch {}
+                }
+              }
             }
           }
         }
