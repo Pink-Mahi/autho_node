@@ -220,6 +220,8 @@ export interface AccountState {
   serviceBalanceLastFundedAt?: number;
   serviceBalanceTotalFundedSats?: number;
   serviceBalanceTotalUsedSats?: number;
+  // E2E encrypted messaging public key (Curve25519, separate from BTC key)
+  messagingPublicKey?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -418,14 +420,64 @@ export interface RegistryState {
 export class StateBuilder {
   public eventStore: EventStore;
 
+  // In-memory state cache — avoids full replay on every API call
+  private cachedState: RegistryState | null = null;
+  private cachedSequence: number = 0;
+  private cacheBuilding: boolean = false;
+  private cacheBuildPromise: Promise<RegistryState> | null = null;
+
   constructor(eventStore: EventStore) {
     this.eventStore = eventStore;
   }
 
   /**
-   * Build current state by replaying all events
+   * Build current state using cached state + incremental replay.
+   * First call replays all events; subsequent calls only apply new events.
+   * This turns O(N) per request into O(delta) — critical for scaling.
    */
   async buildState(): Promise<RegistryState> {
+    // If another caller is already building, wait for that result
+    if (this.cacheBuilding && this.cacheBuildPromise) {
+      return this.cacheBuildPromise;
+    }
+
+    const storeState = this.eventStore.getState();
+    const currentSequence = storeState.sequenceNumber;
+
+    // If cache is current, return it immediately (O(1))
+    if (this.cachedState && this.cachedSequence === currentSequence) {
+      return this.cachedState;
+    }
+
+    // If cache exists but is behind, apply only new events (O(delta))
+    if (this.cachedState && this.cachedSequence > 0 && this.cachedSequence < currentSequence) {
+      this.cacheBuilding = true;
+      this.cacheBuildPromise = this.incrementalBuild(this.cachedSequence + 1, currentSequence);
+      try {
+        const state = await this.cacheBuildPromise;
+        return state;
+      } finally {
+        this.cacheBuilding = false;
+        this.cacheBuildPromise = null;
+      }
+    }
+
+    // No cache or cache is invalid — full rebuild
+    this.cacheBuilding = true;
+    this.cacheBuildPromise = this.fullBuild();
+    try {
+      const state = await this.cacheBuildPromise;
+      return state;
+    } finally {
+      this.cacheBuilding = false;
+      this.cacheBuildPromise = null;
+    }
+  }
+
+  /**
+   * Full state rebuild from all events (only on first call or after invalidation)
+   */
+  private async fullBuild(): Promise<RegistryState> {
     const state: RegistryState = {
       items: new Map(),
       settlements: new Map(),
@@ -452,12 +504,53 @@ export class StateBuilder {
     };
 
     const events = await this.eventStore.getAllEvents();
+    const startTime = Date.now();
 
     for (const event of events) {
       this.applyEvent(state, event);
     }
 
+    this.cachedState = state;
+    this.cachedSequence = state.lastEventSequence;
+    const elapsed = Date.now() - startTime;
+    console.log(`[StateBuilder] Full rebuild: ${events.length} events in ${elapsed}ms`);
+
     return state;
+  }
+
+  /**
+   * Incremental state update — apply only new events since last cached sequence.
+   * This is the key scaling optimization: O(delta) instead of O(N).
+   */
+  private async incrementalBuild(fromSequence: number, toSequence: number): Promise<RegistryState> {
+    const state = this.cachedState!;
+    const startTime = Date.now();
+    let applied = 0;
+
+    for (let seq = fromSequence; seq <= toSequence; seq++) {
+      const event = await this.eventStore.getEventBySequence(seq);
+      if (event) {
+        this.applyEvent(state, event);
+        applied++;
+      }
+    }
+
+    this.cachedSequence = state.lastEventSequence;
+    const elapsed = Date.now() - startTime;
+    if (applied > 0) {
+      console.log(`[StateBuilder] Incremental update: ${applied} new events in ${elapsed}ms (seq ${fromSequence}-${toSequence})`);
+    }
+
+    return state;
+  }
+
+  /**
+   * Invalidate the cached state (e.g., after a ledger reset or re-sync)
+   */
+  invalidateCache(): void {
+    this.cachedState = null;
+    this.cachedSequence = 0;
+    console.log('[StateBuilder] Cache invalidated — next buildState() will do full rebuild');
   }
 
   /**
@@ -1295,6 +1388,7 @@ export class StateBuilder {
       emailHash: payload.emailHash,
       walletAddress: payload.walletAddress,
       walletVault: payload.walletVault,
+      messagingPublicKey: payload.messagingPublicKey,
       verifierStatus: 'active',
       verifierRevokedAt: undefined,
       verifierReactivatedAt: undefined,

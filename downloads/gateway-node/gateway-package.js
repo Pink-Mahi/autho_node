@@ -4665,6 +4665,15 @@ class GatewayNode {
         console.log(` Connected to seed: ${seed}`);
         this.isConnectedToSeed = true;
         
+        // Keepalive ping every 60s — prevents Cloudflare tunnel timeout (100s idle limit)
+        ws._keepAliveTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            try { ws.ping(); } catch {}
+          } else {
+            clearInterval(ws._keepAliveTimer);
+          }
+        }, 60000);
+        
         ws.send(JSON.stringify({
           type: 'sync_request',
           nodeId: 'gateway-package',
@@ -4684,6 +4693,7 @@ class GatewayNode {
 
       ws.on('close', () => {
         console.log(` Disconnected from seed: ${seed}`);
+        if (ws._keepAliveTimer) clearInterval(ws._keepAliveTimer);
         setTimeout(() => this.connectToSingleSeed(seed), 10000);
       });
 

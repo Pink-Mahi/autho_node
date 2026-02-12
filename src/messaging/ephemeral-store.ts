@@ -23,21 +23,32 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash, randomBytes } from 'crypto';
-import { Worker } from 'worker_threads';
 
 // Message retention periods by media type (in milliseconds)
+// Configurable via environment: AUTHO_MSG_RETENTION_DAYS (default 10 for operators, 5 for gateways)
+const RETENTION_DAYS = (() => {
+  const envDays = Number(process.env.AUTHO_MSG_RETENTION_DAYS);
+  if (envDays > 0) return envDays;
+  // Auto-detect: gateways get shorter retention to save RAM
+  const isGateway = process.env.AUTHO_NODE_TYPE === 'gateway' || process.env.GATEWAY_MODE === 'true';
+  return isGateway ? 5 : 10;
+})();
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const RETENTION_MS = {
-  TEXT: 10 * 24 * 60 * 60 * 1000,      // 10 days
-  IMAGE: 7 * 24 * 60 * 60 * 1000,      // 7 days
-  AUDIO: 5 * 24 * 60 * 60 * 1000,      // 5 days
-  VIDEO: 3 * 24 * 60 * 60 * 1000,      // 3 days
+  TEXT:  RETENTION_DAYS * DAY_MS,
+  IMAGE: Math.max(1, RETENTION_DAYS - 3) * DAY_MS,  // 3 days shorter than text
+  AUDIO: Math.max(1, RETENTION_DAYS - 5) * DAY_MS,  // 5 days shorter than text
+  VIDEO: Math.max(1, RETENTION_DAYS - 7) * DAY_MS,  // 7 days shorter than text (min 1 day)
 };
 
 // Per-conversation rolling limits for media
+// Configurable via environment: AUTHO_MAX_IMAGES, AUTHO_MAX_AUDIO, AUTHO_MAX_VIDEO
 const MEDIA_LIMITS = {
-  IMAGE: 10,   // Max 10 images per conversation
-  AUDIO: 5,    // Max 5 audio messages per conversation
-  VIDEO: 3,    // Max 3 videos per conversation
+  IMAGE: Number(process.env.AUTHO_MAX_IMAGES) || 10,
+  AUDIO: Number(process.env.AUTHO_MAX_AUDIO) || 5,
+  VIDEO: Number(process.env.AUTHO_MAX_VIDEO) || 3,
 };
 
 // Disappearing message timer options (in milliseconds)
@@ -62,6 +73,7 @@ export type MediaType = 'text' | 'image' | 'audio' | 'video';
 export enum EphemeralEventType {
   MESSAGE_SENT = 'MESSAGE_SENT',
   MESSAGE_DELETED = 'MESSAGE_DELETED',
+  MESSAGE_EDITED = 'MESSAGE_EDITED',
   MESSAGE_READ = 'MESSAGE_READ',
   MESSAGE_VIEWED = 'MESSAGE_VIEWED',  // For disappearing messages - starts the timer
   MESSAGE_DELIVERED = 'MESSAGE_DELIVERED',  // Message reached recipient's device
@@ -103,6 +115,7 @@ export interface MessagePayload {
   recipientId: string;        // recipient's account ID (public key)
   encryptedContent: string;   // E2E encrypted message (only recipient can decrypt)
   encryptedForSender: string; // Same message encrypted for sender (so they can see sent messages)
+  content?: string;           // Decrypted content (only set locally after decryption)
   itemId?: string;            // Optional: if message is about a specific item
   conversationId: string;     // Groups messages into conversations
   replyToMessageId?: string;  // Optional: if replying to a specific message
@@ -111,6 +124,10 @@ export interface MessagePayload {
   selfDestructAfter?: number; // Custom expiry time in ms (0 = use default, undefined = use media type default)
   viewedAt?: number;          // Timestamp when recipient viewed (for disappearing messages)
   expiresAfterView?: boolean; // If true, timer starts on view; if false/undefined, starts on send
+  // Edit tracking
+  edited?: boolean;           // True if message has been edited
+  lastEditedAt?: number;      // Timestamp of last edit
+  editHistory?: Array<{ content: string; editedAt: number }>; // History of edits
 }
 
 export interface MessagingVaultPayload {
@@ -209,7 +226,7 @@ export interface OnlineStatusPayload {
 }
 
 // Content chunking for large payloads - ensures full replication across all nodes
-// Chunks are stored INLINE in the event (not local files) so they replicate with the event
+// Chunks are stored inline in the event (not local files) so they replicate with the event
 const CHUNK_SIZE = 256 * 1024; // 256KB per chunk - small enough to broadcast without blocking
 const CHUNK_PREFIX = '__chunked:';
 const CONTENT_SIZE_THRESHOLD = CHUNK_SIZE; // Threshold for chunking = chunk size
@@ -276,6 +293,7 @@ export class EphemeralEventStore extends EventEmitter {
   private messageReadStatus: Map<string, { delivered?: number; read?: number }> = new Map();  // messageId -> status
   
   private dataDir: string;
+  private contentDir: string;  // Directory for extracted large content files
   private retentionMs: number;
   private pruneIntervalMs: number;
   private pruneTimer?: NodeJS.Timeout;
@@ -283,8 +301,6 @@ export class EphemeralEventStore extends EventEmitter {
   private contactsPath: string;  // Separate file for permanent contacts
   private _persistTimer: NodeJS.Timeout | null = null;
   private _persistPending: boolean = false;
-  private _serializationInProgress: boolean = false;
-  private contentDir: string = '';
 
   constructor(options: EphemeralStoreOptions) {
     super();
@@ -293,14 +309,12 @@ export class EphemeralEventStore extends EventEmitter {
     this.pruneIntervalMs = options.pruneIntervalMs || PRUNE_INTERVAL_MS;
     this.persistPath = path.join(this.dataDir, 'message-ledger.json');
     this.contactsPath = path.join(this.dataDir, 'contacts-ledger.json');  // Permanent contacts
+    this.contentDir = path.join(this.dataDir, 'content');  // Large content files
     
-    // Ensure data directory exists
+    // Ensure data directories exist
     if (!fs.existsSync(this.dataDir)) {
       fs.mkdirSync(this.dataDir, { recursive: true });
     }
-    
-    // Content extraction directory for large payloads (videos, photos)
-    this.contentDir = path.join(this.dataDir, 'content');
     if (!fs.existsSync(this.contentDir)) {
       fs.mkdirSync(this.contentDir, { recursive: true });
     }
@@ -404,8 +418,8 @@ export class EphemeralEventStore extends EventEmitter {
     const broadcastPayload = { ...event.payload };
 
     // DEBUG: Log content sizes before extraction
-    const preContentLen = typeof (broadcastPayload as any).encryptedContent === 'string' ? (broadcastPayload as any).encryptedContent.length : 0;
-    const preForSenderLen = typeof (broadcastPayload as any).encryptedForSender === 'string' ? (broadcastPayload as any).encryptedForSender.length : 0;
+    const preContentLen = typeof broadcastPayload.encryptedContent === 'string' ? broadcastPayload.encryptedContent.length : 0;
+    const preForSenderLen = typeof broadcastPayload.encryptedForSender === 'string' ? broadcastPayload.encryptedForSender.length : 0;
     console.log(`[Ephemeral] 📝 appendEvent ${event.eventId.substring(0,8)}... PRE-extraction: contentLen=${preContentLen}, forSenderLen=${preForSenderLen}`);
 
     // Extract large content (videos, photos) to disk files.
@@ -518,7 +532,6 @@ export class EphemeralEventStore extends EventEmitter {
     const event = this.events.get(eventId);
     if (!event) return;
     
-    await this.cleanupContentFiles(event);
     const payload = event.payload as MessagePayload;
     this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
     this.messagesByUser.get(payload.senderId)?.delete(eventId);
@@ -533,7 +546,6 @@ export class EphemeralEventStore extends EventEmitter {
     const event = this.events.get(eventId);
     if (!event) return;
     
-    await this.cleanupContentFiles(event);
     const payload = event.payload as GroupMessagePayload;
     this.messagesByGroup.get(payload.groupId)?.delete(eventId);
     this.events.delete(eventId);
@@ -1006,40 +1018,119 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
-   * Prune expired events
+   * Edit a message (for paid message editing)
+   */
+  async editMessage(messageId: string, requesterId: string, newContent: string): Promise<boolean> {
+    const found = this.findEventByMessageId(messageId);
+    if (!found) return false;
+    const { event } = found;
+    
+    // Only sender can edit their own messages
+    const payload = event.payload as MessagePayload;
+    if (payload.senderId !== requesterId) {
+      return false;
+    }
+    
+    // Store edit history
+    if (!payload.editHistory) {
+      payload.editHistory = [];
+    }
+    payload.editHistory.push({
+      content: payload.content,
+      editedAt: Date.now(),
+    });
+    
+    // Update content
+    payload.content = newContent;
+    payload.edited = true;
+    payload.lastEditedAt = Date.now();
+    
+    // Record edit event
+    await this.appendEvent(EphemeralEventType.MESSAGE_EDITED, {
+      messageId,
+      editedBy: requesterId,
+      newContent,
+      editedAt: Date.now(),
+    });
+    
+    await this.persistToDisk();
+    return true;
+  }
+
+  /**
+   * Prune expired events + enforce memory-aware max message cap.
+   * Gateway nodes with limited RAM get aggressive pruning to stay lightweight.
+   * Operator nodes on powerful servers can hold more messages.
    */
   async prune(): Promise<number> {
     const now = Date.now();
     let prunedCount = 0;
     
+    // Phase 1: Prune expired events (always runs)
     for (const [eventId, event] of this.events.entries()) {
       if (event.expiresAt <= now) {
-        // Clean up any extracted content files
-        await this.cleanupContentFiles(event);
-        
-        // Remove from indexes
-        if (event.eventType === EphemeralEventType.MESSAGE_SENT) {
-          const payload = event.payload as MessagePayload;
-          this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
-          this.messagesByUser.get(payload.senderId)?.delete(eventId);
-          this.messagesByUser.get(payload.recipientId)?.delete(eventId);
-        } else if (event.eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
-          const payload = event.payload as GroupMessagePayload;
-          this.messagesByGroup.get(payload.groupId)?.delete(eventId);
-        } else if (event.eventType === EphemeralEventType.MESSAGING_VAULT_PUBLISHED) {
-          const payload = event.payload as MessagingVaultPayload;
-          const accountId = String(payload?.accountId || '').trim();
-          if (accountId) {
-            const current = this.messagingVaultByAccount.get(accountId);
-            if (current?.eventId === eventId) {
-              this.messagingVaultByAccount.delete(accountId);
-            }
-          }
-        }
-        
+        this.removeEventFromIndexes(eventId, event);
         this.events.delete(eventId);
         prunedCount++;
       }
+    }
+    
+    // Phase 2: Memory-aware cap — evict oldest messages if over limit
+    // Configurable: AUTHO_MAX_MESSAGES (default: 50000 for operators, 5000 for gateways)
+    const maxMessages = (() => {
+      const env = Number(process.env.AUTHO_MAX_MESSAGES);
+      if (env > 0) return env;
+      const isGateway = process.env.AUTHO_NODE_TYPE === 'gateway' || process.env.GATEWAY_MODE === 'true';
+      return isGateway ? 5000 : 50000;
+    })();
+
+    if (this.events.size > maxMessages) {
+      // Sort by timestamp (oldest first) and evict oldest non-contact events
+      const sortedEvents = Array.from(this.events.entries())
+        .filter(([, e]) => e.eventType !== EphemeralEventType.CONTACT_ADDED &&
+                           e.eventType !== EphemeralEventType.CONTACT_REMOVED &&
+                           e.eventType !== EphemeralEventType.CONTACT_BLOCKED &&
+                           e.eventType !== EphemeralEventType.MESSAGING_KEY_PUBLISHED)
+        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+      const toEvict = this.events.size - maxMessages;
+      for (let i = 0; i < toEvict && i < sortedEvents.length; i++) {
+        const [eventId, event] = sortedEvents[i];
+        this.removeEventFromIndexes(eventId, event);
+        this.events.delete(eventId);
+        prunedCount++;
+      }
+
+      if (toEvict > 0) {
+        console.log(`[Ephemeral] Memory cap: evicted ${Math.min(toEvict, sortedEvents.length)} oldest messages (limit: ${maxMessages})`);
+      }
+    }
+
+    // Phase 3: RAM pressure check — emergency prune if process uses too much memory
+    // Configurable: AUTHO_MAX_HEAP_MB (default: 512 for gateways, 2048 for operators)
+    const maxHeapMB = (() => {
+      const env = Number(process.env.AUTHO_MAX_HEAP_MB);
+      if (env > 0) return env;
+      const isGateway = process.env.AUTHO_NODE_TYPE === 'gateway' || process.env.GATEWAY_MODE === 'true';
+      return isGateway ? 512 : 2048;
+    })();
+
+    const heapUsedMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    if (heapUsedMB > maxHeapMB && this.events.size > 100) {
+      // Emergency: drop 25% of oldest messages
+      const emergencyEvict = Math.floor(this.events.size * 0.25);
+      const oldest = Array.from(this.events.entries())
+        .filter(([, e]) => e.eventType === EphemeralEventType.MESSAGE_SENT ||
+                           e.eventType === EphemeralEventType.GROUP_MESSAGE_SENT)
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)
+        .slice(0, emergencyEvict);
+
+      for (const [eventId, event] of oldest) {
+        this.removeEventFromIndexes(eventId, event);
+        this.events.delete(eventId);
+        prunedCount++;
+      }
+      console.log(`[Ephemeral] ⚠️ RAM pressure (${heapUsedMB}MB/${maxHeapMB}MB): emergency evicted ${oldest.length} messages`);
     }
     
     // Clean up empty conversation sets
@@ -1047,7 +1138,6 @@ export class EphemeralEventStore extends EventEmitter {
       if (messages.size === 0) {
         this.messagesByConversation.delete(convId);
         
-        // Remove conversation from users
         for (const [userId, convs] of this.conversationsByUser.entries()) {
           convs.delete(convId);
         }
@@ -1056,10 +1146,34 @@ export class EphemeralEventStore extends EventEmitter {
     
     if (prunedCount > 0) {
       await this.persistToDisk();
-      console.log(`[Ephemeral] Pruned ${prunedCount} expired messages`);
+      console.log(`[Ephemeral] Pruned ${prunedCount} total messages (${this.events.size} remaining, heap: ${heapUsedMB}MB)`);
     }
     
     return prunedCount;
+  }
+
+  /**
+   * Remove an event from all indexes (helper for prune)
+   */
+  private removeEventFromIndexes(eventId: string, event: EphemeralEvent): void {
+    if (event.eventType === EphemeralEventType.MESSAGE_SENT) {
+      const payload = event.payload as MessagePayload;
+      this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
+      this.messagesByUser.get(payload.senderId)?.delete(eventId);
+      this.messagesByUser.get(payload.recipientId)?.delete(eventId);
+    } else if (event.eventType === EphemeralEventType.GROUP_MESSAGE_SENT) {
+      const payload = event.payload as GroupMessagePayload;
+      this.messagesByGroup.get(payload.groupId)?.delete(eventId);
+    } else if (event.eventType === EphemeralEventType.MESSAGING_VAULT_PUBLISHED) {
+      const payload = event.payload as MessagingVaultPayload;
+      const accountId = String(payload?.accountId || '').trim();
+      if (accountId) {
+        const existing = this.messagingVaultByAccount.get(accountId);
+        if (existing && existing.eventId === eventId) {
+          this.messagingVaultByAccount.delete(accountId);
+        }
+      }
+    }
   }
 
   /**
@@ -1244,6 +1358,7 @@ export class EphemeralEventStore extends EventEmitter {
 
   /**
    * Split a large string into chunks for inline storage.
+   * Returns an array of chunks that can be reassembled later.
    */
   private chunkContent(content: string): string[] {
     const chunks: string[] = [];
@@ -1261,7 +1376,7 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
-   * Check if a field value is chunked.
+   * Check if a field value is chunked (has __chunked: prefix with chunk count).
    */
   private isChunked(value: any): boolean {
     return typeof value === 'string' && value.startsWith(CHUNK_PREFIX);
@@ -1339,6 +1454,7 @@ export class EphemeralEventStore extends EventEmitter {
     const payloadKeys = Object.keys(payload);
     console.log(`[Ephemeral] 🔍 reassembleEventContent ${event.eventId.substring(0,8)}... payloadKeys=${payloadKeys.join(',')}`);
 
+    // Check if any fields need reassembly
     for (const field of fields) {
       if (this.isChunked((payload as any)[field])) {
         needsReassembly = true;
@@ -1349,6 +1465,7 @@ export class EphemeralEventStore extends EventEmitter {
       }
     }
 
+    // Check group message fields
     if (!needsReassembly && (payload as any).encryptedContentByMember) {
       for (const value of Object.values((payload as any).encryptedContentByMember)) {
         if (this.isChunked(value)) {
@@ -1360,9 +1477,11 @@ export class EphemeralEventStore extends EventEmitter {
 
     if (!needsReassembly) return event;
 
+    // Clone the event and payload
     const clonedPayload = { ...payload };
     const clonedEvent = { ...event, payload: clonedPayload };
 
+    // Reassemble standard fields
     for (const field of fields) {
       if (!this.isChunked((clonedPayload as any)[field])) continue;
       
@@ -1371,12 +1490,14 @@ export class EphemeralEventStore extends EventEmitter {
       
       if (Array.isArray(chunks) && chunks.length > 0) {
         (clonedPayload as any)[field] = this.reassembleChunks(chunks);
+        // Remove chunk array from cloned payload (keep original intact)
         delete (clonedPayload as any)[chunkFieldName];
       } else {
         console.warn(`[Ephemeral] Missing chunks for ${field} in event ${event.eventId}`);
       }
     }
 
+    // Reassemble group message fields
     if ((clonedPayload as any).encryptedContentByMember && (clonedPayload as any).__chunks_byMember) {
       const byMember = { ...(clonedPayload as any).encryptedContentByMember };
       const chunksByMember = (clonedPayload as any).__chunks_byMember;
@@ -1399,7 +1520,7 @@ export class EphemeralEventStore extends EventEmitter {
 
   /**
    * Legacy: Extract large content to disk files (for backward compatibility).
-   * New code uses chunkLargeContent instead.
+   * New code should use chunkLargeContent instead.
    */
   async extractLargeContent(event: EphemeralEvent): Promise<void> {
     // Use new chunking system instead of file-based extraction
@@ -1414,6 +1535,7 @@ export class EphemeralEventStore extends EventEmitter {
     const payload = event.payload;
     if (!payload) return event;
 
+    // First check for new chunked format
     const fields = ['encryptedContent', 'encryptedForSender'];
     let hasChunks = false;
     let hasLegacyRefs = false;
@@ -1473,6 +1595,7 @@ export class EphemeralEventStore extends EventEmitter {
       }
     }
 
+    // Restore group message fields
     if ((clonedPayload as any).encryptedContentByMember) {
       const byMember = { ...(clonedPayload as any).encryptedContentByMember };
       (clonedPayload as any).encryptedContentByMember = byMember;
@@ -1505,7 +1628,7 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
-   * Delete content files associated with an event
+   * Delete content files associated with an event (legacy cleanup)
    */
   private async cleanupContentFiles(event: EphemeralEvent): Promise<void> {
     const payload = event.payload;
@@ -1540,7 +1663,7 @@ export class EphemeralEventStore extends EventEmitter {
 
   /**
    * Persist events to disk (debounced to avoid blocking on large payloads like photos)
-   * Batches writes - saves at most once every 2 seconds
+   * Batches writes - saves at most once per second
    */
   private async persistToDisk(): Promise<void> {
     this._persistPending = true;
@@ -1550,135 +1673,52 @@ export class EphemeralEventStore extends EventEmitter {
       this._persistTimer = null;
       this._persistPending = false;
       this._doPersistToDisk();
-    }, 2000); // 2 second debounce
+    }, 1000);
   }
 
-  /**
-   * Serialize data in a worker thread to avoid blocking the event loop.
-   * Falls back to sync if worker fails.
-   */
-  private serializeInWorker(data: any): Promise<string> {
-    return new Promise((resolve, reject) => {
+  private _doPersistToDisk(): void {
+    // Use setImmediate to yield to event loop before heavy JSON.stringify
+    // This prevents blocking on large base64 photo payloads
+    setImmediate(() => {
       try {
-        // Worker code as inline string - serializes data and sends back JSON
-        const workerCode = `
-          const { parentPort, workerData } = require('worker_threads');
-          try {
-            const json = JSON.stringify(workerData);
-            parentPort.postMessage({ success: true, json });
-          } catch (e) {
-            parentPort.postMessage({ success: false, error: e.message });
-          }
-        `;
-        
-        const worker = new Worker(workerCode, { 
-          eval: true, 
-          workerData: data 
-        });
-        
-        const timeout = setTimeout(() => {
-          worker.terminate();
-          // Fallback to sync on timeout
-          try {
-            resolve(JSON.stringify(data));
-          } catch (e: any) {
-            reject(e);
-          }
-        }, 30000); // 30 second timeout
-        
-        worker.on('message', (msg: { success: boolean; json?: string; error?: string }) => {
-          clearTimeout(timeout);
-          worker.terminate();
-          if (msg.success && msg.json) {
-            resolve(msg.json);
-          } else {
-            // Fallback to sync
-            try {
-              resolve(JSON.stringify(data));
-            } catch (e: any) {
-              reject(new Error(msg.error || 'Worker serialization failed'));
-            }
-          }
-        });
-        
-        worker.on('error', (err) => {
-          clearTimeout(timeout);
-          worker.terminate();
-          // Fallback to sync on worker error
-          try {
-            resolve(JSON.stringify(data));
-          } catch (e: any) {
-            reject(err);
-          }
+        // Messages file (prunable after 10 days)
+        const messageData = {
+          version: 2,
+          ledgerType: 'messages',
+          events: Array.from(this.events.values()),
+          lastPersisted: Date.now(),
+        };
+        const messageJson = JSON.stringify(messageData);
+        fs.writeFile(this.persistPath, messageJson, (err) => {
+          if (err) console.error('[MessageLedger] Failed to persist messages:', err.message);
         });
       } catch (e: any) {
-        // Fallback to sync if worker creation fails
-        try {
-          resolve(JSON.stringify(data));
-        } catch (err: any) {
-          reject(err);
-        }
+        console.error('[MessageLedger] Failed to serialize messages:', e.message);
       }
     });
-  }
-
-  private async _doPersistToDisk(): Promise<void> {
-    // Prevent overlapping serializations
-    if (this._serializationInProgress) {
-      // Re-schedule
-      this._persistPending = true;
-      if (!this._persistTimer) {
-        this._persistTimer = setTimeout(() => {
-          this._persistTimer = null;
-          this._persistPending = false;
-          this._doPersistToDisk();
-        }, 2000);
+    
+    // Contacts in separate setImmediate to further break up work
+    setImmediate(() => {
+      try {
+        // Contacts file (permanent, never pruned)
+        const contactData = {
+          version: 2,
+          ledgerType: 'contacts',
+          contacts: Object.fromEntries(
+            Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+          ),
+          blocked: Object.fromEntries(
+            Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
+          ),
+          lastPersisted: Date.now(),
+        };
+        fs.writeFile(this.contactsPath, JSON.stringify(contactData), (err) => {
+          if (err) console.error('[MessageLedger] Failed to persist contacts:', err.message);
+        });
+      } catch (e: any) {
+        console.error('[MessageLedger] Failed to serialize contacts:', e.message);
       }
-      return;
-    }
-    
-    this._serializationInProgress = true;
-    
-    try {
-      // Messages file (prunable after 10 days)
-      const messageData = {
-        version: 2,
-        ledgerType: 'messages',
-        events: Array.from(this.events.values()),
-        lastPersisted: Date.now(),
-      };
-      
-      // Serialize in worker thread to avoid blocking event loop
-      const messageJson = await this.serializeInWorker(messageData);
-      
-      await fs.promises.writeFile(this.persistPath, messageJson);
-    } catch (e: any) {
-      console.error('[MessageLedger] Failed to persist messages:', e.message);
-    }
-    
-    try {
-      // Contacts file (permanent, never pruned)
-      const contactData = {
-        version: 2,
-        ledgerType: 'contacts',
-        contacts: Object.fromEntries(
-          Array.from(this.contactsByUser.entries()).map(([k, v]) => [k, Array.from(v)])
-        ),
-        blocked: Object.fromEntries(
-          Array.from(this.blockedByUser.entries()).map(([k, v]) => [k, Array.from(v)])
-        ),
-        lastPersisted: Date.now(),
-      };
-      
-      // Contacts are usually small, but use worker for consistency
-      const contactJson = await this.serializeInWorker(contactData);
-      
-      await fs.promises.writeFile(this.contactsPath, contactJson);
-    } catch (e: any) {
-      console.error('[MessageLedger] Failed to persist contacts:', e.message);
-    }
-    
-    this._serializationInProgress = false;
+    });
   }
 
   /**
@@ -1734,7 +1774,6 @@ export class EphemeralEventStore extends EventEmitter {
     try {
       // Try new file first
       let filePath = this.persistPath;
-      const persistPath = this.persistPath;
       
       // Fall back to legacy file if new one doesn't exist
       const legacyPath = path.join(this.dataDir, 'ephemeral-messages.json');
@@ -1746,34 +1785,14 @@ export class EphemeralEventStore extends EventEmitter {
       
       const raw = fs.readFileSync(filePath, 'utf8');
       const data = JSON.parse(raw);
-
-      let expiredFound = false;
       
       // Load events
       for (const event of data.events || []) {
         // Skip expired events
-        if (event.expiresAt <= Date.now()) {
-          expiredFound = true;
-          continue;
-        }
+        if (event.expiresAt <= Date.now()) continue;
         
         this.events.set(event.eventId, event);
         this.indexEvent(event);
-      }
-
-      // If we encountered expired events on disk (or loaded from legacy file), compact into the new persistPath.
-      // This ensures expired messages are physically removed from disk and we migrate to the current file name.
-      const loadedFromLegacy = filePath !== persistPath;
-      if (expiredFound || loadedFromLegacy) {
-        try {
-          const messageData = {
-            version: 2,
-            ledgerType: 'messages',
-            events: Array.from(this.events.values()),
-            lastPersisted: Date.now(),
-          };
-          fs.writeFileSync(persistPath, JSON.stringify(messageData, null, 2));
-        } catch {}
       }
       
       // Migration: if legacy file had contacts, load them too

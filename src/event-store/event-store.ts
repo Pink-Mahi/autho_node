@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { sha256 } from '../crypto';
 import { canonicalCborEncode } from '../crypto/canonical-cbor';
-import { AtomicStorage, atomicWriteJSON, atomicWriteJSONAsync, atomicReadJSONWithRecovery } from '../storage/atomic-storage';
+import { AtomicStorage, atomicWriteJSON, atomicReadJSONWithRecovery } from '../storage/atomic-storage';
 import { 
   buildMerkleTree, 
   generateMerkleProof, 
@@ -143,7 +143,7 @@ export class EventStore {
     }
 
     // Step 1: Write to WAL (intent to write)
-    await this.writeWALAsync({
+    this.writeWAL({
       operation: 'append_event',
       eventHash: event.eventHash,
       sequenceNumber: event.sequenceNumber,
@@ -152,18 +152,18 @@ export class EventStore {
     });
 
     // Step 2: Persist event to disk
-    await this.persistEventAsync(event);
+    await this.persistEvent(event);
 
     // Step 3: Update index
     this.sequenceIndex.entries[event.sequenceNumber] = event.eventHash;
     this.sequenceIndex.lastUpdated = Date.now();
-    await this.saveIndexAsync();
+    this.saveIndex();
 
     // Step 4: Update state
     this.state.headHash = event.eventHash;
     this.state.sequenceNumber = event.sequenceNumber;
     this.state.eventCount++;
-    await this.saveStateAsync();
+    this.saveState();
 
     // Step 5: Clear WAL (operation complete)
     this.clearWAL();
@@ -185,7 +185,7 @@ export class EventStore {
     }
 
     // Write to WAL first
-    await this.writeWALAsync({
+    this.writeWAL({
       operation: 'append_event',
       eventHash: event.eventHash,
       sequenceNumber: event.sequenceNumber,
@@ -194,7 +194,7 @@ export class EventStore {
     });
 
     // Accept event with its existing hash, don't validate chain links during sync
-    await this.persistEventAsync(event);
+    await this.persistEvent(event);
 
     // Update index
     this.sequenceIndex.entries[event.sequenceNumber] = event.eventHash;
@@ -202,13 +202,13 @@ export class EventStore {
     
     // Batch save index every 100 events for performance
     if (event.sequenceNumber % 100 === 0) {
-      await this.saveIndexAsync();
+      this.saveIndex();
     }
 
     this.state.headHash = event.eventHash;
     this.state.sequenceNumber = event.sequenceNumber;
     this.state.eventCount++;
-    await this.saveStateAsync();
+    this.saveState();
     
     // Clear WAL
     this.clearWAL();
@@ -249,38 +249,26 @@ export class EventStore {
   }
 
   /**
-   * Get events by sequence range with checksum verification
+   * Get events by sequence range using the sequence index for O(1) lookups per event.
+   * Previous implementation read ALL files from disk and filtered — O(N) for every call.
+   * Now uses the in-memory sequence index for direct hash lookups — O(range) only.
    */
   async getEventsBySequence(
     fromSequence: number,
     toSequence: number
   ): Promise<Event[]> {
     const events: Event[] = [];
-    
-    // Read all event files and filter by sequence
-    const files = fs.readdirSync(this.eventsDir);
-    
-    for (const file of files) {
-      // Skip temp and backup files
-      if (!file.endsWith('.json') || file.endsWith('.tmp') || file.endsWith('.bak')) continue;
-      
-      const eventFile = path.join(this.eventsDir, file);
-      const result = atomicReadJSONWithRecovery<Event>(eventFile);
-      
-      if (!result.success || !result.data) {
-        console.warn(`[EventStore] Skipping corrupted event file: ${file}`);
-        continue;
-      }
-      
-      const event = result.data;
-      if (event.sequenceNumber >= fromSequence && event.sequenceNumber <= toSequence) {
+
+    for (let seq = fromSequence; seq <= toSequence; seq++) {
+      const eventHash = this.sequenceIndex.entries[seq];
+      if (!eventHash) continue;
+
+      const event = await this.getEvent(eventHash);
+      if (event) {
         events.push(event);
       }
     }
 
-    // Sort by sequence number
-    events.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-    
     return events;
   }
 
@@ -423,11 +411,6 @@ export class EventStore {
     atomicWriteJSON(eventFile, event);
   }
 
-  private async persistEventAsync(event: Event): Promise<void> {
-    const eventFile = path.join(this.eventsDir, `${event.eventHash}.json`);
-    await atomicWriteJSONAsync(eventFile, event);
-  }
-
   /**
    * Load state from disk with atomic recovery
    * If main file is corrupted, automatically recovers from backup
@@ -465,10 +448,6 @@ export class EventStore {
    */
   private saveState(): void {
     atomicWriteJSON(this.stateFile, this.state);
-  }
-
-  private async saveStateAsync(): Promise<void> {
-    await atomicWriteJSONAsync(this.stateFile, this.state);
   }
 
   /**
@@ -603,20 +582,12 @@ export class EventStore {
     atomicWriteJSON(this.indexFile, this.sequenceIndex);
   }
 
-  private async saveIndexAsync(): Promise<void> {
-    await atomicWriteJSONAsync(this.indexFile, this.sequenceIndex);
-  }
-
   /**
    * Write-Ahead Log operations
    * Like Bitcoin's wallet journal - records intent before action
    */
   private writeWAL(entry: WALEntry): void {
     atomicWriteJSON(this.walFile, entry);
-  }
-
-  private async writeWALAsync(entry: WALEntry): Promise<void> {
-    await atomicWriteJSONAsync(this.walFile, entry);
   }
 
   private clearWAL(): void {
