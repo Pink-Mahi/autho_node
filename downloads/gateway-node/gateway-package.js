@@ -47,9 +47,9 @@ const UI_CACHE_TTL_MS = (() => {
 // These are fallback seeds - the network will discover more dynamically
 const CONFIG = {
   // Seed nodes - hardcoded as fallback (network discovers more dynamically)
-  seedNodes: ['autho.pinkmahi.com:3000', 'autho.cartpathcleaning.com', 'autho2.cartpathcleaning.com'],
+  seedNodes: ['autho.pinkmahi.com', 'autho.cartpathcleaning.com', 'autho2.cartpathcleaning.com'],
 
-  operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'https://autho2.cartpathcleaning.com', 'http://autho.pinkmahi.com:3000'],
+  operatorUrls: ['https://autho.pinkmahi.com', 'https://autho.cartpathcleaning.com', 'https://autho2.cartpathcleaning.com'],
   
   // Community seeds URL (GitHub-hosted, anyone can PR new seeds)
   communitySeedsUrl: 'https://raw.githubusercontent.com/Pink-Mahi/autho_node/main/seeds.txt',
