@@ -4070,6 +4070,42 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // Internal relay: deliver call signaling to a target user on this operator
+    this.app.post('/api/messages/call-signal', async (req: Request, res: Response) => {
+      try {
+        const isInternalRequest = req.headers['x-internal-request'] === 'operator-to-operator';
+        if (!isInternalRequest) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const targetId = String(req.body?.targetId || '').trim();
+        const fromId = String(req.body?.fromId || '').trim();
+        const signal = req.body?.signal;
+        if (!targetId || !fromId || !signal) {
+          res.status(400).json({ success: false, error: 'targetId, fromId, signal required' });
+          return;
+        }
+
+        let delivered = false;
+        for (const [clientWs, meta] of this.gatewayConnections.entries()) {
+          if ((meta as any)?.messagingPublicKey === targetId && clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify({
+              type: 'call_signal',
+              fromId,
+              signal,
+            }));
+            delivered = true;
+            break;
+          }
+        }
+
+        res.json({ success: true, delivered });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || 'Failed to relay call signal' });
+      }
+    });
+
     // Publish encrypted messaging vault blob (for multi-device + history sync)
     this.app.post('/api/messages/vault', async (req: Request, res: Response) => {
       try {
@@ -6776,6 +6812,14 @@ export class OperatorNode extends EventEmitter {
         this.sendSyncResponse(ws);
         break;
 
+      case 'auth':
+        if (conn && message.publicKey) {
+          (conn as any).messagingPublicKey = String(message.publicKey).trim();
+          (conn as any).isMessagingClient = true;
+        }
+        ws.send(JSON.stringify({ type: 'auth_ok' }));
+        break;
+
       case 'subscribe_consensus':
         // Subscribe to real-time consensus updates (for mempool visualizer)
         const meta = this.gatewayConnections.get(ws);
@@ -6807,6 +6851,32 @@ export class OperatorNode extends EventEmitter {
 
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        break;
+
+      case 'call_signal':
+        try {
+          const senderId = (conn as any)?.messagingPublicKey ? String((conn as any).messagingPublicKey) : '';
+          if (!senderId) {
+            ws.send(JSON.stringify({ type: 'error', error: 'Not authenticated for calls' }));
+            break;
+          }
+          const targetId = String(message.targetId || '').trim();
+          let delivered = false;
+          for (const [clientWs, meta] of this.gatewayConnections.entries()) {
+            if ((meta as any)?.messagingPublicKey === targetId && clientWs !== ws && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({
+                type: 'call_signal',
+                fromId: senderId,
+                signal: message.signal,
+              }));
+              delivered = true;
+              break;
+            }
+          }
+          if (!delivered) {
+            this.relayCallSignalToNetwork(targetId, senderId, message.signal).catch(() => {});
+          }
+        } catch {}
         break;
 
       // Handle append_event from operators - add to canonical ledger and broadcast
@@ -7087,6 +7157,50 @@ export class OperatorNode extends EventEmitter {
     }
 
     return null;
+  }
+
+  private async relayCallSignalToNetwork(targetId: string, fromId: string, signal: any): Promise<boolean> {
+    if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
+      return false;
+    }
+
+    const peers = Array.from(this.operatorPeerConnections.entries());
+    const timeoutMs = 3000;
+
+    for (const [peerId, peer] of peers) {
+      try {
+        let httpUrl = peer.wsUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
+        if (httpUrl.endsWith('/ws')) {
+          httpUrl = httpUrl.slice(0, -3); // Remove /ws suffix
+        }
+
+        const fetchUrl = `${httpUrl}/api/messages/call-signal`;
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        const response = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Internal-Request': 'operator-to-operator',
+          },
+          body: JSON.stringify({ targetId, fromId, signal }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const data = await response.json().catch(() => ({} as any));
+          if (data && (data as any).success) return true;
+        }
+      } catch {
+        console.log(`[Call] Failed to relay signal to peer ${peerId.substring(0, 12)}...`);
+      }
+    }
+
+    return false;
   }
 
   private startPeerDiscovery(): void {
