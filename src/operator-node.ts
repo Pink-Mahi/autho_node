@@ -6932,6 +6932,25 @@ export class OperatorNode extends EventEmitter {
         } catch {}
         break;
 
+      case 'call_signal_relay':
+        // Receive relayed call signal from another operator/gateway — deliver to local client
+        if (message.targetId && message.fromId && message.signal) {
+          const relayTargetId = String(message.targetId).trim();
+          const relayFromId = String(message.fromId).trim();
+          for (const [clientWs, meta] of this.gatewayConnections.entries()) {
+            if ((meta as any)?.messagingPublicKey === relayTargetId && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({
+                type: 'call_signal',
+                fromId: relayFromId,
+                signal: message.signal,
+              }));
+              console.log(`📞 [Call] Relayed signal to local client ${relayTargetId.substring(0, 12)}...`);
+              break;
+            }
+          }
+        }
+        break;
+
       // Handle append_event from operators - add to canonical ledger and broadcast
       case 'append_event':
         try {
@@ -7213,6 +7232,33 @@ export class OperatorNode extends EventEmitter {
   }
 
   private async relayCallSignalToNetwork(targetId: string, fromId: string, signal: any): Promise<boolean> {
+    // Layer 1: Broadcast via WebSocket to all connected gateways and peer operators
+    const relayMsg = JSON.stringify({
+      type: 'call_signal_relay',
+      targetId,
+      fromId,
+      signal,
+    });
+    for (const [clientWs] of this.gatewayConnections.entries()) {
+      try {
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(relayMsg);
+        }
+      } catch {}
+    }
+
+    // Also send to peer operator WebSocket connections
+    if (this.operatorPeerConnections) {
+      for (const [, peer] of this.operatorPeerConnections.entries()) {
+        try {
+          if (peer.ws && peer.ws.readyState === WebSocket.OPEN) {
+            peer.ws.send(relayMsg);
+          }
+        } catch {}
+      }
+    }
+
+    // Layer 2: HTTP POST to peer operator URLs (fallback)
     if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
       return false;
     }
@@ -7246,7 +7292,7 @@ export class OperatorNode extends EventEmitter {
 
         if (response.ok) {
           const data = await response.json().catch(() => ({} as any));
-          if (data && (data as any).success) return true;
+          if (data && (data as any).delivered) return true;
         }
       } catch {
         console.log(`[Call] Failed to relay signal to peer ${peerId.substring(0, 12)}...`);
@@ -7516,6 +7562,25 @@ export class OperatorNode extends EventEmitter {
 
       case 'new_event_ack':
         // Acknowledgment from peer that they received our event
+        break;
+
+      case 'call_signal_relay':
+        // Receive relayed call signal from a peer operator — deliver to local client
+        if (message.targetId && message.fromId && message.signal) {
+          const relayTargetId = String(message.targetId).trim();
+          const relayFromId = String(message.fromId).trim();
+          for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
+            if ((clientMeta as any)?.messagingPublicKey === relayTargetId && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({
+                type: 'call_signal',
+                fromId: relayFromId,
+                signal: message.signal,
+              }));
+              console.log(`📞 [Call] Peer relay → delivered to local client ${relayTargetId.substring(0, 12)}...`);
+              break;
+            }
+          }
+        }
         break;
 
       // ============================================================
