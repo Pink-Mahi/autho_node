@@ -3152,6 +3152,33 @@ class GatewayNode {
     });
 
     // ============================================================
+    // CALL SIGNAL RELAY ENDPOINT (operators relay signals here)
+    // ============================================================
+    this.app.post('/api/messages/call-signal', (req, res) => {
+      try {
+        const targetId = String(req.body?.targetId || '').trim();
+        const fromId = String(req.body?.fromId || '').trim();
+        const signal = req.body?.signal;
+        if (!targetId || !fromId || !signal) {
+          return res.status(400).json({ success: false, error: 'targetId, fromId, signal required' });
+        }
+
+        let delivered = false;
+        for (const [clientWs, meta] of this.messagingClients.entries()) {
+          if (meta.publicKey === targetId && clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify({ type: 'call_signal', fromId, signal }));
+            delivered = true;
+            break;
+          }
+        }
+
+        res.json({ success: true, delivered });
+      } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // ============================================================
     // EPHEMERAL MESSAGING API ENDPOINTS
     // ============================================================
 

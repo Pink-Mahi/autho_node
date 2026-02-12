@@ -6118,17 +6118,27 @@
       const peerId = currentRecipientId || AutohoCall.getPeerId();
       // Send via WebSocket as a lightweight call signal
       if (messagingWs && messagingWsConnected) {
-        messagingWs.send(JSON.stringify({
-          type: 'call_signal',
-          targetId: peerId,
-          signal: signal
-        }));
+        try {
+          messagingWs.send(JSON.stringify({
+            type: 'call_signal',
+            targetId: peerId,
+            signal: signal
+          }));
+        } catch (e) {
+          console.error('[Call] Failed to send signal via WebSocket:', e.message);
+        }
+      } else {
+        console.warn('[Call] Messaging WebSocket not connected — signal dropped');
       }
     }
 
     function startVoiceCall() {
       if (!currentRecipientId) { alert('Open a conversation first'); return; }
       if (currentGroupId) { alert('Voice calls are 1-to-1 only'); return; }
+      if (!messagingWs || !messagingWsConnected) {
+        alert('Messaging connection not ready. Please wait a moment and try again.');
+        return;
+      }
       document.getElementById('callPeerName').textContent = document.getElementById('chatParticipantName').textContent || 'Unknown';
       document.getElementById('callStatusText').textContent = 'Calling...';
       document.getElementById('callDuration').textContent = '';
@@ -6139,6 +6149,10 @@
     function startVideoCall() {
       if (!currentRecipientId) { alert('Open a conversation first'); return; }
       if (currentGroupId) { alert('Video calls are 1-to-1 only'); return; }
+      if (!messagingWs || !messagingWsConnected) {
+        alert('Messaging connection not ready. Please wait a moment and try again.');
+        return;
+      }
       document.getElementById('callPeerName').textContent = document.getElementById('chatParticipantName').textContent || 'Unknown';
       document.getElementById('callStatusText').textContent = 'Calling...';
       document.getElementById('callDuration').textContent = '';
