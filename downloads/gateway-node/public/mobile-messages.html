@@ -5585,12 +5585,12 @@
             colorLight: '#ffffff',
             correctLevel: QRCode.CorrectLevel.H
           });
-          // Ensure canvas/img renders pixel-perfect (no blur)
+          // QRCode lib creates both canvas + img; hide canvas, keep only the img
           setTimeout(() => {
             const canvas = qrWrapper.querySelector('canvas');
-            if (canvas) canvas.style.cssText = 'image-rendering:pixelated; width:256px; height:256px;';
+            if (canvas) canvas.style.display = 'none';
             const img = qrWrapper.querySelector('img');
-            if (img) img.style.cssText = 'image-rendering:pixelated; width:256px; height:256px;';
+            if (img) img.style.cssText = 'image-rendering:pixelated; width:256px; height:256px; display:block;';
           }, 50);
         } catch {}
         
