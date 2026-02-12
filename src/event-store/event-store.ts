@@ -184,6 +184,9 @@ export class EventStore {
     // Step 5: Clear WAL (operation complete)
     this.clearWAL();
 
+    // Step 6: Populate LRU cache (avoid disk read on next access)
+    this.addToCache(event.eventHash, event);
+
     return event;
   }
 
@@ -211,6 +214,9 @@ export class EventStore {
 
     // Accept event with its existing hash, don't validate chain links during sync
     await this.persistEvent(event);
+
+    // Populate LRU cache (avoid disk read on next buildState)
+    this.addToCache(event.eventHash, event);
 
     // Update index
     this.sequenceIndex.entries[event.sequenceNumber] = event.eventHash;
