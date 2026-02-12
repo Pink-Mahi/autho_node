@@ -5572,16 +5572,26 @@
         const safetyNumber = await generateSafetyNumber(myEncryptionKeyPair.publicKey, recipientEncPubKeyBytes);
         display.textContent = safetyNumber;
         
-        // Generate QR code of safety number
+        // Generate QR code of safety number — large, high-contrast, sharp
         try {
-          new QRCode(qrContainer, {
+          const qrWrapper = document.createElement('div');
+          qrWrapper.style.cssText = 'background:#fff; padding:12px; border-radius:10px; display:inline-block;';
+          qrContainer.appendChild(qrWrapper);
+          new QRCode(qrWrapper, {
             text: safetyNumber.replace(/\s+/g, ''),
-            width: 160,
-            height: 160,
-            colorDark: '#4caf50',
-            colorLight: '#1a1a2e',
-            correctLevel: QRCode.CorrectLevel.M
+            width: 256,
+            height: 256,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
           });
+          // Ensure canvas/img renders pixel-perfect (no blur)
+          setTimeout(() => {
+            const canvas = qrWrapper.querySelector('canvas');
+            if (canvas) canvas.style.cssText = 'image-rendering:pixelated; width:256px; height:256px;';
+            const img = qrWrapper.querySelector('img');
+            if (img) img.style.cssText = 'image-rendering:pixelated; width:256px; height:256px;';
+          }, 50);
         } catch {}
         
         // Check verified status
