@@ -5228,7 +5228,7 @@ class GatewayNode {
 
     return new Promise((resolve) => {
       const args = tunnelMode === 'quick'
-        ? ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${EFFECTIVE_HTTP_PORT}`]
+        ? ['tunnel', '--protocol', 'http2', '--url', `https://localhost:${EFFECTIVE_HTTP_PORT + 443}`, '--no-tls-verify']
         : ['tunnel', 'run', '--token', cloudflaredToken];
 
       // Use shell:false to avoid security warnings and subprocess issues
