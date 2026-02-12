@@ -7782,6 +7782,23 @@ export class OperatorNode extends EventEmitter {
           lastSequence: this.state.lastSyncedSequence,
           timestamp: Date.now()
         }));
+
+        // Request ephemeral messaging backfill from main seed
+        setTimeout(() => {
+          try {
+            if (!this.mainSeedWs || this.mainSeedWs.readyState !== WebSocket.OPEN) return;
+            const sinceTimestamp = this.ephemeralStore?.getLatestTimestamp() || 0;
+            this.mainSeedWs.send(JSON.stringify({
+              type: 'ephemeral_sync_request',
+              since: sinceTimestamp,
+              limit: 1000,
+              timestamp: Date.now(),
+            }));
+            console.log(`[Ephemeral] 📤 Requesting backfill from main seed (since ${sinceTimestamp})`);
+          } catch (e: any) {
+            console.log(`[Ephemeral] Failed to request backfill from main seed:`, e?.message);
+          }
+        }, 3000);
       });
 
       this.mainSeedWs.on('message', async (data: WebSocket.Data) => {
