@@ -7034,10 +7034,46 @@ export class OperatorNode extends EventEmitter {
             console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from ${sourceOperatorId}: ${eventData.eventId}`);
             // Re-broadcast the FULL copy to other peers (but not back to source)
             this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
+            // Push real-time notification to local messaging clients
+            this.pushMessageNotificationToLocalClients(eventData);
           }
         } catch (e: any) {
           console.log(`[Ephemeral] Error importing event:`, e?.message);
         }
+        break;
+
+      // Transient signals (typing, read receipts, reactions) from gateways — relay to network
+      case 'transient_signal':
+        try {
+          const hops = Number(message?.hops || 0);
+          if (hops >= 3) break;
+          const signalData = message?.data;
+          const convId = signalData?.conversationId;
+          // Deliver to local messaging clients
+          if (convId) {
+            const localMsg = JSON.stringify(signalData);
+            for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
+              if (clientWs !== ws && clientWs.readyState === WebSocket.OPEN &&
+                  (clientMeta as any)?.subscribedConversation === convId) {
+                try { clientWs.send(localMsg); } catch {}
+              }
+            }
+          }
+          // Forward to peer operators and other gateways
+          const fwdMsg = JSON.stringify({ type: 'transient_signal', signalType: message.signalType, data: signalData, hops: hops + 1 });
+          for (const [, peer] of this.operatorPeerConnections.entries()) {
+            try {
+              if (peer.ws && peer.ws.readyState === WebSocket.OPEN) {
+                peer.ws.send(fwdMsg);
+              }
+            } catch {}
+          }
+          for (const [gwWs] of this.gatewayConnections.entries()) {
+            if (gwWs !== ws && gwWs.readyState === WebSocket.OPEN) {
+              try { gwWs.send(fwdMsg); } catch {}
+            }
+          }
+        } catch {}
         break;
 
       case 'ephemeral_sync_request':
@@ -7184,6 +7220,63 @@ export class OperatorNode extends EventEmitter {
         console.error('[Ephemeral] Failed to broadcast event:', e.message);
       }
     });
+  }
+
+  /**
+   * Push real-time WS notification to local clients when a message event is imported from a peer
+   */
+  private pushMessageNotificationToLocalClients(eventData: any): void {
+    try {
+      if (!eventData || !eventData.eventType || !eventData.payload) return;
+
+      if (eventData.eventType === 'MESSAGE_SENT') {
+        const { conversationId, messageId, senderId, recipientId } = eventData.payload;
+        const pushMsg = JSON.stringify({
+          type: 'new_message',
+          conversationId,
+          messageId,
+          senderId,
+          timestamp: eventData.timestamp || Date.now(),
+        });
+        for (const [clientWs, meta] of this.gatewayConnections.entries()) {
+          if (clientWs.readyState === WebSocket.OPEN) {
+            const clientPk = (meta as any)?.messagingPublicKey;
+            const subConv = (meta as any)?.subscribedConversation;
+            if (subConv === conversationId || clientPk === recipientId || clientPk === senderId) {
+              try { clientWs.send(pushMsg); } catch {}
+            }
+          }
+        }
+      } else if (eventData.eventType === 'GROUP_MESSAGE_SENT') {
+        const { groupId, messageId, senderId } = eventData.payload;
+        const pushMsg = JSON.stringify({
+          type: 'new_group_message',
+          groupId,
+          messageId,
+          senderId,
+          timestamp: eventData.timestamp || Date.now(),
+        });
+        for (const [clientWs, meta] of this.gatewayConnections.entries()) {
+          if (clientWs.readyState === WebSocket.OPEN && (meta as any)?.subscribedGroup === groupId) {
+            try { clientWs.send(pushMsg); } catch {}
+          }
+        }
+      } else if (eventData.eventType === 'MESSAGE_DELETED') {
+        const pushMsg = JSON.stringify({ type: 'message_deleted', data: eventData.payload });
+        for (const [clientWs] of this.gatewayConnections.entries()) {
+          if (clientWs.readyState === WebSocket.OPEN) {
+            try { clientWs.send(pushMsg); } catch {}
+          }
+        }
+      } else if (eventData.eventType === 'MESSAGE_EDITED') {
+        const pushMsg = JSON.stringify({ type: 'message_edited', data: eventData.payload });
+        for (const [clientWs] of this.gatewayConnections.entries()) {
+          if (clientWs.readyState === WebSocket.OPEN) {
+            try { clientWs.send(pushMsg); } catch {}
+          }
+        }
+      }
+    } catch {}
   }
 
   private broadcastRegistryUpdate(): void {
@@ -7584,10 +7677,6 @@ export class OperatorNode extends EventEmitter {
         }
         break;
 
-      case 'new_event_ack':
-        // Acknowledgment from peer that they received our event
-        break;
-
       case 'call_signal_relay':
         // Receive relayed call signal from a peer operator — deliver to local client or forward to gateways
         if (message.targetId && message.fromId && message.signal) {
@@ -7628,6 +7717,32 @@ export class OperatorNode extends EventEmitter {
         }
         break;
 
+      // Transient signals from peer operators (typing, read receipts, reactions) — relay to local clients + gateways
+      case 'transient_signal':
+        try {
+          const tsHops = Number(message?.hops || 0);
+          if (tsHops >= 3) break;
+          const tsData = message?.data;
+          const tsConvId = tsData?.conversationId;
+          if (tsConvId) {
+            const tsLocalMsg = JSON.stringify(tsData);
+            for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
+              if (clientWs.readyState === WebSocket.OPEN &&
+                  (clientMeta as any)?.subscribedConversation === tsConvId) {
+                try { clientWs.send(tsLocalMsg); } catch {}
+              }
+            }
+          }
+          // Forward to connected gateways (not back to sender)
+          const tsFwdMsg = JSON.stringify({ type: 'transient_signal', signalType: message.signalType, data: tsData, hops: tsHops + 1 });
+          for (const [gwWs] of this.gatewayConnections.entries()) {
+            if (gwWs !== ws && gwWs.readyState === WebSocket.OPEN) {
+              try { gwWs.send(tsFwdMsg); } catch {}
+            }
+          }
+        } catch {}
+        break;
+
       // ============================================================
       // EPHEMERAL MESSAGING P2P SYNC - Decentralized message delivery
       // ============================================================
@@ -7653,6 +7768,9 @@ export class OperatorNode extends EventEmitter {
             // Re-broadcast the FULL copy to other peers (gossip protocol)
             // Don't send back to the source
             this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
+
+            // Push real-time notification to local messaging clients
+            this.pushMessageNotificationToLocalClients(eventData);
 
             // Send ack back
             if (ws && ws.readyState === WebSocket.OPEN) {

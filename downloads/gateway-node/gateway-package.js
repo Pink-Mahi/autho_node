@@ -4528,11 +4528,26 @@ class GatewayNode {
           if (data.type === 'typing' || data.type === 'read_receipt' || data.type === 'reaction') {
             const convId = data.conversationId || clientInfo.conversationId;
             if (convId) {
+              // Relay to local messaging clients
               for (const [clientWs, meta] of this.messagingClients.entries()) {
                 if (clientWs !== ws && clientWs.readyState === WebSocket.OPEN &&
                     (meta.conversationId === convId || meta.groupId === convId)) {
                   clientWs.send(JSON.stringify(data));
                 }
+              }
+              // Relay to operators for network-wide propagation
+              const relayMsg = JSON.stringify({
+                type: 'transient_signal',
+                signalType: data.type,
+                data: { ...data, fromId: clientInfo.publicKey },
+                hops: 0,
+              });
+              for (const [opId, connInfo] of this.operatorConnections.entries()) {
+                try {
+                  if (connInfo.ws && connInfo.ws.readyState === WebSocket.OPEN) {
+                    connInfo.ws.send(relayMsg);
+                  }
+                } catch {}
               }
             }
             return;
@@ -6544,6 +6559,8 @@ class GatewayNode {
       case 'ephemeral_event':
         if (this.storeEphemeralEvent(message.event)) {
           this.broadcastToPeers(message);
+          // Notify local messaging WS clients about new messages in real-time
+          this.notifyMessagingClients(message.event);
         }
         break;
       
@@ -6581,6 +6598,24 @@ class GatewayNode {
           }
           if (delivered) {
             console.log(`📞 [Call] Relayed signal to local client ${targetId.substring(0, 12)}...`);
+          }
+        }
+        break;
+
+      // Transient signals from operators (typing, read receipts, reactions) — deliver to local messaging clients
+      case 'transient_signal':
+        if (message.data && message.data.conversationId) {
+          const hops = Number(message.hops || 0);
+          if (hops < 3) {
+            const signalData = message.data;
+            const convId = signalData.conversationId;
+            const localMsg = JSON.stringify(signalData);
+            for (const [clientWs, meta] of this.messagingClients.entries()) {
+              if (clientWs.readyState === WebSocket.OPEN &&
+                  (meta.conversationId === convId || meta.groupId === convId)) {
+                try { clientWs.send(localMsg); } catch {}
+              }
+            }
           }
         }
         break;
@@ -7646,11 +7681,67 @@ class GatewayNode {
   }
 
   broadcastToLocalClients(message) {
-    if (!this.wss) return;
     const msgStr = JSON.stringify(message);
-    for (const client of this.wss.clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(msgStr);
+    if (this.wss) {
+      for (const client of this.wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(msgStr);
+        }
+      }
+    }
+    // Also notify messaging WS clients (/ws/messaging) about ephemeral events
+    if (message.type === 'ephemeral_event' && message.event) {
+      this.notifyMessagingClients(message.event);
+    }
+  }
+
+  notifyMessagingClients(event) {
+    if (!event || !this.messagingClients || this.messagingClients.size === 0) return;
+
+    if (event.eventType === 'MESSAGE_SENT' && event.payload) {
+      const { conversationId, messageId, senderId, recipientId } = event.payload;
+      const pushMsg = JSON.stringify({
+        type: 'new_message',
+        conversationId,
+        messageId,
+        senderId,
+        timestamp: event.timestamp || Date.now(),
+      });
+      for (const [ws, meta] of this.messagingClients.entries()) {
+        if (ws.readyState === WebSocket.OPEN) {
+          if (meta.publicKey === recipientId || meta.publicKey === senderId ||
+              meta.conversationId === conversationId) {
+            try { ws.send(pushMsg); } catch {}
+          }
+        }
+      }
+    } else if (event.eventType === 'GROUP_MESSAGE_SENT' && event.payload) {
+      const { groupId, messageId, senderId } = event.payload;
+      const pushMsg = JSON.stringify({
+        type: 'new_group_message',
+        groupId,
+        messageId,
+        senderId,
+        timestamp: event.timestamp || Date.now(),
+      });
+      for (const [ws, meta] of this.messagingClients.entries()) {
+        if (ws.readyState === WebSocket.OPEN && meta.groupId === groupId) {
+          try { ws.send(pushMsg); } catch {}
+        }
+      }
+    } else if (event.eventType === 'MESSAGE_DELETED' && event.payload) {
+      const pushMsg = JSON.stringify({ type: 'message_deleted', data: event.payload });
+      for (const [ws, meta] of this.messagingClients.entries()) {
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.send(pushMsg); } catch {}
+        }
+      }
+    } else if (event.eventType === 'MESSAGE_EDITED' && event.payload) {
+      const pushMsg = JSON.stringify({ type: 'message_edited', data: event.payload });
+      for (const [ws, meta] of this.messagingClients.entries()) {
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.send(pushMsg); } catch {}
+        }
       }
     }
   }
