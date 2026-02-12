@@ -7239,10 +7239,12 @@ export class OperatorNode extends EventEmitter {
       fromId,
       signal,
     });
+    let sentViaWs = false;
     for (const [clientWs] of this.gatewayConnections.entries()) {
       try {
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(relayMsg);
+          sentViaWs = true;
         }
       } catch {}
     }
@@ -7253,12 +7255,14 @@ export class OperatorNode extends EventEmitter {
         try {
           if (peer.ws && peer.ws.readyState === WebSocket.OPEN) {
             peer.ws.send(relayMsg);
+            sentViaWs = true;
           }
         } catch {}
       }
     }
 
     // Layer 2: HTTP POST to peer operator URLs (fallback)
+    if (sentViaWs) return true;
     if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
       return false;
     }
