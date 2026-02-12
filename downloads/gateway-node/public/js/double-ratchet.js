@@ -440,19 +440,50 @@
     }
   };
 
+  // In-flight deduplication + 30s cache to prevent ratchet-state request flooding
+  DR._loadCache = {};
+  DR._loadInFlight = {};
+
   DR.loadSessionFromServer = async function(conversationId, encryptionKey, authHeaders) {
-    try {
-      const r = await fetch(`/api/messages/ratchet-state/${encodeURIComponent(conversationId)}`, {
-        headers: authHeaders
-      });
-      if (!r.ok) return null;
-      const data = await r.json();
-      if (!data.state) return null;
-      return await DR.decryptSessionState(data.state, encryptionKey);
-    } catch (e) {
-      console.warn('[DoubleRatchet] Failed to load session from server:', e.message);
-      return null;
+    // Return cached result if fresh (30 seconds)
+    const cached = DR._loadCache[conversationId];
+    if (cached && (Date.now() - cached.ts) < 30000) {
+      return cached.session;
     }
+
+    // Deduplicate concurrent in-flight requests for the same conversation
+    if (DR._loadInFlight[conversationId]) {
+      return DR._loadInFlight[conversationId];
+    }
+
+    const promise = (async () => {
+      try {
+        const r = await fetch(`/api/messages/ratchet-state/${encodeURIComponent(conversationId)}`, {
+          headers: authHeaders
+        });
+        if (!r.ok) {
+          DR._loadCache[conversationId] = { session: null, ts: Date.now() };
+          return null;
+        }
+        const data = await r.json();
+        if (!data.state) {
+          DR._loadCache[conversationId] = { session: null, ts: Date.now() };
+          return null;
+        }
+        const session = await DR.decryptSessionState(data.state, encryptionKey);
+        DR._loadCache[conversationId] = { session, ts: Date.now() };
+        return session;
+      } catch (e) {
+        console.warn('[DoubleRatchet] Failed to load session from server:', e.message);
+        DR._loadCache[conversationId] = { session: null, ts: Date.now() };
+        return null;
+      } finally {
+        delete DR._loadInFlight[conversationId];
+      }
+    })();
+
+    DR._loadInFlight[conversationId] = promise;
+    return promise;
   };
 
   // Export

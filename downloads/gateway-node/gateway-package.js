@@ -4499,8 +4499,9 @@ class GatewayNode {
   async relayCallSignalToOperators(targetId, fromId, signal) {
     // Layer 1: Send via existing operator WebSocket connections (fast, works behind NAT)
     const relayMsg = JSON.stringify({
-      type: 'call_signal',
+      type: 'call_signal_relay',
       targetId,
+      fromId,
       signal,
     });
     for (const [opId, connInfo] of this.operatorConnections.entries()) {
@@ -6488,6 +6489,13 @@ class GatewayNode {
       // Gossip protocol - peer sharing
       case 'gossip_peers':
         this.handleGossipPeers(message.peers);
+        break;
+
+      case 'error':
+        if (message.error) console.warn(`⚠️ Operator ${seed}: ${message.error}`);
+        break;
+
+      case 'pong':
         break;
       
       default:
