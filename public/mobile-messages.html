@@ -6158,8 +6158,16 @@
       AutohoCall.startCall(currentRecipientId, 'video', sendCallSignal);
     }
 
-    function acceptIncomingCall() {
-      AutohoCall.acceptCall();
+    async function acceptIncomingCall() {
+      try {
+        const result = await AutohoCall.acceptCall();
+        if (!result) {
+          console.error('[Call] acceptCall returned false');
+        }
+      } catch (e) {
+        alert('Call failed: ' + e.name + ' - ' + e.message);
+        console.error('[Call] acceptIncomingCall error:', e);
+      }
     }
 
     function rejectIncomingCall() {
