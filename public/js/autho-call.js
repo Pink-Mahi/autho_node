@@ -34,10 +34,13 @@
   let onCallDuration = null;
   let durationTimer = null;
 
-  // WebRTC config — supports optional self-hosted TURN via global config
+  // WebRTC config — STUN + free TURN for NAT traversal
   const baseIceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
   ];
 
   function buildRtcConfig() {
@@ -117,8 +120,15 @@
       console.log('[Call] Offer sent to ' + peerId);
       return true;
     } catch (e) {
-      console.error('[Call] Failed to start call:', e);
-      Call.endCall(sendSignal);
+      console.error('[Call] Failed to start call:', e.name, e.message);
+      if (e.name === 'NotAllowedError' || e.name === 'NotFoundError' || e.name === 'OverconstrainedError') {
+        console.error('[Call] Microphone access denied or unavailable');
+        cleanup();
+        setState('ended');
+        setTimeout(function() { setState('idle'); }, 2000);
+      } else {
+        Call.endCall(sendSignal);
+      }
       return false;
     }
   };
@@ -196,8 +206,16 @@
       console.log('[Call] Accepted call from ' + callPeerId);
       return true;
     } catch (e) {
-      console.error('[Call] Failed to accept call:', e);
-      Call.endCall(sendSignal);
+      console.error('[Call] Failed to accept call:', e.name, e.message);
+      // If getUserMedia failed, show a clear error instead of silently ending
+      if (e.name === 'NotAllowedError' || e.name === 'NotFoundError' || e.name === 'OverconstrainedError') {
+        console.error('[Call] Microphone access denied or unavailable');
+        cleanup();
+        setState('ended');
+        setTimeout(function() { setState('idle'); }, 2000);
+      } else {
+        Call.endCall(sendSignal);
+      }
       return false;
     }
   };
@@ -340,9 +358,23 @@
     // Connection state changes
     peerConnection.onconnectionstatechange = function() {
       console.log('[Call] Connection state:', peerConnection.connectionState);
-      if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-        Call.endCall(sendSignal);
+      if (peerConnection.connectionState === 'connected') {
+        console.log('[Call] WebRTC P2P connected!');
       }
+      if (peerConnection.connectionState === 'failed') {
+        // Give it a moment — sometimes 'failed' is transient during ICE restart
+        setTimeout(function() {
+          if (peerConnection && peerConnection.connectionState === 'failed') {
+            console.log('[Call] Connection permanently failed — ending call');
+            Call.endCall(sendSignal);
+          }
+        }, 3000);
+      }
+      // Note: 'disconnected' is recoverable — do NOT end call on it
+    };
+
+    peerConnection.oniceconnectionstatechange = function() {
+      console.log('[Call] ICE state:', peerConnection.iceConnectionState);
     };
 
     // Remote stream handler
