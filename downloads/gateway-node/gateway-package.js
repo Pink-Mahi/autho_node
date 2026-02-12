@@ -1407,17 +1407,34 @@ class GatewayNode {
     });
   }
 
+  // Inject gateway dashboard banner into HTML content
+  injectGatewayBanner(htmlBuffer) {
+    let html = htmlBuffer.toString('utf8');
+    if (html.includes('id="gw-banner"')) return htmlBuffer; // already injected
+    const gatewayBanner = `<div id="gw-banner" style="position:fixed;bottom:10px;right:10px;z-index:99999;background:linear-gradient(135deg,#667eea,#764ba2);padding:8px 16px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;font-size:13px;"><a href="/gateway-dashboard" style="color:#fff;text-decoration:none;display:flex;align-items:center;gap:6px;">⚡ Gateway Dashboard</a></div>`;
+    if (html.includes('</body>')) {
+      html = html.replace('</body>', gatewayBanner + '</body>');
+      return Buffer.from(html, 'utf8');
+    }
+    return htmlBuffer;
+  }
+
   async serveUi(req, res) {
     const filePath = this.getUiCacheFilePath(req.path);
+    const isHtml = req.path.endsWith('.html') || req.path === '/' || !path.extname(req.path);
     if (fs.existsSync(filePath)) {
       try {
-        if (UI_CACHE_TTL_MS === 0) {
-          res.sendFile(path.resolve(filePath));
-          return;
-        }
-        const st = fs.statSync(filePath);
-        if ((Date.now() - st.mtimeMs) < UI_CACHE_TTL_MS) {
-          res.sendFile(path.resolve(filePath));
+        const fresh = UI_CACHE_TTL_MS === 0 || (Date.now() - fs.statSync(filePath).mtimeMs) < UI_CACHE_TTL_MS;
+        if (fresh) {
+          // For HTML files, inject gateway banner on the fly
+          if (isHtml) {
+            const buf = fs.readFileSync(filePath);
+            const contentType = req.path.endsWith('.html') ? 'text/html' : null;
+            if (contentType) res.setHeader('Content-Type', contentType);
+            res.send(this.injectGatewayBanner(buf));
+          } else {
+            res.sendFile(path.resolve(filePath));
+          }
           return;
         }
       } catch {
@@ -1450,12 +1467,7 @@ class GatewayNode {
           
           // Inject gateway dashboard link into HTML pages
           if (contentType && contentType.includes('text/html')) {
-            let html = buf.toString('utf8');
-            const gatewayBanner = `<div id="gw-banner" style="position:fixed;bottom:10px;right:10px;z-index:99999;background:linear-gradient(135deg,#667eea,#764ba2);padding:8px 16px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;font-size:13px;"><a href="/gateway-dashboard" style="color:#fff;text-decoration:none;display:flex;align-items:center;gap:6px;">⚡ Gateway Dashboard</a></div>`;
-            if (html.includes('</body>')) {
-              html = html.replace('</body>', gatewayBanner + '</body>');
-              buf = Buffer.from(html, 'utf8');
-            }
+            buf = this.injectGatewayBanner(buf);
           }
           
           fs.writeFileSync(filePath, buf);
