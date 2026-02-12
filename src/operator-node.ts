@@ -10,7 +10,7 @@ import { StateVerifier, LedgerState } from './consensus/state-verifier';
 import { PeerResilienceManager, autoRepairFromMajority } from './consensus/peer-resilience';
 import { EventStore, EventType, QuorumSignature } from './event-store';
 import { StateBuilder } from './event-store';
-import { verifySignature } from './crypto';
+import { verifySignature, signMessage, sha256 } from './crypto';
 import { OperatorPeerDiscovery, OperatorPeerInfo, connectToOperatorPeer } from './operator-peer-discovery';
 import { 
   ConsensusNode, 
@@ -107,6 +107,13 @@ export class OperatorNode extends EventEmitter {
   private allSeedUrls: string[] = [];
   /** Last successful seed URL */
   private lastSuccessfulSeedUrl?: string;
+
+  private pendingRegistrySignatureRequests: Map<string, {
+    signatures: QuorumSignature[];
+    required: number;
+    resolve: (sigs: QuorumSignature[]) => void;
+    timeout: NodeJS.Timeout;
+  }> = new Map();
 
   private sessions: Map<string, { sessionId: string; accountId: string; createdAt: number; expiresAt: number }> = new Map();
   private operatorApplyChallenges: Map<string, { challengeId: string; accountId: string; nonce: string; createdAt: number; expiresAt: number; used: boolean }> = new Map();
@@ -636,6 +643,133 @@ export class OperatorNode extends EventEmitter {
       return { ok: false, error: 'No available nodes to accept event (main seed and all peers offline)' };
     } catch (e: any) {
       return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  // ============================================================
+  // REGISTRY QUORUM CONSENSUS - Real M-of-N operator signatures
+  // ============================================================
+
+  private getRegistryQuorumM(): number {
+    const raw = Number(process.env.QUORUM_M || 3);
+    return Number.isFinite(raw) && raw > 0 ? raw : 3;
+  }
+
+  private buildRegistryPayloadHash(event: Partial<any>): string {
+    return sha256(JSON.stringify(event));
+  }
+
+  public async requestRegistryQuorumSignatures(event: Partial<any>): Promise<QuorumSignature[]> {
+    const required = this.getRegistryQuorumM();
+    const payloadHash = this.buildRegistryPayloadHash(event);
+    const operatorId = this.getOperatorId();
+    const publicKey = String(this.config.publicKey || '').trim();
+    const privateKey = String(this.config.privateKey || '').trim();
+
+    const ownSig: QuorumSignature[] = [];
+    if (publicKey && privateKey) {
+      try {
+        const sig = signMessage(payloadHash, privateKey);
+        ownSig.push({ operatorId, publicKey, signature: sig });
+      } catch (e) {
+        console.warn('[Registry Consensus] Failed to sign with own key:', (e as any)?.message);
+      }
+    }
+
+    if (ownSig.length >= required || this.operatorPeerConnections.size === 0) {
+      return ownSig;
+    }
+
+    const requestId = `regsig_${Date.now()}_${randomBytes(6).toString('hex')}`;
+
+    const promise = new Promise<QuorumSignature[]>((resolve) => {
+      const timeout = setTimeout(() => {
+        const pending = this.pendingRegistrySignatureRequests.get(requestId);
+        this.pendingRegistrySignatureRequests.delete(requestId);
+        console.log(`[Registry Consensus] Timeout for ${requestId}, collected ${pending?.signatures?.length || 0}/${required} signatures`);
+        resolve(pending?.signatures || ownSig);
+      }, 8000);
+
+      this.pendingRegistrySignatureRequests.set(requestId, {
+        signatures: [...ownSig],
+        required,
+        resolve,
+        timeout,
+      });
+    });
+
+    const requestMsg = JSON.stringify({
+      type: 'registry_sign_request',
+      requestId,
+      payloadHash,
+      payload: event,
+      fromOperatorId: operatorId,
+      timestamp: Date.now(),
+    });
+
+    let sentCount = 0;
+    for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
+      if (peer.ws.readyState === WebSocket.OPEN) {
+        try {
+          peer.ws.send(requestMsg);
+          sentCount++;
+        } catch {}
+      }
+    }
+    console.log(`[Registry Consensus] Broadcast sign request ${requestId} to ${sentCount} peers (need ${required} sigs)`);
+
+    return promise;
+  }
+
+  private handleRegistrySignRequest(peerId: string, message: any, ws: WebSocket): void {
+    try {
+      const { requestId, payloadHash, fromOperatorId } = message;
+      if (!requestId || !payloadHash || !fromOperatorId) return;
+
+      const publicKey = String(this.config.publicKey || '').trim();
+      const privateKey = String(this.config.privateKey || '').trim();
+      if (!publicKey || !privateKey) return;
+
+      const operatorId = this.getOperatorId();
+      const sig = signMessage(payloadHash, privateKey);
+
+      const responseMsg = JSON.stringify({
+        type: 'registry_sign_response',
+        requestId,
+        operatorId,
+        publicKey,
+        signature: sig,
+        timestamp: Date.now(),
+      });
+
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(responseMsg);
+      }
+    } catch (e) {
+      console.warn('[Registry Consensus] Error handling sign request:', (e as any)?.message);
+    }
+  }
+
+  private handleRegistrySignResponse(message: any): void {
+    try {
+      const { requestId, operatorId, publicKey, signature } = message;
+      if (!requestId || !operatorId || !signature) return;
+
+      const pending = this.pendingRegistrySignatureRequests.get(requestId);
+      if (!pending) return;
+
+      if (pending.signatures.some(s => s.operatorId === operatorId)) return;
+
+      pending.signatures.push({ operatorId, publicKey: publicKey || '', signature });
+
+      if (pending.signatures.length >= pending.required) {
+        clearTimeout(pending.timeout);
+        this.pendingRegistrySignatureRequests.delete(requestId);
+        console.log(`[Registry Consensus] Quorum reached for ${requestId}: ${pending.signatures.length}/${pending.required} signatures`);
+        pending.resolve(pending.signatures);
+      }
+    } catch (e) {
+      console.warn('[Registry Consensus] Error handling sign response:', (e as any)?.message);
     }
   }
 
@@ -7834,6 +7968,22 @@ export class OperatorNode extends EventEmitter {
         break;
       // ============================================================
       // END EPHEMERAL MESSAGING P2P SYNC
+      // ============================================================
+
+      // ============================================================
+      // REGISTRY QUORUM CONSENSUS - Real M-of-N operator signatures
+      // ============================================================
+      case 'registry_sign_request':
+        if (ws) {
+          this.handleRegistrySignRequest(peerId, message, ws);
+        }
+        break;
+
+      case 'registry_sign_response':
+        this.handleRegistrySignResponse(message);
+        break;
+      // ============================================================
+      // END REGISTRY QUORUM CONSENSUS
       // ============================================================
 
       // Handle append_event from peer operators - allows direct operator-to-operator sync when main node is offline

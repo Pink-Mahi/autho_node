@@ -1337,7 +1337,7 @@ class GatewayNode {
 
     const publishResults = [];
 
-    for (const operatorUrl of this.operatorUrls) {
+    for (const operatorUrl of this.getCandidateOperatorUrls()) {
       try {
         if (isWrite && !isAuthEndpoint) {
           await this.assertSyncedForWrite(operatorUrl);
