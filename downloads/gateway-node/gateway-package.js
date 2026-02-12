@@ -4561,15 +4561,18 @@ class GatewayNode {
       fromId,
       signal,
     });
+    let sentViaWs = false;
     for (const [opId, connInfo] of this.operatorConnections.entries()) {
       try {
         if (connInfo.ws && connInfo.ws.readyState === WebSocket.OPEN) {
           connInfo.ws.send(relayMsg);
+          sentViaWs = true;
         }
       } catch {}
     }
 
     // Layer 2: HTTP POST to operator URLs (fallback)
+    if (sentViaWs) return true;
     const timeoutMs = 3000;
     for (const baseUrl of this.operatorUrls) {
       try {
