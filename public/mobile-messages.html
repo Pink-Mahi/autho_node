@@ -4567,10 +4567,10 @@
     
     // Premium file tiers (size in bytes, cost in sats)
     const FILE_TIERS = {
-      free: { maxSize: 1 * 1024 * 1024, cost: 0, label: '1 MB' },           // 1MB free
-      basic: { maxSize: 25 * 1024 * 1024, cost: 500, label: '25 MB' },      // 25MB for 500 sats
-      premium: { maxSize: 100 * 1024 * 1024, cost: 2000, label: '100 MB' }, // 100MB for 2000 sats
-      enterprise: { maxSize: 1024 * 1024 * 1024, cost: 10000, label: '1 GB' }, // 1GB for 10000 sats
+      free: { maxSize: 1 * 1024 * 1024, cost: 0, label: '1 MB' },          // 1MB free
+      basic: { maxSize: 25 * 1024 * 1024, cost: 10, label: '25 MB' },       // 25MB for 10 sats
+      premium: { maxSize: 100 * 1024 * 1024, cost: 25, label: '100 MB' },   // 100MB for 25 sats
+      enterprise: { maxSize: 1024 * 1024 * 1024, cost: 50, label: '1 GB' },    // 1GB for 50 sats
     };
     
     let selectedFileTier = 'free';
@@ -5482,10 +5482,10 @@
 
     // Pricing constants (sats)
     const PRICING = {
-      message_delete: 50,
-      message_edit: 25,
-      profile_update: 100,
-      group_create: 200,
+      message_delete: 10,
+      message_edit: 10,
+      profile_update: 10,
+      group_create: 10,
     };
 
     // Fetch service balance
