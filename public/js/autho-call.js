@@ -34,14 +34,27 @@
   let onCallDuration = null;
   let durationTimer = null;
 
-  // WebRTC config — STUN only, no TURN (P2P privacy)
-  const rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ],
-    iceCandidatePoolSize: 2
-  };
+  // WebRTC config — supports optional self-hosted TURN via global config
+  const baseIceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+
+  function buildRtcConfig() {
+    const extraIceServers = Array.isArray(global.AUTHO_CALL_ICE_SERVERS)
+      ? global.AUTHO_CALL_ICE_SERVERS
+      : [];
+
+    const turnConfig = global.AUTHO_CALL_TURN;
+    if (turnConfig && turnConfig.urls) {
+      extraIceServers.push(turnConfig);
+    }
+
+    return {
+      iceServers: baseIceServers.concat(extraIceServers),
+      iceCandidatePoolSize: 2
+    };
+  }
 
   // ── Public API ──
 
@@ -78,7 +91,7 @@
       localStream = await navigator.mediaDevices.getUserMedia(constraints);
 
       // Create peer connection
-      peerConnection = new RTCPeerConnection(rtcConfig);
+      peerConnection = new RTCPeerConnection(buildRtcConfig());
       setupPeerConnection(sendSignal);
 
       // Add local tracks
@@ -143,7 +156,7 @@
       localStream = await navigator.mediaDevices.getUserMedia(constraints);
 
       // Create peer connection
-      peerConnection = new RTCPeerConnection(rtcConfig);
+      peerConnection = new RTCPeerConnection(buildRtcConfig());
       setupPeerConnection(sendSignal);
 
       // Add local tracks

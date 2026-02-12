@@ -1746,6 +1746,58 @@
     let messagingWsReconnectTimer = null;
     let messagingWsConnected = false;
 
+    // Optional self-hosted TURN config (no external dependency)
+    async function initAutoTurnConfig() {
+      try {
+        if (window.AUTHO_CALL_TURN) return;
+
+        const turnUrl = localStorage.getItem('autho_turn_url');
+        const turnUser = localStorage.getItem('autho_turn_user');
+        const turnCred = localStorage.getItem('autho_turn_cred');
+        if (turnUrl) {
+          window.AUTHO_CALL_TURN = {
+            urls: turnUrl.split(',').map(s => s.trim()).filter(Boolean),
+            username: turnUser || undefined,
+            credential: turnCred || undefined,
+          };
+          return;
+        }
+
+        // Try local operator first
+        const localRes = await fetch('/api/network/turn').catch(() => null);
+        if (localRes && localRes.ok) {
+          const localData = await localRes.json().catch(() => null);
+          if (localData && localData.turn) {
+            window.AUTHO_CALL_TURN = localData.turn;
+            return;
+          }
+        }
+
+        // Fallback: ask other operators for TURN info
+        const opsRes = await fetch('/api/network/operators').catch(() => null);
+        const opsData = opsRes && opsRes.ok ? await opsRes.json().catch(() => null) : null;
+        const operators = Array.isArray(opsData?.operators) ? opsData.operators : [];
+
+        for (const op of operators) {
+          const operatorUrl = String(op?.operatorUrl || '').trim();
+          if (!operatorUrl) continue;
+          const base = operatorUrl.replace(/\/$/, '');
+          try {
+            const res = await fetch(base + '/api/network/turn', { mode: 'cors' }).catch(() => null);
+            if (res && res.ok) {
+              const data = await res.json().catch(() => null);
+              if (data && data.turn) {
+                window.AUTHO_CALL_TURN = data.turn;
+                return;
+              }
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    initAutoTurnConfig();
+
     function connectMessagingWebSocket() {
       if (messagingWs && messagingWs.readyState <= 1) return; // already open/connecting
       try {

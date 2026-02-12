@@ -1560,6 +1560,31 @@ export class OperatorNode extends EventEmitter {
       }
     });
 
+    // TURN discovery endpoint (self-hosted relay configuration)
+    this.app.get('/api/network/turn', async (_req: Request, res: Response) => {
+      try {
+        const urlsRaw = String(process.env.AUTHO_TURN_URLS || process.env.TURN_URLS || '').trim();
+        const urls = urlsRaw
+          ? urlsRaw.split(',').map(s => s.trim()).filter(Boolean)
+          : [];
+        const username = String(process.env.AUTHO_TURN_USER || process.env.TURN_USER || '').trim();
+        const credential = String(process.env.AUTHO_TURN_CRED || process.env.TURN_CRED || '').trim();
+
+        res.json({
+          success: true,
+          turn: urls.length
+            ? {
+                urls,
+                username: username || undefined,
+                credential: credential || undefined,
+              }
+            : null,
+        });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
     this.app.get('/api/registry/head', async (req: Request, res: Response) => {
       try {
         const state = await this.canonicalStateBuilder.buildState();
