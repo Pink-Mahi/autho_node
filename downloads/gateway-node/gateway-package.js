@@ -4497,6 +4497,21 @@ class GatewayNode {
   }
 
   async relayCallSignalToOperators(targetId, fromId, signal) {
+    // Layer 1: Send via existing operator WebSocket connections (fast, works behind NAT)
+    const relayMsg = JSON.stringify({
+      type: 'call_signal',
+      targetId,
+      signal,
+    });
+    for (const [opId, connInfo] of this.operatorConnections.entries()) {
+      try {
+        if (connInfo.ws && connInfo.ws.readyState === WebSocket.OPEN) {
+          connInfo.ws.send(relayMsg);
+        }
+      } catch {}
+    }
+
+    // Layer 2: HTTP POST to operator URLs (fallback)
     const timeoutMs = 3000;
     for (const baseUrl of this.operatorUrls) {
       try {
@@ -6448,6 +6463,28 @@ class GatewayNode {
         }
         break;
       
+      // Call signal relay from operators — deliver to local messaging clients
+      case 'call_signal_relay':
+        if (message.targetId && message.fromId && message.signal) {
+          const targetId = String(message.targetId).trim();
+          let delivered = false;
+          for (const [clientWs, meta] of this.messagingClients.entries()) {
+            if (meta.publicKey === targetId && clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({
+                type: 'call_signal',
+                fromId: message.fromId,
+                signal: message.signal
+              }));
+              delivered = true;
+              break;
+            }
+          }
+          if (delivered) {
+            console.log(`📞 [Call] Relayed signal to local client ${targetId.substring(0, 12)}...`);
+          }
+        }
+        break;
+
       // Gossip protocol - peer sharing
       case 'gossip_peers':
         this.handleGossipPeers(message.peers);
