@@ -912,8 +912,9 @@ export class EphemeralEventStore extends EventEmitter {
    * Delete a group message
    */
   async deleteGroupMessage(messageId: string, requesterId: string): Promise<boolean> {
-    const event = this.events.get(messageId);
-    if (!event || event.eventType !== EphemeralEventType.GROUP_MESSAGE_SENT) return false;
+    const found = this.findEventByMessageId(messageId);
+    if (!found || found.event.eventType !== EphemeralEventType.GROUP_MESSAGE_SENT) return false;
+    const { eventId, event } = found;
     
     const payload = event.payload as GroupMessagePayload;
     
@@ -921,8 +922,8 @@ export class EphemeralEventStore extends EventEmitter {
     if (payload.senderId !== requesterId) return false;
     
     // Remove from indexes
-    this.messagesByGroup.get(payload.groupId)?.delete(messageId);
-    this.events.delete(messageId);
+    this.messagesByGroup.get(payload.groupId)?.delete(eventId);
+    this.events.delete(eventId);
     
     // Record deletion event
     await this.appendEvent(EphemeralEventType.MESSAGE_DELETED, {
@@ -937,13 +938,31 @@ export class EphemeralEventStore extends EventEmitter {
   }
 
   /**
+   * Find an event by payload.messageId (events map is keyed by eventId, not messageId)
+   */
+  private findEventByMessageId(messageId: string): { eventId: string; event: EphemeralEvent } | null {
+    // First try direct lookup (in case caller passed an eventId)
+    const direct = this.events.get(messageId);
+    if (direct) return { eventId: messageId, event: direct };
+
+    // Search by payload.messageId
+    for (const [eventId, event] of this.events.entries()) {
+      const payload = event.payload as any;
+      if (payload?.messageId === messageId) {
+        return { eventId, event };
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get a message by ID
    */
   getMessage(messageId: string): EphemeralEvent | null {
-    const event = this.events.get(messageId);
-    if (!event) return null;
-    if (event.expiresAt <= Date.now()) return null;
-    return event;
+    const found = this.findEventByMessageId(messageId);
+    if (!found) return null;
+    if (found.event.expiresAt <= Date.now()) return null;
+    return found.event;
   }
 
   /**
@@ -959,8 +978,9 @@ export class EphemeralEventStore extends EventEmitter {
    * Delete a message early (for paid early deletion)
    */
   async deleteMessage(messageId: string, requesterId: string): Promise<boolean> {
-    const event = this.events.get(messageId);
-    if (!event) return false;
+    const found = this.findEventByMessageId(messageId);
+    if (!found) return false;
+    const { eventId, event } = found;
     
     // Only sender or recipient can delete
     const payload = event.payload as MessagePayload;
@@ -969,10 +989,10 @@ export class EphemeralEventStore extends EventEmitter {
     }
     
     // Remove from all indexes
-    this.messagesByConversation.get(payload.conversationId)?.delete(messageId);
-    this.messagesByUser.get(payload.senderId)?.delete(messageId);
-    this.messagesByUser.get(payload.recipientId)?.delete(messageId);
-    this.events.delete(messageId);
+    this.messagesByConversation.get(payload.conversationId)?.delete(eventId);
+    this.messagesByUser.get(payload.senderId)?.delete(eventId);
+    this.messagesByUser.get(payload.recipientId)?.delete(eventId);
+    this.events.delete(eventId);
     
     // Record deletion event
     await this.appendEvent(EphemeralEventType.MESSAGE_DELETED, {

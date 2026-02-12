@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f7931a">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/autho-192.svg">
   <title>Messages - Autho</title>
   <style>
     * { box-sizing: border-box; }
@@ -1307,6 +1310,14 @@
         </button>
       </div>
 
+      <!-- Message Search Bar -->
+      <div id="messageSearchBar" style="margin:0 16px 8px 16px;">
+        <input type="text" id="messageSearchInput" placeholder="Search messages..." 
+               oninput="handleMessageSearch(this.value)"
+               style="width:100%;padding:10px 14px;background:#1a1a1a;border:1px solid #333;border-radius:10px;color:#fff;font-size:14px;outline:none;">
+        <div id="messageSearchResults" style="display:none;max-height:300px;overflow-y:auto;background:#1a1a1a;border:1px solid #333;border-top:none;border-radius:0 0 10px 10px;"></div>
+      </div>
+
       <div class="nav-tabs">
         <div class="nav-tab active" data-tab="conversations" onclick="switchTab('conversations')">
           Chats
@@ -1361,6 +1372,12 @@
           <div class="chat-participant-name" id="chatParticipantName">Loading...</div>
           <div class="chat-item-context" id="chatItemContext"></div>
         </div>
+        <button id="voiceCallBtn" onclick="startVoiceCall()" title="Encrypted voice call" style="background:transparent;border:1px solid #4caf50;color:#4caf50;padding:4px 8px;border-radius:6px;font-size:14px;cursor:pointer;margin-right:4px;">
+          📞
+        </button>
+        <button id="videoCallBtn" onclick="startVideoCall()" title="Encrypted video call" style="background:transparent;border:1px solid #2196f3;color:#2196f3;padding:4px 8px;border-radius:6px;font-size:14px;cursor:pointer;margin-right:4px;">
+          📹
+        </button>
         <button class="add-contact-chat-btn" id="verifyContactBtn" onclick="showSafetyNumber()" title="Verify contact identity" style="background:transparent;border:1px solid #4caf50;color:#4caf50;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;margin-right:4px;">
           🔍 Verify
         </button>
@@ -1370,6 +1387,8 @@
       </div>
 
       <div class="chat-messages" id="chatMessages"></div>
+
+      <div id="typingIndicator" style="display:none;padding:4px 16px;font-size:12px;color:#888;font-style:italic;">typing...</div>
 
       <div class="encryption-notice" onclick="showEncryptionInfo()">
         <span>🔐</span> AES-256 + Curve25519 encrypted • Zero-knowledge architecture
@@ -1462,6 +1481,14 @@
 
   <!-- Message Context Menu -->
   <div class="message-context-menu" id="messageContextMenu">
+    <div class="reaction-quick-bar" id="reactionQuickBar" style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.1);justify-content:center;">
+      <span class="reaction-emoji" onclick="reactToMessage('👍')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">👍</span>
+      <span class="reaction-emoji" onclick="reactToMessage('❤️')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">❤️</span>
+      <span class="reaction-emoji" onclick="reactToMessage('😂')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">😂</span>
+      <span class="reaction-emoji" onclick="reactToMessage('😮')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">😮</span>
+      <span class="reaction-emoji" onclick="reactToMessage('😢')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">😢</span>
+      <span class="reaction-emoji" onclick="reactToMessage('🔥')" style="font-size:22px;cursor:pointer;padding:2px 4px;border-radius:6px;transition:background 0.15s;">🔥</span>
+    </div>
     <div class="context-menu-item" onclick="copyMessageText()">
       <span>📋</span> Copy Text
     </div>
@@ -1648,11 +1675,47 @@
         Loading...
       </div>
       <div id="safetyNumberQR" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
-      <div style="display: flex; gap: 8px;">
-        <button class="modal-btn" onclick="markContactVerified()" style="background: #4caf50; flex: 1;">✅ Mark Verified</button>
-        <button class="modal-btn" onclick="closeSafetyNumberModal()" style="background: #333; flex: 1;">Close</button>
+      <div id="safetyQrScannerContainer" style="display:none; margin-bottom: 16px;">
+        <video id="safetyQrVideo" style="width:100%; border-radius:10px; background:#000;" playsinline></video>
+        <div id="safetyQrScanStatus" style="text-align:center; font-size:12px; color:#888; margin-top:6px;">Point camera at contact's QR code...</div>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="modal-btn" id="scanQrBtn" onclick="toggleSafetyQrScanner()" style="background: #1a73e8; flex: 1; min-width: 120px;">📷 Scan QR</button>
+        <button class="modal-btn" onclick="markContactVerified()" style="background: #4caf50; flex: 1; min-width: 120px;">✅ Mark Verified</button>
+        <button class="modal-btn" onclick="closeSafetyNumberModal()" style="background: #333; flex: 1; min-width: 120px;">Close</button>
       </div>
       <div id="verifiedStatus" style="text-align: center; margin-top: 12px; font-size: 12px; color: #888;"></div>
+    </div>
+  </div>
+
+  <!-- ═══════ Encrypted Call Overlay ═══════ -->
+  <div id="callOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0a0a;z-index:10000;flex-direction:column;align-items:center;justify-content:center;font-family:Inter,'Segoe UI',sans-serif;">
+    <!-- Remote video (fills background) -->
+    <video id="remoteVideo" autoplay playsinline style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;"></video>
+    <!-- Remote audio (for voice calls) -->
+    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
+    <!-- Self-view (picture-in-picture) -->
+    <video id="localVideo" autoplay playsinline muted style="position:absolute;top:16px;right:16px;width:120px;height:160px;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,0.3);z-index:10001;display:none;"></video>
+
+    <!-- Call info (centered, shown over video or solid bg) -->
+    <div id="callInfo" style="position:relative;z-index:10001;text-align:center;padding:40px 20px;">
+      <div id="callPeerName" style="font-size:28px;font-weight:600;color:#fff;margin-bottom:8px;">Unknown</div>
+      <div id="callStatusText" style="font-size:16px;color:rgba(255,255,255,0.6);margin-bottom:4px;">Calling...</div>
+      <div id="callDuration" style="font-size:14px;color:rgba(255,255,255,0.4);"></div>
+      <div id="callEncryption" style="font-size:12px;color:#4caf50;margin-top:12px;">🔐 End-to-end encrypted</div>
+    </div>
+
+    <!-- Incoming call buttons -->
+    <div id="incomingCallBtns" style="display:none;position:absolute;bottom:80px;left:0;right:0;z-index:10001;display:none;justify-content:center;gap:40px;">
+      <button onclick="rejectIncomingCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#f44336;color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 16px rgba(244,67,54,0.4);">✕</button>
+      <button onclick="acceptIncomingCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#4caf50;color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 16px rgba(76,175,80,0.4);">📞</button>
+    </div>
+
+    <!-- Active call controls -->
+    <div id="activeCallBtns" style="display:none;position:absolute;bottom:80px;left:0;right:0;z-index:10001;justify-content:center;gap:24px;">
+      <button id="muteBtn" onclick="toggleCallMute()" style="width:56px;height:56px;border-radius:50%;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(10px);">🎤</button>
+      <button id="camToggleBtn" onclick="toggleCallCamera()" style="width:56px;height:56px;border-radius:50%;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(10px);display:none;">📷</button>
+      <button onclick="endCurrentCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#f44336;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(244,67,54,0.4);">✕</button>
     </div>
   </div>
 
@@ -1664,6 +1727,7 @@
   <script src="/js/double-ratchet.js" integrity="sha384-AgMXGk5+mUUw2YWWcFLVRj7sJM3eMskKVbdDgWwxBPCA/wk0FElqi4YtGso5LFfO" crossorigin="anonymous"></script>
   <script src="/js/mls-group.js" integrity="sha384-ikW8LAAJS8aZFWIq2eICz7MSnfHOUVLXBZrCc0oTBJs/x+DiRfsLsabPQqiunmOy" crossorigin="anonymous"></script>
   <script src="/js/autho-wire.js" integrity="sha384-EwvW0hNJ1vdF1w9ZOAvuPCsWm1l16rxI20yZYvOx8cldFX0AyxIGJh1lJbgJf1h8" crossorigin="anonymous"></script>
+  <script src="/js/autho-call.js"></script>
   <script src="/js/btc.bundle.js"></script>
   <script src="/wallet-auth.js"></script>
   <script>
@@ -1680,6 +1744,8 @@
     let conversations = [];
     let messagePollingInterval = null;
     let inboxPollingInterval = null;
+    let lastIncomingCallerId = null;
+    let lastIncomingCallerName = null;
     const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
 
     // ============================================================
@@ -1688,6 +1754,58 @@
     let messagingWs = null;
     let messagingWsReconnectTimer = null;
     let messagingWsConnected = false;
+
+    // Optional self-hosted TURN config (no external dependency)
+    async function initAutoTurnConfig() {
+      try {
+        if (window.AUTHO_CALL_TURN) return;
+
+        const turnUrl = localStorage.getItem('autho_turn_url');
+        const turnUser = localStorage.getItem('autho_turn_user');
+        const turnCred = localStorage.getItem('autho_turn_cred');
+        if (turnUrl) {
+          window.AUTHO_CALL_TURN = {
+            urls: turnUrl.split(',').map(s => s.trim()).filter(Boolean),
+            username: turnUser || undefined,
+            credential: turnCred || undefined,
+          };
+          return;
+        }
+
+        // Try local operator first
+        const localRes = await fetch('/api/network/turn').catch(() => null);
+        if (localRes && localRes.ok) {
+          const localData = await localRes.json().catch(() => null);
+          if (localData && localData.turn) {
+            window.AUTHO_CALL_TURN = localData.turn;
+            return;
+          }
+        }
+
+        // Fallback: ask other operators for TURN info
+        const opsRes = await fetch('/api/network/operators').catch(() => null);
+        const opsData = opsRes && opsRes.ok ? await opsRes.json().catch(() => null) : null;
+        const operators = Array.isArray(opsData?.operators) ? opsData.operators : [];
+
+        for (const op of operators) {
+          const operatorUrl = String(op?.operatorUrl || '').trim();
+          if (!operatorUrl) continue;
+          const base = operatorUrl.replace(/\/$/, '');
+          try {
+            const res = await fetch(base + '/api/network/turn', { mode: 'cors' }).catch(() => null);
+            if (res && res.ok) {
+              const data = await res.json().catch(() => null);
+              if (data && data.turn) {
+                window.AUTHO_CALL_TURN = data.turn;
+                return;
+              }
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    initAutoTurnConfig();
 
     function connectMessagingWebSocket() {
       if (messagingWs && messagingWs.readyState <= 1) return; // already open/connecting
@@ -1736,6 +1854,39 @@
             if (data.type === 'message_sent') {
               // Server confirmed our optimistic message
               updateOptimisticMessage(data.tempId, 'sent');
+            }
+            // ── Reactions ──
+            if (data.type === 'reaction' && data.conversationId === currentConversationId && data.messageId && data.emoji) {
+              applyReaction(data.messageId, data.emoji, data.fromId || 'remote', data.action || 'add');
+            }
+            // ── Typing indicators ──
+            if (data.type === 'typing' && data.conversationId === currentConversationId) {
+              const ti = document.getElementById('typingIndicator');
+              if (ti) {
+                ti.style.display = data.isTyping ? 'block' : 'none';
+              }
+            }
+            // ── Read receipts ──
+            if (data.type === 'read_receipt' && data.conversationId === currentConversationId) {
+              // Update sent message status indicators to "read"
+              document.querySelectorAll('.message-status.sent, .message-status.delivered').forEach(function(el) {
+                el.textContent = '✓✓';
+                el.classList.add('read');
+                el.style.color = '#4caf50';
+              });
+            }
+            // ── Call signaling ──
+            if (data.type === 'call_signal' && data.signal && typeof AutohoCall !== 'undefined') {
+              const fromId = data.fromId || data.signal.from;
+              if (fromId) {
+                data.signal.from = fromId;
+                lastIncomingCallerId = fromId;
+                lastIncomingCallerName = resolveCallerName(fromId);
+                setCallPeerName(lastIncomingCallerName || fromId);
+              } else {
+                console.warn('[Call] Incoming call signal missing fromId');
+              }
+              AutohoCall.handleSignal(data.signal, sendCallSignal);
             }
           } catch {}
         };
@@ -2454,11 +2605,12 @@
         throw new Error('Encryption keys not initialized');
       }
 
-      // ── v5: Double Ratchet (best security — per-message key rotation) ──
-      if (currentConversationId && window.DoubleRatchet) {
-        const ratchetResult = await encryptWithRatchet(plaintext, currentConversationId, recipientEncPubKeyBytes);
-        if (ratchetResult) return ratchetResult;
-      }
+      // ── v5: Double Ratchet DISABLED — stateless v3/v4 is more reliable ──
+      // Ratchet state sync issues cause permanent message loss; v3/v4 always work.
+      // if (currentConversationId && window.DoubleRatchet) {
+      //   const ratchetResult = await encryptWithRatchet(plaintext, currentConversationId, recipientEncPubKeyBytes);
+      //   if (ratchetResult) return ratchetResult;
+      // }
 
       // Generate ephemeral keypair — destroyed after this call (forward secrecy)
       const ephemeralKeyPair = nacl.box.keyPair();
@@ -2483,37 +2635,11 @@
       }
       const paddedBytes = padMessage(messageBytes);
 
-      // ── v4: Post-quantum hybrid (NaCl + ML-KEM-768) ──
-      if (recipientKyberPubKey && window.MlKemModule && window.MlKemModule.MlKem768) {
-        try {
-          const kyber = new window.MlKemModule.MlKem768();
-          // Encapsulate: produces (kyberCiphertext, kyberSharedSecret)
-          const [kyberCt, kyberSs] = await kyber.encap(recipientKyberPubKey);
-
-          // Derive hybrid key: SHA-256(nacl_shared_secret || kyber_shared_secret)
-          // nacl_shared_secret = nacl.box.before(recipientPub, ephemeralSec)
-          const naclShared = nacl.box.before(recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
-          const combined = new Uint8Array(naclShared.length + kyberSs.length);
-          combined.set(naclShared, 0);
-          combined.set(kyberSs, naclShared.length);
-          const hybridKey = new Uint8Array(await crypto.subtle.digest('SHA-256', combined));
-
-          // AES-256-GCM encryption with hybrid key
-          const aesKey = await crypto.subtle.importKey('raw', hybridKey, 'AES-GCM', false, ['encrypt']);
-          const iv = crypto.getRandomValues(new Uint8Array(12));
-          const aesCt = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, paddedBytes));
-
-          return JSON.stringify({
-            v: 4,
-            e: nacl.util.encodeBase64(ephemeralKeyPair.publicKey),
-            k: nacl.util.encodeBase64(kyberCt),   // Kyber ciphertext
-            iv: nacl.util.encodeBase64(iv),
-            c: nacl.util.encodeBase64(aesCt),
-          });
-        } catch (e) {
-          console.warn('[Messaging] PQ hybrid encrypt failed, falling back to v3:', e.message);
-        }
-      }
+      // ── v4: Post-quantum hybrid DISABLED ──
+      // Kyber keys are random per session (not deterministic from wallet seed),
+      // so they get out of sync across nodes/logins causing decrypt failures.
+      // v3 (Curve25519 only) uses deterministic keys and always works.
+      // if (recipientKyberPubKey && window.MlKemModule && window.MlKemModule.MlKem768) { ... }
 
       // ── v3 fallback: Curve25519 only (no PQ) ──
       const encrypted = nacl.box(paddedBytes, nonce, recipientEncPubKeyBytes, ephemeralKeyPair.secretKey);
@@ -2540,11 +2666,21 @@
 
         // ── v5: Double Ratchet (per-message key rotation) ──
         if (envelope.v === 5 && envelope.h && envelope.iv && envelope.c) {
-          const result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
+          // First attempt
+          let result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
           if (result) return result;
-          // If ratchet decrypt fails, cannot fall back (ratchet state mismatch)
-          console.warn('SECURITY: v5 ratchet decrypt failed — session state may be out of sync');
-          return null;
+          // Session might be stale — reset and retry as fresh receiver
+          if (window.DoubleRatchet) {
+            try {
+              window.DoubleRatchet.clearSession(currentConversationId);
+              result = await decryptWithRatchet(envelope, currentConversationId, senderPublicKeyHex);
+              if (result) return result;
+            } catch (retryErr) {
+              console.warn('[DoubleRatchet] Retry after reset also failed:', retryErr.message);
+            }
+          }
+          console.warn('SECURITY: v5 ratchet decrypt failed — session state out of sync');
+          return '[Encrypted with outdated session key]';
         }
 
         // ── v4: Post-quantum hybrid (ML-KEM-768 + Curve25519 + AES-GCM) ──
@@ -3588,16 +3724,12 @@
         if (data.success && data.messages) {
           // Only update if message count changed (new messages arrived)
           if (data.messages.length !== lastMessageCount) {
-            const container = document.getElementById('chatMessages');
-            const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
-            
             lastMessageCount = data.messages.length;
             await renderMessages(data.messages);
             
-            // Auto-scroll to bottom only if user was already at bottom
-            if (wasAtBottom) {
-              container.scrollTop = container.scrollHeight;
-            }
+            // Always scroll to bottom so new messages are visible
+            const container = document.getElementById('chatMessages');
+            if (container) container.scrollTop = container.scrollHeight;
           }
         }
       } catch (error) {
@@ -3935,25 +4067,15 @@
       try {
         const parsed = JSON.parse(encryptedContent);
         
-        // v5: Double Ratchet, v4: PQ hybrid, v3: ephemeral key, v1/v2: legacy encrypted
-        if (parsed.v === 5 && parsed.h && parsed.iv && parsed.c) {
+        // All encrypted envelope versions (v1-v5): use unified decrypt
+        if (parsed.v && (parsed.c || parsed.h)) {
           const ok = await ensureEncryptionInitialized();
           if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          return decrypted || '[Could not decrypt - ratchet state missing]';
-        }
-        if (parsed.v === 4 && parsed.e && parsed.k && parsed.iv && parsed.c) {
-          const ok = await ensureEncryptionInitialized();
-          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          return decrypted || '[Could not decrypt - PQ keys missing]';
-        }
-        if ((parsed.v === 3 || parsed.v === 2 || parsed.v === 1) && parsed.n && parsed.c) {
-          const ok = await ensureEncryptionInitialized();
-          if (!ok || !myEncryptionKeyPair) return '[Could not decrypt]';
-          const decrypted = await decryptFromSender(encryptedContent, senderId);
-          if (decrypted) {
-            return decrypted;
+          try {
+            const decrypted = await decryptFromSender(encryptedContent, senderId);
+            if (decrypted) return decrypted;
+          } catch (decErr) {
+            console.warn('[Decrypt] Failed for v' + parsed.v + ':', decErr.message);
           }
           return '[Could not decrypt]';
         }
@@ -5480,8 +5602,125 @@
       }
     }
 
+    let safetyQrStream = null;
+    let safetyQrAnimFrame = null;
+    let safetyQrScanning = false;
+
     function closeSafetyNumberModal() {
+      stopSafetyQrScanner();
       document.getElementById('safetyNumberModal').style.display = 'none';
+    }
+
+    async function toggleSafetyQrScanner() {
+      if (safetyQrScanning) {
+        stopSafetyQrScanner();
+        return;
+      }
+      
+      const container = document.getElementById('safetyQrScannerContainer');
+      const video = document.getElementById('safetyQrVideo');
+      const statusEl = document.getElementById('safetyQrScanStatus');
+      const btn = document.getElementById('scanQrBtn');
+      
+      try {
+        safetyQrStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        video.srcObject = safetyQrStream;
+        await video.play();
+        
+        container.style.display = 'block';
+        btn.textContent = '⏹ Stop Scan';
+        btn.style.background = '#e53935';
+        statusEl.textContent = 'Point camera at contact\'s QR code...';
+        statusEl.style.color = '#888';
+        safetyQrScanning = true;
+        
+        // Start scanning frames with jsQR
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        function scanFrame() {
+          if (!safetyQrScanning || video.readyState !== video.HAVE_ENOUGH_DATA) {
+            safetyQrAnimFrame = requestAnimationFrame(scanFrame);
+            return;
+          }
+          
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert',
+          });
+          
+          if (code && code.data) {
+            // QR decoded — compare with our safety number
+            handleScannedSafetyQR(code.data, statusEl);
+          } else {
+            safetyQrAnimFrame = requestAnimationFrame(scanFrame);
+          }
+        }
+        
+        safetyQrAnimFrame = requestAnimationFrame(scanFrame);
+      } catch (e) {
+        console.error('QR scanner error:', e);
+        alert('Could not access camera: ' + (e.message || e));
+      }
+    }
+
+    function stopSafetyQrScanner() {
+      safetyQrScanning = false;
+      if (safetyQrAnimFrame) {
+        cancelAnimationFrame(safetyQrAnimFrame);
+        safetyQrAnimFrame = null;
+      }
+      if (safetyQrStream) {
+        safetyQrStream.getTracks().forEach(t => t.stop());
+        safetyQrStream = null;
+      }
+      const video = document.getElementById('safetyQrVideo');
+      if (video) video.srcObject = null;
+      
+      const container = document.getElementById('safetyQrScannerContainer');
+      if (container) container.style.display = 'none';
+      
+      const btn = document.getElementById('scanQrBtn');
+      if (btn) { btn.textContent = '📷 Scan QR'; btn.style.background = '#1a73e8'; }
+    }
+
+    async function handleScannedSafetyQR(scannedData, statusEl) {
+      // Get our own safety number (digits only)
+      const displayEl = document.getElementById('safetyNumberDisplay');
+      const ourSafetyNumber = (displayEl?.textContent || '').replace(/\s+/g, '');
+      const scannedClean = scannedData.replace(/\s+/g, '');
+      
+      if (!ourSafetyNumber || ourSafetyNumber.length < 20) {
+        statusEl.textContent = 'Safety number not loaded yet. Try again.';
+        statusEl.style.color = '#ff9800';
+        setTimeout(() => { if (safetyQrScanning) safetyQrAnimFrame = requestAnimationFrame(arguments.callee); }, 1000);
+        return;
+      }
+      
+      if (scannedClean === ourSafetyNumber) {
+        // Match — auto-verify!
+        statusEl.innerHTML = '<span style="color:#4caf50; font-weight:bold;">✅ QR matches! Conversation verified.</span>';
+        stopSafetyQrScanner();
+        
+        // Auto-mark as verified
+        await markContactVerified();
+        
+        // Show success feedback
+        const verifiedEl = document.getElementById('verifiedStatus');
+        if (verifiedEl) {
+          verifiedEl.innerHTML = '<span style="color:#4caf50; font-size:14px;">&#10003; Verified via QR scan</span> — Keys confirmed in person';
+        }
+      } else {
+        // Mismatch — warning!
+        statusEl.innerHTML = '<span style="color:#ff4444; font-weight:bold;">⚠️ QR does NOT match! Keys may be compromised.</span>';
+        stopSafetyQrScanner();
+      }
     }
 
     async function markContactVerified() {
@@ -5565,12 +5804,17 @@
       event.preventDefault();
       event.stopPropagation();
       
-      if (!isSent) return; // Only sender can edit/delete
-      
       selectedMessageId = messageId;
       selectedMessageText = messageText;
+      contextMenuMessageId = messageId;
       
       const menu = document.getElementById('messageContextMenu');
+      // Show/hide edit+delete based on ownership (reactions always visible)
+      const editItem = menu.querySelector('.context-menu-item:nth-child(3)'); // Edit
+      const deleteItem = menu.querySelector('.context-menu-item.delete');     // Delete
+      if (editItem) editItem.style.display = isSent ? '' : 'none';
+      if (deleteItem) deleteItem.style.display = isSent ? '' : 'none';
+
       const x = Math.min(event.clientX, window.innerWidth - 180);
       const y = Math.min(event.clientY, window.innerHeight - 150);
       
@@ -5773,6 +6017,409 @@
 
     // Initial balance fetch
     fetchServiceBalance();
+
+    // ============================================================
+    // MESSAGE SEARCH
+    // ============================================================
+    let searchDebounce = null;
+
+    function handleMessageSearch(query) {
+      clearTimeout(searchDebounce);
+      const resultsEl = document.getElementById('messageSearchResults');
+      if (!query || query.length < 2) {
+        resultsEl.style.display = 'none';
+        resultsEl.innerHTML = '';
+        return;
+      }
+      searchDebounce = setTimeout(async function() {
+        await performMessageSearch(query);
+      }, 300);
+    }
+
+    async function performMessageSearch(query) {
+      const resultsEl = document.getElementById('messageSearchResults');
+      resultsEl.style.display = 'block';
+      resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">Searching...</div>';
+
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+
+        // Fetch all conversations
+        const convResp = await fetch('/api/messages/conversations', {
+          headers: WalletAuth.getAuthHeaders()
+        });
+        const convData = await convResp.json();
+        if (!convData.success || !convData.conversations) {
+          resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">No results</div>';
+          return;
+        }
+
+        const results = [];
+        const lowerQuery = query.toLowerCase();
+
+        // Search through each conversation's recent messages
+        for (const conv of convData.conversations.slice(0, 20)) {
+          try {
+            const msgResp = await fetch('/api/messages/conversation/' + conv.conversationId + '?limit=50', {
+              headers: WalletAuth.getAuthHeaders()
+            });
+            const msgData = await msgResp.json();
+            if (!msgData.success || !msgData.messages) continue;
+
+            for (const msg of msgData.messages) {
+              try {
+                // Try to decrypt the message to search its content
+                let plaintext = '';
+                const isSelf = msg.senderId === wallet.publicKey;
+                const encrypted = isSelf ? msg.encryptedForSender : msg.encryptedContent;
+                if (!encrypted) continue;
+                plaintext = await decryptFromSender(encrypted, msg.senderId);
+                if (!plaintext) continue;
+
+                // Parse the decrypted envelope
+                let envelope;
+                try { envelope = JSON.parse(plaintext); } catch { continue; }
+                const content = envelope.content || envelope.text || '';
+                if (content.toLowerCase().includes(lowerQuery)) {
+                  const other = conv.participants?.find(p => p.accountId !== wallet.publicKey);
+                  results.push({
+                    conversationId: conv.conversationId,
+                    recipientId: other?.accountId,
+                    displayName: other?.displayName || 'Unknown',
+                    content: content,
+                    timestamp: msg.timestamp,
+                    messageId: msg.eventId
+                  });
+                }
+                if (results.length >= 20) break;
+              } catch {}
+            }
+          } catch {}
+          if (results.length >= 20) break;
+        }
+
+        if (results.length === 0) {
+          resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">No messages found</div>';
+          return;
+        }
+
+        resultsEl.innerHTML = results.map(function(r) {
+          const preview = r.content.length > 60 ? r.content.substring(0, 60) + '...' : r.content;
+          const time = new Date(r.timestamp).toLocaleDateString();
+          // Highlight match
+          const highlighted = escapeHtml(preview).replace(new RegExp('(' + escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark style="background:#f7931a;color:#000;border-radius:2px;padding:0 2px;">$1</mark>');
+          return '<div onclick="openConversation(\'' + r.conversationId + '\', \'' + (r.recipientId || '') + '\')" style="padding:10px 14px;border-bottom:1px solid #222;cursor:pointer;">' +
+            '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+            '<span style="color:#fff;font-size:13px;font-weight:600;">' + escapeHtml(r.displayName) + '</span>' +
+            '<span style="color:#666;font-size:11px;">' + time + '</span></div>' +
+            '<div style="color:#aaa;font-size:12px;line-height:1.4;">' + highlighted + '</div></div>';
+        }).join('');
+      } catch (e) {
+        console.warn('[Search] Error:', e);
+        resultsEl.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">Search failed</div>';
+      }
+    }
+
+    // ============================================================
+    // MESSAGE REACTIONS (emoji)
+    // ============================================================
+    const messageReactions = new Map(); // messageId -> Map<emoji, Set<userId>>
+    let contextMenuMessageId = null;
+
+    function reactToMessage(emoji) {
+      if (!contextMenuMessageId || !currentConversationId) return;
+      // Close context menu
+      const menu = document.getElementById('messageContextMenu');
+      if (menu) menu.style.display = 'none';
+
+      // Send reaction via WebSocket
+      if (messagingWs && messagingWsConnected) {
+        messagingWs.send(JSON.stringify({
+          type: 'reaction',
+          conversationId: currentConversationId,
+          messageId: contextMenuMessageId,
+          emoji: emoji,
+          action: 'add'
+        }));
+      }
+
+      // Apply locally immediately (optimistic)
+      applyReaction(contextMenuMessageId, emoji, 'self', 'add');
+    }
+
+    function applyReaction(messageId, emoji, fromId, action) {
+      if (!messageReactions.has(messageId)) messageReactions.set(messageId, new Map());
+      const msgReactions = messageReactions.get(messageId);
+      if (!msgReactions.has(emoji)) msgReactions.set(emoji, new Set());
+
+      if (action === 'add') {
+        msgReactions.get(emoji).add(fromId);
+      } else {
+        msgReactions.get(emoji).delete(fromId);
+        if (msgReactions.get(emoji).size === 0) msgReactions.delete(emoji);
+      }
+
+      // Render reactions below the message bubble
+      const bubble = document.querySelector('[data-message-id="' + messageId + '"]');
+      if (!bubble) return;
+      let reactionsEl = bubble.querySelector('.message-reactions');
+      if (!reactionsEl) {
+        reactionsEl = document.createElement('div');
+        reactionsEl.className = 'message-reactions';
+        reactionsEl.style.cssText = 'display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
+        bubble.appendChild(reactionsEl);
+      }
+      reactionsEl.innerHTML = '';
+      for (const [em, users] of msgReactions.entries()) {
+        if (users.size === 0) continue;
+        const badge = document.createElement('span');
+        badge.style.cssText = 'background:rgba(255,255,255,0.1);border-radius:12px;padding:2px 6px;font-size:12px;cursor:pointer;';
+        badge.textContent = em + (users.size > 1 ? ' ' + users.size : '');
+        badge.title = users.size + ' reaction(s)';
+        reactionsEl.appendChild(badge);
+      }
+    }
+
+    // ============================================================
+    // TYPING INDICATORS + READ RECEIPTS
+    // ============================================================
+    let typingTimeout = null;
+    let isTypingSent = false;
+
+    // Send typing indicator when user types
+    const msgInput = document.getElementById('messageInput');
+    if (msgInput) {
+      msgInput.addEventListener('input', function() {
+        if (!messagingWs || !messagingWsConnected || !currentConversationId) return;
+        if (!isTypingSent) {
+          isTypingSent = true;
+          messagingWs.send(JSON.stringify({
+            type: 'typing',
+            conversationId: currentConversationId,
+            isTyping: true
+          }));
+        }
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(function() {
+          isTypingSent = false;
+          if (messagingWs && messagingWsConnected && currentConversationId) {
+            messagingWs.send(JSON.stringify({
+              type: 'typing',
+              conversationId: currentConversationId,
+              isTyping: false
+            }));
+          }
+        }, 2000);
+      });
+    }
+
+    // Send read receipt when messages are viewed
+    function sendReadReceipt() {
+      if (!messagingWs || !messagingWsConnected || !currentConversationId) return;
+      messagingWs.send(JSON.stringify({
+        type: 'read_receipt',
+        conversationId: currentConversationId,
+        lastReadTimestamp: Date.now()
+      }));
+    }
+
+    // Hook into loadMessages to send read receipt after viewing
+    const _originalLoadMessages = typeof loadMessages === 'function' ? loadMessages : null;
+    if (_originalLoadMessages) {
+      const _wrappedLoadMessages = loadMessages;
+      loadMessages = async function() {
+        const result = await _wrappedLoadMessages.apply(this, arguments);
+        sendReadReceipt();
+        return result;
+      };
+    }
+
+    // ============================================================
+    // ENCRYPTED VOICE / VIDEO CALLS (WebRTC + Autho signaling)
+    // ============================================================
+
+    // Send call signal as an encrypted message through the messaging WebSocket
+    function sendCallSignal(signal) {
+      if (!currentRecipientId && !AutohoCall.getPeerId()) {
+        console.warn('[Call] No recipient to signal');
+        return;
+      }
+      const peerId = currentRecipientId || AutohoCall.getPeerId();
+      // Send via WebSocket as a lightweight call signal
+      if (messagingWs && messagingWsConnected) {
+        try {
+          messagingWs.send(JSON.stringify({
+            type: 'call_signal',
+            targetId: peerId,
+            signal: signal
+          }));
+        } catch (e) {
+          console.error('[Call] Failed to send signal via WebSocket:', e.message);
+        }
+      } else {
+        console.warn('[Call] Messaging WebSocket not connected — signal dropped');
+      }
+    }
+
+    function startVoiceCall() {
+      if (!currentRecipientId) { alert('Open a conversation first'); return; }
+      if (currentGroupId) { alert('Voice calls are 1-to-1 only'); return; }
+      if (!messagingWs || !messagingWsConnected) {
+        alert('Messaging connection not ready. Please wait a moment and try again.');
+        return;
+      }
+      document.getElementById('callPeerName').textContent = document.getElementById('chatParticipantName').textContent || 'Unknown';
+      document.getElementById('callStatusText').textContent = 'Calling...';
+      document.getElementById('callDuration').textContent = '';
+      showCallOverlay('calling', 'voice');
+      AutohoCall.startCall(currentRecipientId, 'voice', sendCallSignal);
+    }
+
+    function startVideoCall() {
+      if (!currentRecipientId) { alert('Open a conversation first'); return; }
+      if (currentGroupId) { alert('Video calls are 1-to-1 only'); return; }
+      if (!messagingWs || !messagingWsConnected) {
+        alert('Messaging connection not ready. Please wait a moment and try again.');
+        return;
+      }
+      document.getElementById('callPeerName').textContent = document.getElementById('chatParticipantName').textContent || 'Unknown';
+      document.getElementById('callStatusText').textContent = 'Calling...';
+      document.getElementById('callDuration').textContent = '';
+      showCallOverlay('calling', 'video');
+      AutohoCall.startCall(currentRecipientId, 'video', sendCallSignal);
+    }
+
+    async function acceptIncomingCall() {
+      try {
+        const result = await AutohoCall.acceptCall();
+        if (!result) {
+          console.error('[Call] acceptCall returned false');
+        }
+      } catch (e) {
+        alert('Call failed: ' + e.name + ' - ' + e.message);
+        console.error('[Call] acceptIncomingCall error:', e);
+      }
+    }
+
+    function rejectIncomingCall() {
+      AutohoCall.rejectCall();
+      hideCallOverlay();
+    }
+
+    function endCurrentCall() {
+      AutohoCall.endCall(sendCallSignal);
+    }
+
+    function toggleCallMute() {
+      const muted = AutohoCall.toggleMute();
+      document.getElementById('muteBtn').textContent = muted ? '🔇' : '🎤';
+      document.getElementById('muteBtn').style.background = muted ? 'rgba(244,67,54,0.4)' : 'rgba(255,255,255,0.15)';
+    }
+
+    function toggleCallCamera() {
+      const off = AutohoCall.toggleVideo();
+      document.getElementById('camToggleBtn').textContent = off ? '🚫' : '📷';
+      document.getElementById('camToggleBtn').style.background = off ? 'rgba(244,67,54,0.4)' : 'rgba(255,255,255,0.15)';
+    }
+
+    function showCallOverlay(state, type) {
+      const overlay = document.getElementById('callOverlay');
+      overlay.style.display = 'flex';
+      const inBtns = document.getElementById('incomingCallBtns');
+      const actBtns = document.getElementById('activeCallBtns');
+      const camBtn = document.getElementById('camToggleBtn');
+
+      if (state === 'ringing') {
+        inBtns.style.display = 'flex';
+        actBtns.style.display = 'none';
+      } else {
+        inBtns.style.display = 'none';
+        actBtns.style.display = 'flex';
+      }
+      camBtn.style.display = (type === 'video') ? 'block' : 'none';
+    }
+
+    function hideCallOverlay() {
+      document.getElementById('callOverlay').style.display = 'none';
+      document.getElementById('remoteVideo').style.display = 'none';
+      document.getElementById('localVideo').style.display = 'none';
+      document.getElementById('remoteVideo').srcObject = null;
+      document.getElementById('localVideo').srcObject = null;
+      document.getElementById('remoteAudio').srcObject = null;
+    }
+
+    function resolveCallerName(callerId) {
+      if (!callerId) return 'Unknown';
+      const conv = conversations.find(c => (c.participantInfo || []).some(p => p.accountId === callerId));
+      const participant = conv?.participantInfo?.find(p => p.accountId === callerId);
+      return participant?.displayName || (callerId.substring(0, 12) + '...');
+    }
+
+    function setCallPeerName(name) {
+      const el = document.getElementById('callPeerName');
+      if (el) el.textContent = name || 'Unknown';
+    }
+
+    // Wire AutohoCall callbacks
+    if (typeof AutohoCall !== 'undefined') {
+      AutohoCall.onStateChange(function(state, type, peerId) {
+        console.log('[Call] State:', state, type);
+        const statusEl = document.getElementById('callStatusText');
+        switch (state) {
+          case 'calling':
+            statusEl.textContent = 'Calling...';
+            break;
+          case 'ringing':
+            statusEl.textContent = 'Incoming ' + (type === 'video' ? 'video' : 'voice') + ' call...';
+            setCallPeerName(lastIncomingCallerName || resolveCallerName(peerId));
+            showCallOverlay('ringing', type);
+            // Play ringtone sound (simple oscillator)
+            try {
+              const actx = new AudioContext();
+              const osc = actx.createOscillator();
+              const gain = actx.createGain();
+              osc.type = 'sine'; osc.frequency.value = 440;
+              gain.gain.value = 0.15;
+              osc.connect(gain); gain.connect(actx.destination);
+              osc.start(); setTimeout(() => { osc.stop(); actx.close(); }, 2000);
+            } catch {}
+            break;
+          case 'active':
+            statusEl.textContent = 'Connected';
+            showCallOverlay('active', type);
+            // Attach local video
+            const ls = AutohoCall.getLocalStream();
+            if (ls && type === 'video') {
+              const lv = document.getElementById('localVideo');
+              lv.srcObject = ls;
+              lv.style.display = 'block';
+            }
+            break;
+          case 'ended':
+            statusEl.textContent = 'Call ended';
+            setTimeout(hideCallOverlay, 1500);
+            break;
+          case 'idle':
+            hideCallOverlay();
+            break;
+        }
+      });
+
+      AutohoCall.onRemoteStream(function(stream) {
+        const rv = document.getElementById('remoteVideo');
+        const ra = document.getElementById('remoteAudio');
+        rv.srcObject = stream;
+        rv.style.display = 'block';
+        ra.srcObject = stream;
+        try { rv.play(); } catch {}
+        try { ra.play(); } catch {}
+      });
+
+      AutohoCall.onDuration(function(dur) {
+        document.getElementById('callDuration').textContent = dur;
+      });
+    }
   </script>
 </body>
 </html>
