@@ -83,7 +83,9 @@ const CONFIG = {
   // Rate limiting
   rateLimitEnabled: true,
   rateLimitWindow: 60000, // 1 minute
-  rateLimitMax: 100,
+  rateLimitMax: 200,
+  authRateLimitWindow: 900000, // 15 minutes
+  authRateLimitMax: 300,
   
   // Data directory
   dataDir: './gateway-data'
@@ -1507,17 +1509,21 @@ class GatewayNode {
   rateLimitMiddleware(req, res, next) {
     const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
     const now = Date.now();
+    const isAuth = req.path.startsWith('/api/auth');
+    const key = isAuth ? `auth:${clientIp}` : clientIp;
+    const window = isAuth ? CONFIG.authRateLimitWindow : CONFIG.rateLimitWindow;
+    const max = isAuth ? CONFIG.authRateLimitMax : CONFIG.rateLimitMax;
 
-    let clientData = this.rateLimitMap.get(clientIp);
+    let clientData = this.rateLimitMap.get(key);
     if (!clientData || clientData.resetTime < now) {
-      clientData = { count: 0, resetTime: now + CONFIG.rateLimitWindow };
-      this.rateLimitMap.set(clientIp, clientData);
+      clientData = { count: 0, resetTime: now + window };
+      this.rateLimitMap.set(key, clientData);
     }
 
-    if (clientData.count >= CONFIG.rateLimitMax) {
+    if (clientData.count >= max) {
       res.status(429).json({
         error: 'Rate limit exceeded',
-        message: 'Too many requests, please try again later',
+        message: isAuth ? 'Too many login attempts, please try again later' : 'Too many requests, please try again later',
         retryAfter: Math.ceil((clientData.resetTime - now) / 1000)
       });
       return;
