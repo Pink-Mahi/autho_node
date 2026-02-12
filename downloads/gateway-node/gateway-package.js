@@ -4662,10 +4662,13 @@ class GatewayNode {
       return this.discoveredOperators;
     }
 
-    console.log('🔍 Discovering active operators...');
+    console.log('🔍 Discovering active operators from ALL seeds...');
     
     const seeds = this.getSeedNodes();
-    for (const seed of seeds) {
+    const mergedOperators = new Map(); // operatorId -> operator info
+
+    // Query ALL seeds in parallel and merge results
+    const fetchPromises = seeds.map(async (seed) => {
       try {
         const [host, port] = String(seed).split(':');
         const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
@@ -4675,22 +4678,58 @@ class GatewayNode {
           ? (port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`)
           : `${protocol}://${host}`;
 
-        const response = await fetch(`${httpUrl}/api/network/operators`);
+        const response = await fetch(`${httpUrl}/api/network/operators`, {
+          signal: AbortSignal.timeout(10000),
+        });
         const data = await response.json();
 
         if (data && data.success && Array.isArray(data.operators)) {
-          this.discoveredOperators = data.operators;
-          this.lastOperatorDiscovery = now;
-          console.log(`✅ Discovered ${data.operators.length} active operators`);
-          return this.discoveredOperators;
+          console.log(`  ✅ ${seed}: returned ${data.operators.length} operators`);
+          return data.operators;
         }
       } catch (error) {
-        console.log(`⚠️  Failed to discover operators from ${seed}: ${error.message}`);
+        console.log(`  ⚠️  ${seed}: ${error.message}`);
+      }
+      return [];
+    });
+
+    const results = await Promise.allSettled(fetchPromises);
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        for (const op of result.value) {
+          const key = op.operatorId || op.wsUrl || op.operatorUrl;
+          if (key && !mergedOperators.has(key)) {
+            mergedOperators.set(key, op);
+          }
+        }
       }
     }
 
-    console.log('⚠️  Operator discovery failed, using hardcoded seeds');
-    return [];
+    // Also ensure hardcoded seeds are always included as operators
+    for (const seedHost of seeds) {
+      const [host, port] = String(seedHost).split(':');
+      const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+      const wsProtocol = isLocal ? 'ws' : 'wss';
+      const httpProtocol = isLocal ? 'http' : 'https';
+      const wsUrl = port ? `${wsProtocol}://${host}:${port}` : `${wsProtocol}://${host}`;
+      const httpUrl = isLocal
+        ? (port ? `${httpProtocol}://${host}:${port}` : `${httpProtocol}://${host}`)
+        : `${httpProtocol}://${host}`;
+      const seedId = `seed-${host}`;
+      if (!mergedOperators.has(seedId) && ![...mergedOperators.values()].some(o => o.wsUrl === wsUrl)) {
+        mergedOperators.set(seedId, { operatorId: seedId, wsUrl, operatorUrl: httpUrl });
+      }
+    }
+
+    if (mergedOperators.size > 0) {
+      this.discoveredOperators = Array.from(mergedOperators.values());
+      this.lastOperatorDiscovery = now;
+      console.log(`🌐 Total merged operators from all seeds: ${this.discoveredOperators.length}`);
+    } else {
+      console.log('⚠️  Operator discovery failed, using hardcoded seeds');
+    }
+
+    return this.discoveredOperators;
   }
 
   async connectToOperators() {
