@@ -12,6 +12,51 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const https = require('https');
+const { execSync } = require('child_process');
+
+// Generate self-signed HTTPS cert for localhost (required for getUserMedia in Firefox)
+function getOrCreateSelfSignedCert(dataDir) {
+  const sslDir = path.join(dataDir, 'ssl');
+  const keyPath = path.join(sslDir, 'key.pem');
+  const certPath = path.join(sslDir, 'cert.pem');
+
+  // Return existing cert if present
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    try {
+      return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+    } catch { /* regenerate */ }
+  }
+
+  fs.mkdirSync(sslDir, { recursive: true });
+
+  // Try openssl (Linux/Mac/Windows with Git)
+  const opensslPaths = ['openssl'];
+  if (process.platform === 'win32') {
+    opensslPaths.push(
+      'C:\\Program Files\\Git\\usr\\bin\\openssl.exe',
+      'C:\\Program Files (x86)\\Git\\usr\\bin\\openssl.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Git', 'usr', 'bin', 'openssl.exe')
+    );
+  }
+
+  for (const opensslBin of opensslPaths) {
+    try {
+      execSync(
+        `"${opensslBin}" req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 3650 -nodes -subj "/CN=localhost"`,
+        { stdio: 'pipe', timeout: 10000 }
+      );
+      if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+        console.log('🔐 Generated self-signed HTTPS certificate for localhost');
+        return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+      }
+    } catch { /* try next */ }
+  }
+
+  console.warn('⚠️  Could not generate HTTPS cert (openssl not found)');
+  console.warn('   Voice/video calls require HTTPS. Install Git (includes openssl) or use Chrome.');
+  return null;
+}
 
 function loadGatewayEnvFile() {
   try {
@@ -6586,7 +6631,7 @@ class GatewayNode {
     this.messagingWss = new WebSocket.Server({ noServer: true });
     this.setupMessagingWebSocket();
 
-    httpServer.on('upgrade', (request, socket, head) => {
+    const upgradeHandler = (request, socket, head) => {
       const url = require('url');
       const pathname = url.parse(request.url).pathname;
       if (pathname === '/ws/messaging') {
@@ -6596,13 +6641,33 @@ class GatewayNode {
       } else {
         socket.destroy();
       }
-    });
+    };
+    httpServer.on('upgrade', upgradeHandler);
+
+    // HTTPS server for secure context (required for getUserMedia in Firefox)
+    const HTTPS_PORT = EFFECTIVE_HTTP_PORT + 443; // e.g. 3444
+    let httpsServer = null;
+    const sslCert = getOrCreateSelfSignedCert(CONFIG.dataDir);
+    if (sslCert) {
+      try {
+        httpsServer = https.createServer(sslCert, this.app);
+        httpsServer.on('upgrade', upgradeHandler);
+        httpsServer.listen(HTTPS_PORT, () => {
+          console.log(`🔐 HTTPS: https://localhost:${HTTPS_PORT} (for voice/video calls)`);
+        });
+      } catch (e) {
+        console.warn('⚠️  Could not start HTTPS server:', e.message);
+      }
+    }
 
     httpServer.listen(EFFECTIVE_HTTP_PORT, () => {
       console.log('');
       console.log('✅ Gateway Node is running!');
       console.log('========================');
-      console.log(`🌐 HTTP API: http://localhost:${EFFECTIVE_HTTP_PORT}`);
+      console.log(`🌐 HTTP:  http://localhost:${EFFECTIVE_HTTP_PORT}`);
+      if (httpsServer) {
+        console.log(`🔐 HTTPS: https://localhost:${HTTPS_PORT}  ← USE THIS FOR CALLS`);
+      }
       console.log(`📡 WebSocket: ws://localhost:${EFFECTIVE_WS_PORT}`);
       console.log(`💬 Messaging WS: ws://localhost:${EFFECTIVE_HTTP_PORT}/ws/messaging`);
       console.log(`📊 Health: http://localhost:${EFFECTIVE_HTTP_PORT}/health`);
