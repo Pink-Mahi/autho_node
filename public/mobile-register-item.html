@@ -437,6 +437,49 @@
           <input type="number" id="estimatedValue" placeholder="e.g., 5000">
         </div>
 
+        <div class="form-group">
+          <label>Asset Class</label>
+          <select id="assetClass">
+            <option value="physical_title" selected>Physical Title</option>
+            <option value="ticket_access">Ticket Access</option>
+            <option value="encrypted_document">Encrypted Document</option>
+            <option value="course_access">Course Access</option>
+            <option value="secret_code_access">Secret Code Access</option>
+          </select>
+        </div>
+
+        <div id="digitalPolicySection" style="display:none; border:1px solid rgba(212,175,55,.25); border-radius:10px; padding:12px; margin-top:12px;">
+          <div class="form-group">
+            <label>Visibility (User digital items)</label>
+            <select id="accessVisibility">
+              <option value="private" selected>Private</option>
+              <option value="invite_only">Invite Only</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Max Transfers (optional)</label>
+              <input type="number" id="accessMaxTransfers" min="0" step="1" placeholder="e.g., 1">
+            </div>
+            <div class="form-group">
+              <label>Expires At (optional)</label>
+              <input type="datetime-local" id="accessExpiresAt">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label><input type="checkbox" id="accessTransferable" style="width:auto; margin-right:8px;"> Transferable</label>
+            </div>
+            <div class="form-group">
+              <label><input type="checkbox" id="accessRedeemableOnce" style="width:auto; margin-right:8px;"> Redeemable Once</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Content Commitment Hash (optional sha256 hex)</label>
+            <input type="text" id="contentCommitmentHash" maxlength="64" placeholder="64-char hex">
+          </div>
+        </div>
+
         <!-- Photos removed - only manufacturers and authenticators can add images -->
       </div>
 
@@ -494,6 +537,18 @@
     let selectedBrandEntity = null;
     let productSearchTimeout = null;
     let productSuggestions = [];
+    const DIGITAL_ASSET_CLASSES = new Set(['ticket_access', 'encrypted_document', 'course_access', 'secret_code_access']);
+
+    function isDigitalAssetClass(assetClass) {
+      return DIGITAL_ASSET_CLASSES.has(String(assetClass || '').trim());
+    }
+
+    function updateDigitalPolicyVisibility() {
+      const assetClassEl = document.getElementById('assetClass');
+      const sectionEl = document.getElementById('digitalPolicySection');
+      if (!assetClassEl || !sectionEl) return;
+      sectionEl.style.display = isDigitalAssetClass(assetClassEl.value) ? 'block' : 'none';
+    }
 
     // Initialize
     window.addEventListener('load', () => {
@@ -503,6 +558,9 @@
       userWallet = WalletAuth.getWallet();
       initBrandAutocomplete();
       initProductAutocomplete();
+      const assetClassEl = document.getElementById('assetClass');
+      if (assetClassEl) assetClassEl.addEventListener('change', updateDigitalPolicyVisibility);
+      updateDigitalPolicyVisibility();
     });
 
     // Brand autocomplete
@@ -744,10 +802,49 @@
       const brandName = document.getElementById('brandName').value.trim();
       const itemName = document.getElementById('itemName').value.trim();
       const description = document.getElementById('description').value.trim();
+      const assetClass = String(document.getElementById('assetClass')?.value || 'physical_title').trim();
+      const contentCommitmentHashRaw = String(document.getElementById('contentCommitmentHash')?.value || '').trim().toLowerCase();
 
       if (!brandName || !itemName || !description) {
         showError('Please fill in all required fields.');
         return;
+      }
+
+      if (contentCommitmentHashRaw && !/^[0-9a-f]{64}$/.test(contentCommitmentHashRaw)) {
+        showError('Content commitment hash must be a 64-character sha256 hex string.');
+        return;
+      }
+
+      const isDigital = isDigitalAssetClass(assetClass);
+      let accessPolicy = undefined;
+      if (isDigital) {
+        const visibility = String(document.getElementById('accessVisibility')?.value || 'private').trim();
+        const maxTransfersRaw = String(document.getElementById('accessMaxTransfers')?.value || '').trim();
+        const expiresAtRaw = String(document.getElementById('accessExpiresAt')?.value || '').trim();
+
+        accessPolicy = {
+          visibility: visibility === 'invite_only' ? 'invite_only' : 'private',
+          transferable: Boolean(document.getElementById('accessTransferable')?.checked),
+          isRedeemableOnce: Boolean(document.getElementById('accessRedeemableOnce')?.checked),
+        };
+
+        if (maxTransfersRaw) {
+          const maxTransfers = Number(maxTransfersRaw);
+          if (!Number.isInteger(maxTransfers) || maxTransfers < 0) {
+            showError('Max transfers must be a non-negative integer.');
+            return;
+          }
+          accessPolicy.maxTransfers = maxTransfers;
+        }
+
+        if (expiresAtRaw) {
+          const expiresMs = Date.parse(expiresAtRaw);
+          if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
+            showError('Expiration must be a valid future date/time.');
+            return;
+          }
+          accessPolicy.expiresAt = Math.trunc(expiresMs);
+        }
       }
 
       btn.disabled = true;
@@ -768,6 +865,9 @@
             condition: document.getElementById('condition').value,
             estimatedValue: document.getElementById('estimatedValue').value ? Number(document.getElementById('estimatedValue').value) : undefined,
           },
+          assetClass,
+          accessPolicy,
+          contentCommitmentHash: contentCommitmentHashRaw || undefined,
           issuerRole: 'user',
         };
 

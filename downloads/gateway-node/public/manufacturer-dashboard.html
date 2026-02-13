@@ -816,6 +816,50 @@
                 </div>
 
                 <div class="form-group">
+                    <label>Asset Class</label>
+                    <select id="assetClass">
+                        <option value="physical_title" selected>Physical Title</option>
+                        <option value="ticket_access">Ticket Access</option>
+                        <option value="encrypted_document">Encrypted Document</option>
+                        <option value="course_access">Course Access</option>
+                        <option value="secret_code_access">Secret Code Access</option>
+                    </select>
+                </div>
+
+                <div id="digitalPolicySection" style="display:none; border:1px solid rgba(102,126,234,0.25); border-radius:10px; padding:12px; margin-bottom:12px;">
+                    <div class="form-group">
+                        <label>Visibility</label>
+                        <select id="accessVisibility">
+                            <option value="private">Private</option>
+                            <option value="invite_only">Invite Only</option>
+                            <option value="public" selected>Public</option>
+                        </select>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div class="form-group">
+                            <label>Max Transfers (optional)</label>
+                            <input type="number" id="accessMaxTransfers" min="0" step="1" placeholder="e.g., 10">
+                        </div>
+                        <div class="form-group">
+                            <label>Expires At (optional)</label>
+                            <input type="datetime-local" id="accessExpiresAt">
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div class="form-group">
+                            <label><input type="checkbox" id="accessTransferable" style="width:auto; margin-right:8px;"> Transferable</label>
+                        </div>
+                        <div class="form-group">
+                            <label><input type="checkbox" id="accessRedeemableOnce" style="width:auto; margin-right:8px;"> Redeemable Once</label>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Content Commitment Hash (optional sha256 hex)</label>
+                        <input type="text" id="contentCommitmentHash" maxlength="64" placeholder="64-char hex">
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label>Item Photos (optional, up to 3)</label>
                     <input type="file" id="mintImages" accept="image/*" multiple>
                     <div id="mintImagesPreview" style="margin-top: 10px; display:flex; gap:10px; flex-wrap:wrap;"></div>
@@ -1036,6 +1080,13 @@
                 statusEl.textContent = 'Search failed';
             }
         }
+
+        document.getElementById('assetClass')?.addEventListener('change', (e) => {
+            const value = String((e && e.target && e.target.value) || 'physical_title').trim();
+            const isDigital = value === 'ticket_access' || value === 'encrypted_document' || value === 'course_access' || value === 'secret_code_access';
+            const section = document.getElementById('digitalPolicySection');
+            if (section) section.style.display = isDigital ? 'block' : 'none';
+        });
         
         function selectBrandSuggestion(index) {
             if (index < 0 || index >= brandSuggestions.length) return;
@@ -2997,6 +3048,11 @@
         async function mintItem(event) {
             event.preventDefault();
 
+            const isDigitalAssetClass = (assetClass) => {
+                const v = String(assetClass || '').trim();
+                return v === 'ticket_access' || v === 'encrypted_document' || v === 'course_access' || v === 'secret_code_access';
+            };
+
             let wallet = {};
             try {
                 wallet = JSON.parse(localStorage.getItem('autho_wallet') || '{}');
@@ -3028,6 +3084,48 @@
                 category: document.getElementById('category').value,
                 price: document.getElementById('price').value
             };
+
+            const assetClass = String(document.getElementById('assetClass')?.value || 'physical_title').trim();
+            const contentCommitmentHashRaw = String(document.getElementById('contentCommitmentHash')?.value || '').trim().toLowerCase();
+            if (contentCommitmentHashRaw && !/^[0-9a-f]{64}$/.test(contentCommitmentHashRaw)) {
+                alert('Content commitment hash must be a 64-character sha256 hex string.');
+                return;
+            }
+
+            let accessPolicy = undefined;
+            if (isDigitalAssetClass(assetClass)) {
+                const visibility = String(document.getElementById('accessVisibility')?.value || 'public').trim();
+                const maxTransfersRaw = String(document.getElementById('accessMaxTransfers')?.value || '').trim();
+                const expiresAtRaw = String(document.getElementById('accessExpiresAt')?.value || '').trim();
+
+                accessPolicy = {
+                    visibility: visibility === 'private' || visibility === 'invite_only' ? visibility : 'public',
+                    transferable: Boolean(document.getElementById('accessTransferable')?.checked),
+                    isRedeemableOnce: Boolean(document.getElementById('accessRedeemableOnce')?.checked),
+                };
+
+                if (maxTransfersRaw) {
+                    const maxTransfers = Number(maxTransfersRaw);
+                    if (!Number.isInteger(maxTransfers) || maxTransfers < 0) {
+                        alert('Max transfers must be a non-negative integer.');
+                        return;
+                    }
+                    accessPolicy.maxTransfers = maxTransfers;
+                }
+
+                if (expiresAtRaw) {
+                    const expiresMs = Date.parse(expiresAtRaw);
+                    if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
+                        alert('Expiration must be a valid future date/time.');
+                        return;
+                    }
+                    accessPolicy.expiresAt = Math.trunc(expiresMs);
+                }
+            }
+
+            itemData.assetClass = assetClass;
+            itemData.accessPolicy = accessPolicy;
+            itemData.contentCommitmentHash = contentCommitmentHashRaw || undefined;
 
             if (!String(itemData.serialNumber || '').trim()) {
                 alert('Serial Number is required');
@@ -3097,6 +3195,9 @@
                 const manufacturerSignature = 'sig_' + Date.now();
                 const requestBody = {
                     manufacturerId,
+                    assetClass: itemData.assetClass,
+                    accessPolicy: itemData.accessPolicy,
+                    contentCommitmentHash: itemData.contentCommitmentHash,
                     serialNumber: String(itemData.serialNumber || ''),
                     metadata: {
                         itemType: String(itemData.itemType || ''),
