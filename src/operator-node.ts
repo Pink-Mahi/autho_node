@@ -6817,7 +6817,7 @@ export class OperatorNode extends EventEmitter {
    * Broadcast an ephemeral event to all operator peers AND gateways (for decentralized messaging)
    * Gateways serve as backup storage - they persist messages and can restore them to operators after restart
    */
-  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string): void {
+  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string, excludeMainSeed?: boolean): void {
     const message = {
       type: 'ephemeral_event',
       event,
@@ -6842,6 +6842,13 @@ export class OperatorNode extends EventEmitter {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(msgStr);
         }
+      } catch {}
+    }
+
+    // Forward to main seed so the main node and its gateways also receive the event
+    if (!excludeMainSeed && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
+      try {
+        this.mainSeedWs.send(msgStr);
       } catch {}
     }
   }
@@ -7624,7 +7631,7 @@ export class OperatorNode extends EventEmitter {
           const broadcastCopy = JSON.parse(JSON.stringify(eventData));
           const imported = await this.ephemeralStore!.importEvent(eventData);
           if (imported) {
-            this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
+            this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId, true);
           }
         } catch (e: any) {
           console.log('[Ephemeral] Error importing ephemeral_event from seed:', e?.message);
