@@ -4343,25 +4343,19 @@ export class OperatorNode extends EventEmitter {
         const enriched = conversations.map(conv => ({
           ...conv,
           participantInfo: conv.participants.map(p => {
-            const acc = resolveAccountForParticipant(p);
             const pid = String(p || '').trim();
-            const resolvedId = String((acc as any)?.accountId || p);
+            const acc = resolveAccountForParticipant(pid);
+            const resolvedId = String((acc as any)?.accountId || pid);
             return {
               accountId: resolvedId,
-              participantId: pid,
-              displayName: (acc as any)?.username || (acc as any)?.companyName || p.substring(0, 12) + '...',
+              displayName: (acc as any)?.username || pid.substring(0, 12) + '...',
               isManufacturer: (acc as any)?.role === 'manufacturer',
               isAuthenticator: (acc as any)?.role === 'authenticator',
             };
           }),
         }));
 
-        res.json({
-          success: true,
-          selfAccountId: String(account.accountId || '').trim(),
-          selfWalletAddress: String(walletAddress || '').trim(),
-          conversations: enriched,
-        });
+        res.json({ success: true, conversations: enriched });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
       }
@@ -4376,7 +4370,10 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const messages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+        const rawMessages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+
+        // Restore any extracted large content from disk
+        const messages = await this.ephemeralStore!.restoreEventsContent(rawMessages);
 
         // Get user's walletAddress to match against recipientId (which may be Bitcoin address)
         const fullAccount = this.state.accounts.get(account.accountId) as any;
@@ -6698,7 +6695,8 @@ export class OperatorNode extends EventEmitter {
         try {
           const sinceTimestamp = Number(message?.since || 0);
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
-          const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+          const rawEvents = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+          const events = await this.ephemeralStore!.restoreEventsContent(rawEvents);
 
           ws.send(JSON.stringify({
             type: 'ephemeral_sync_response',
@@ -7181,7 +7179,8 @@ export class OperatorNode extends EventEmitter {
         try {
           const sinceTimestamp = Number(message?.since || 0);
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
-          const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+          const rawEvents = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
+          const events = await this.ephemeralStore!.restoreEventsContent(rawEvents);
 
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
