@@ -11,6 +11,7 @@ import { PeerResilienceManager, autoRepairFromMajority } from './consensus/peer-
 import { EventStore, EventType, QuorumSignature } from './event-store';
 import { StateBuilder } from './event-store';
 import { verifySignature, signMessage, sha256 } from './crypto';
+import { RegistryEvent } from './registry/registry-types';
 import { OperatorPeerDiscovery, OperatorPeerInfo, connectToOperatorPeer } from './operator-peer-discovery';
 import { 
   ConsensusNode, 
@@ -655,17 +656,23 @@ export class OperatorNode extends EventEmitter {
     return Number.isFinite(raw) && raw > 0 ? raw : 3;
   }
 
-  private buildRegistryPayloadHash(event: Partial<any>): string {
+  private buildRegistryPayloadHash(event: Partial<RegistryEvent>): string {
     return sha256(JSON.stringify(event));
   }
 
-  public async requestRegistryQuorumSignatures(event: Partial<any>): Promise<QuorumSignature[]> {
+  /**
+   * Request real operator consensus signatures for a registry event.
+   * Broadcasts to all connected peer operators, collects M-of-N signatures,
+   * times out after 8s and returns whatever signatures were collected.
+   */
+  public async requestRegistryQuorumSignatures(event: Partial<RegistryEvent>): Promise<QuorumSignature[]> {
     const required = this.getRegistryQuorumM();
     const payloadHash = this.buildRegistryPayloadHash(event);
     const operatorId = this.getOperatorId();
     const publicKey = String(this.config.publicKey || '').trim();
     const privateKey = String(this.config.privateKey || '').trim();
 
+    // Sign with our own key first
     const ownSig: QuorumSignature[] = [];
     if (publicKey && privateKey) {
       try {
@@ -676,12 +683,14 @@ export class OperatorNode extends EventEmitter {
       }
     }
 
+    // If we have enough signatures already or no peers, return immediately
     if (ownSig.length >= required || this.operatorPeerConnections.size === 0) {
       return ownSig;
     }
 
     const requestId = `regsig_${Date.now()}_${randomBytes(6).toString('hex')}`;
 
+    // Create a promise that resolves when enough signatures are collected or timeout
     const promise = new Promise<QuorumSignature[]>((resolve) => {
       const timeout = setTimeout(() => {
         const pending = this.pendingRegistrySignatureRequests.get(requestId);
@@ -698,6 +707,7 @@ export class OperatorNode extends EventEmitter {
       });
     });
 
+    // Broadcast signing request to all connected peer operators
     const requestMsg = JSON.stringify({
       type: 'registry_sign_request',
       requestId,
@@ -721,6 +731,10 @@ export class OperatorNode extends EventEmitter {
     return promise;
   }
 
+  /**
+   * Handle incoming registry_sign_request from a peer operator.
+   * Validates the request, signs with our key, sends back registry_sign_response.
+   */
   private handleRegistrySignRequest(peerId: string, message: any, ws: WebSocket): void {
     try {
       const { requestId, payloadHash, fromOperatorId } = message;
@@ -750,6 +764,10 @@ export class OperatorNode extends EventEmitter {
     }
   }
 
+  /**
+   * Handle incoming registry_sign_response from a peer operator.
+   * Collects signatures and resolves the pending request when M-of-N is reached.
+   */
   private handleRegistrySignResponse(message: any): void {
     try {
       const { requestId, operatorId, publicKey, signature } = message;
@@ -758,10 +776,16 @@ export class OperatorNode extends EventEmitter {
       const pending = this.pendingRegistrySignatureRequests.get(requestId);
       if (!pending) return;
 
+      // Verify signature before accepting
+      const origRequest = this.pendingRegistrySignatureRequests.get(requestId);
+      if (!origRequest) return;
+
+      // Check for duplicate operator signatures
       if (pending.signatures.some(s => s.operatorId === operatorId)) return;
 
       pending.signatures.push({ operatorId, publicKey: publicKey || '', signature });
 
+      // If we have enough signatures, resolve immediately
       if (pending.signatures.length >= pending.required) {
         clearTimeout(pending.timeout);
         this.pendingRegistrySignatureRequests.delete(requestId);
@@ -1001,8 +1025,8 @@ export class OperatorNode extends EventEmitter {
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json({ limit: '100mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // CORS for gateway nodes
     this.app.use((req, res, next) => {
@@ -1688,59 +1712,6 @@ export class OperatorNode extends EventEmitter {
             behind: Math.max(0, mainNodeSequence - events.length),
           },
           timestamp: Date.now(),
-        });
-      } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    // TURN discovery endpoint (self-hosted relay configuration)
-    this.app.get('/api/network/turn', async (req: Request, res: Response) => {
-      try {
-        const urlsRaw = String(process.env.AUTHO_TURN_URLS || process.env.TURN_URLS || '').trim();
-        const envUrls = urlsRaw
-          ? urlsRaw.split(',').map(s => s.trim()).filter(Boolean)
-          : [];
-        const envUser = String(process.env.AUTHO_TURN_USER || process.env.TURN_USER || '').trim();
-        const envCred = String(process.env.AUTHO_TURN_CRED || process.env.TURN_CRED || '').trim();
-
-        let urls = envUrls;
-        let username = envUser;
-        let credential = envCred;
-
-        if ((!urls.length || !credential) && !envUrls.length) {
-          try {
-            const dataDir = process.env.OPERATOR_DATA_DIR || './operator-data';
-            const turnPath = path.join(dataDir, 'turn.json');
-            if (fs.existsSync(turnPath)) {
-              const raw = JSON.parse(fs.readFileSync(turnPath, 'utf8')) as any;
-              const fileUrls = Array.isArray(raw?.urls) ? raw.urls : [];
-              if (fileUrls.length) urls = fileUrls;
-              if (!username) username = String(raw?.username || '').trim();
-              if (!credential) credential = String(raw?.credential || '').trim();
-            }
-          } catch {}
-        }
-
-        if ((!urls || !urls.length) && credential) {
-          const host = String(req.headers.host || '').trim();
-          if (host) {
-            urls = [
-              `turn:${host}:3478?transport=udp`,
-              `turn:${host}:3478?transport=tcp`,
-            ];
-          }
-        }
-
-        res.json({
-          success: true,
-          turn: urls.length
-            ? {
-                urls,
-                username: username || undefined,
-                credential: credential || undefined,
-              }
-            : null,
         });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -2940,8 +2911,7 @@ export class OperatorNode extends EventEmitter {
         const anchorResult = await btcService.createOpReturnAnchor(
           operatorPrivateKey, 
           opReturnData, 
-          undefined, // use default fee rate
-          derivedAddress // use address derived from private key
+          undefined // use default fee rate
         );
         
         if (!anchorResult.success || !anchorResult.txid) {
@@ -3366,11 +3336,11 @@ export class OperatorNode extends EventEmitter {
         const headers: Record<string, string> = authHeader ? { 'Authorization': authHeader } : {};
         
         const response = await fetch(targetUrl, { method: 'GET', headers });
-        const data = await response.json() as Record<string, unknown>;
+        const data = await response.json();
 
         // Enhance with operator's own main seed connection status
         const enhancedData = {
-          ...data,
+          ...(typeof data === 'object' && data !== null ? data : {}),
           mainSeedConnected: this.isConnectedToMain,
           mainSeedUptimeMs: this.isConnectedToMain && this.state.lastSyncedAt ? Date.now() - this.state.lastSyncedAt : 0
         };
@@ -3425,103 +3395,11 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.app.post('/api/auth/login', async (req: Request, res: Response) => {
-      // Custom handler to capture session from seed and store locally
-      const base = this.getSeedHttpBase();
-      if (!base) {
-        return res.status(502).json({ success: false, error: 'No seed HTTP base configured' });
-      }
-
-      try {
-        const seedResp = await fetch(`${base}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req.body),
-        });
-
-        const data = await seedResp.json() as any;
-        
-        if (seedResp.ok && data.success && data.sessionId && data.accountId) {
-          // Store session locally so subsequent requests work
-          const now = Date.now();
-          this.sessions.set(data.sessionId, {
-            sessionId: data.sessionId,
-            accountId: data.accountId,
-            createdAt: now,
-            expiresAt: now + 24 * 60 * 60 * 1000, // 24 hours
-          });
-          console.log(`[Auth] Cached session ${data.sessionId.substring(0, 8)}... for account ${data.accountId.substring(0, 8)}...`);
-        }
-
-        res.status(seedResp.status).json(data);
-      } catch (e: any) {
-        console.error('[Auth] Login proxy error:', e.message);
-        res.status(502).json({ success: false, error: e?.message || String(e) });
-      }
+      await this.proxyToSeed(req, res);
     });
 
     this.app.get('/api/auth/me', async (req: Request, res: Response) => {
       await this.proxyToSeed(req, res);
-    });
-
-    // Verify session endpoint for gateway nodes
-    this.app.post('/api/auth/verify-session', async (req: Request, res: Response) => {
-      try {
-        const sessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
-        if (!sessionToken) {
-          return res.status(401).json({ success: false, error: 'No session token provided' });
-        }
-
-        const session = this.sessions.get(String(sessionToken));
-        if (!session) {
-          // Try to validate with seed node
-          const base = this.getSeedHttpBase();
-          if (base) {
-            try {
-              const seedRes = await fetch(`${base}/api/auth/verify-session`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-session-token': String(sessionToken) },
-                body: JSON.stringify({ sessionToken }),
-              });
-              if (seedRes.ok) {
-                const data = await seedRes.json() as { success?: boolean; account?: { accountId: string } };
-                if (data.success && data.account) {
-                  // Cache the session locally
-                  const now = Date.now();
-                  this.sessions.set(String(sessionToken), {
-                    sessionId: String(sessionToken),
-                    accountId: data.account.accountId,
-                    createdAt: now,
-                    expiresAt: now + 24 * 60 * 60 * 1000,
-                  });
-                  return res.json({ success: true, account: data.account });
-                }
-              }
-            } catch (e: any) {
-              console.error('[Auth] Seed verify-session error:', e.message);
-            }
-          }
-          return res.status(401).json({ success: false, error: 'Invalid or expired session' });
-        }
-
-        if (Date.now() > session.expiresAt) {
-          this.sessions.delete(String(sessionToken));
-          return res.status(401).json({ success: false, error: 'Session expired' });
-        }
-
-        // Get account info
-        const account = this.state.accounts.get(session.accountId);
-        return res.json({
-          success: true,
-          account: {
-            accountId: session.accountId,
-            publicKey: account?.publicKey || session.accountId,
-            username: (account as any)?.username || '',
-          }
-        });
-      } catch (e: any) {
-        console.error('[Auth] verify-session error:', e.message);
-        return res.status(500).json({ success: false, error: 'Session verification failed' });
-      }
     });
 
     this.app.get('/api/registry/item/:itemId', async (req: Request, res: Response) => {
@@ -4186,7 +4064,7 @@ export class OperatorNode extends EventEmitter {
         try {
           const fullAccount: any = this.state.accounts.get(account.accountId);
           walletAddress = String(fullAccount?.walletAddress || fullAccount?.identityAddress || '').trim();
-          walletPublicKey = String(fullAccount?.walletPublicKey || fullAccount?.publicKey || '').trim().toLowerCase();
+          walletPublicKey = String(fullAccount?.publicKey || '').trim().toLowerCase();
           if (walletAddress) {
             this.messagingEncryptionKeyRegistry.set(walletAddress, { encryptionPublicKeyHex, updatedAt: now });
           }
@@ -4238,7 +4116,7 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        let rec: { encryptionPublicKeyHex: string; updatedAt: number; } | undefined | null = this.messagingEncryptionKeyRegistry.get(id);
+        let rec = this.messagingEncryptionKeyRegistry.get(id);
         
         // If not found locally and this is a client request, try to fetch from peer operators
         // Don't recurse if this is already an internal request
@@ -4254,42 +4132,6 @@ export class OperatorNode extends EventEmitter {
         res.json({ success: true, encryptionPublicKeyHex: rec.encryptionPublicKeyHex, updatedAt: rec.updatedAt });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message || 'Failed to get key' });
-      }
-    });
-
-    // Internal relay: deliver call signaling to a target user on this operator
-    this.app.post('/api/messages/call-signal', async (req: Request, res: Response) => {
-      try {
-        const isInternalRequest = req.headers['x-internal-request'] === 'operator-to-operator';
-        if (!isInternalRequest) {
-          res.status(401).json({ success: false, error: 'Authentication required' });
-          return;
-        }
-
-        const targetId = String(req.body?.targetId || '').trim();
-        const fromId = String(req.body?.fromId || '').trim();
-        const signal = req.body?.signal;
-        if (!targetId || !fromId || !signal) {
-          res.status(400).json({ success: false, error: 'targetId, fromId, signal required' });
-          return;
-        }
-
-        let delivered = false;
-        for (const [clientWs, meta] of this.gatewayConnections.entries()) {
-          if ((meta as any)?.messagingPublicKey === targetId && clientWs.readyState === WebSocket.OPEN) {
-            clientWs.send(JSON.stringify({
-              type: 'call_signal',
-              fromId,
-              signal,
-            }));
-            delivered = true;
-            break;
-          }
-        }
-
-        res.json({ success: true, delivered });
-      } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message || 'Failed to relay call signal' });
       }
     });
 
@@ -4477,14 +4319,30 @@ export class OperatorNode extends EventEmitter {
         }
         const conversations = Array.from(conversationMap.values());
 
+        // Resolve account by accountId OR walletAddress (reverse lookup)
+        const resolveAccountForParticipant = (participantId: string): any | undefined => {
+          const direct = this.state.accounts.get(participantId);
+          if (direct) return direct;
+          const pid = String(participantId || '').trim();
+          if (!pid) return undefined;
+          for (const a of this.state.accounts.values()) {
+            const wa = String((a as any)?.walletAddress || (a as any)?.identityAddress || '').trim();
+            if (wa && wa === pid) return a;
+          }
+          return undefined;
+        };
+
         // Enrich with participant info
         const enriched = conversations.map(conv => ({
           ...conv,
           participantInfo: conv.participants.map(p => {
-            const acc = this.state.accounts.get(p);
+            const acc = resolveAccountForParticipant(p);
+            const resolvedId = String((acc as any)?.accountId || p);
             return {
-              accountId: p,
-              displayName: acc?.username || acc?.companyName || p.substring(0, 12) + '...',
+              accountId: resolvedId,
+              displayName: (acc as any)?.username || (acc as any)?.companyName || p.substring(0, 12) + '...',
+              isManufacturer: (acc as any)?.role === 'manufacturer',
+              isAuthenticator: (acc as any)?.role === 'authenticator',
             };
           }),
         }));
@@ -4507,41 +4365,24 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        // Pagination params
-        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-        const before = parseInt(req.query.before as string) || Date.now() + 1000;
-
-        const rawMessages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
+        const messages = this.ephemeralStore!.getConversationMessages(req.params.conversationId);
 
         // Get user's walletAddress to match against recipientId (which may be Bitcoin address)
         const fullAccount = this.state.accounts.get(account.accountId) as any;
         const walletAddress = fullAccount?.walletAddress || fullAccount?.identityAddress;
 
-        // OPTIMIZATION: Filter FIRST (lightweight), then restore content only for filtered messages
-        const filtered = rawMessages.filter(m => {
+        // Filter to only show messages where user is sender or recipient (by accountId OR walletAddress)
+        const filtered = messages.filter(m => {
           const p = m.payload as MessagePayload;
           const isUserSender = p.senderId === account.accountId || p.senderId === walletAddress;
           const isUserRecipient = p.recipientId === account.accountId || p.recipientId === walletAddress;
           return isUserSender || isUserRecipient;
         });
 
-        // Sort by timestamp descending, apply pagination
-        const sorted = filtered
-          .filter(m => m.timestamp < before)
-          .sort((a, b) => b.timestamp - a.timestamp)
-          .slice(0, limit);
-
-        // Restore content only for the paginated subset (much faster)
-        const messages = await this.ephemeralStore!.restoreEventsContent(sorted);
-
-        // Return in chronological order for display
-        const chronological = messages.sort((a, b) => a.timestamp - b.timestamp);
-
         res.json({
           success: true,
           conversationId: req.params.conversationId,
-          hasMore: filtered.length > limit,
-          messages: chronological.map(m => ({
+          messages: filtered.map(m => ({
             messageId: m.payload.messageId,
             senderId: m.payload.senderId,
             recipientId: m.payload.recipientId,
@@ -4552,6 +4393,7 @@ export class OperatorNode extends EventEmitter {
             timestamp: m.timestamp,
             expiresAt: m.expiresAt,
             replyToMessageId: m.payload.replyToMessageId,
+            // Disappearing message fields
             mediaType: m.payload.mediaType,
             expiresAfterView: m.payload.expiresAfterView,
             viewedAt: m.payload.viewedAt,
@@ -4559,7 +4401,6 @@ export class OperatorNode extends EventEmitter {
           })),
         });
       } catch (error: any) {
-        console.error('[Messaging] Get messages error:', error);
         res.status(500).json({ success: false, error: error.message });
       }
     });
@@ -4719,262 +4560,6 @@ export class OperatorNode extends EventEmitter {
     });
 
     // ============================================================
-    // PREMIUM SERVICE ENDPOINTS
-    // ============================================================
-
-    // Get account service balance (needed by client-side fetchServiceBalance)
-    this.app.get('/api/accounts/:accountId/service-balance', async (req: Request, res: Response) => {
-      try {
-        const { accountId } = req.params;
-        const account = this.state.accounts.get(String(accountId));
-        if (!account) {
-          // Try alternate lookups (walletAddress, identityAddress)
-          let found: any = null;
-          for (const [key, acc] of this.state.accounts.entries()) {
-            const accAny = acc as any;
-            if (accAny.walletAddress === accountId ||
-                accAny.identityAddress === accountId ||
-                accAny.paymentAddress === accountId) {
-              found = acc;
-              break;
-            }
-          }
-          if (!found) {
-            res.status(404).json({ success: false, error: 'Account not found' });
-            return;
-          }
-          res.json({
-            success: true,
-            accountId: String(accountId),
-            serviceBalanceSats: (found as any).serviceBalanceSats || 0,
-            serviceBalanceLastFundedAt: (found as any).serviceBalanceLastFundedAt,
-            serviceBalanceTotalFundedSats: (found as any).serviceBalanceTotalFundedSats || 0,
-            serviceBalanceTotalUsedSats: (found as any).serviceBalanceTotalUsedSats || 0,
-          });
-          return;
-        }
-        res.json({
-          success: true,
-          accountId: String(accountId),
-          serviceBalanceSats: (account as any).serviceBalanceSats || 0,
-          serviceBalanceLastFundedAt: (account as any).serviceBalanceLastFundedAt,
-          serviceBalanceTotalFundedSats: (account as any).serviceBalanceTotalFundedSats || 0,
-          serviceBalanceTotalUsedSats: (account as any).serviceBalanceTotalUsedSats || 0,
-        });
-      } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    // Premium action: Generic service balance deduction (file transfer, message delete/edit, etc.)
-    // Gateway relays include { accountId, tier, amountSats, action }
-    this.app.post('/api/service/premium/file-transfer', async (req: Request, res: Response) => {
-      try {
-        const { accountId, tier, fileSize, fileName, amountSats, action } = req.body;
-        
-        // File tier costs (must match client-side FILE_TIERS)
-        const tierCosts: Record<string, number> = {
-          free: 0,
-          basic: 500,      // 25 MB
-          premium: 2000,   // 100 MB
-          enterprise: 10000, // 1 GB
-        };
-
-        // Use explicit amountSats from relay when provided, otherwise derive from tier
-        const actionCost = typeof amountSats === 'number' && amountSats > 0
-          ? amountSats
-          : (tierCosts[tier] || 0);
-        const actionPurpose = action || 'file_transfer';
-
-        if (!accountId) {
-          res.status(400).json({ success: false, error: 'Missing required field: accountId' });
-          return;
-        }
-
-        // Free tier doesn't require payment
-        if (actionCost === 0) {
-          res.json({
-            success: true,
-            accountId: String(accountId),
-            tier: tier || 'free',
-            costSats: 0,
-            message: 'Free tier - no payment required',
-          });
-          return;
-        }
-
-        // For premium tiers, check account balance and deduct
-        let account = this.state.accounts.get(String(accountId));
-        if (!account) {
-          // Try alternate lookups (walletAddress, identityAddress, paymentAddress)
-          for (const [key, acc] of this.state.accounts.entries()) {
-            const accAny = acc as any;
-            if (accAny.walletAddress === accountId ||
-                accAny.identityAddress === accountId ||
-                accAny.paymentAddress === accountId) {
-              account = acc;
-              console.log(`[Premium] Found account by alternate key: ${key} for lookup: ${accountId}`);
-              break;
-            }
-          }
-        }
-        if (!account) {
-          console.log(`[Premium] Account not found for ID: ${accountId}, total accounts: ${this.state.accounts.size}`);
-          res.status(404).json({ success: false, error: 'Account not found', accountId });
-          return;
-        }
-
-        const resolvedAccountId = String((account as any).accountId || accountId).trim();
-        const currentBalance = (account as any).serviceBalanceSats || 0;
-        console.log(`[Premium] Account ${resolvedAccountId} (lookup: ${accountId}) balance: ${currentBalance} sats, required: ${actionCost}`);
-        // When amountSats is explicitly provided this is a relay from a gateway that
-        // already validated the user's balance.  Skip the operator-side balance check
-        // because the operator ledger may not have received funding events yet.
-        const isRelay = typeof amountSats === 'number' && amountSats > 0;
-        if (!isRelay && currentBalance < actionCost) {
-          res.status(402).json({
-            success: false,
-            error: 'Insufficient service balance',
-            required: actionCost,
-            available: currentBalance,
-            shortfall: actionCost - currentBalance,
-          });
-          return;
-        }
-
-        // Deduct from service balance by emitting event to ledger
-        const now = Date.now();
-        const nonce = randomBytes(32).toString('hex');
-        const signatures: QuorumSignature[] = [
-          {
-            operatorId: process.env.OPERATOR_ID || 'operator-1',
-            publicKey: this.config.publicKey || '',
-            signature: createHash('sha256')
-              .update(`ACCOUNT_SERVICE_BALANCE_USED:${resolvedAccountId}:${actionPurpose}:${tier || 'none'}:${actionCost}:${now}`)
-              .digest('hex'),
-          },
-        ];
-
-        const eventPayload = {
-            type: EventType.ACCOUNT_SERVICE_BALANCE_USED,
-            timestamp: now,
-            nonce,
-            accountId: resolvedAccountId,
-            amountSats: actionCost,
-            action: actionPurpose,
-            actionId: `${tier || 'none'}_${fileSize || 0}_${now}`,
-          };
-
-        await this.canonicalEventStore.appendEvent(eventPayload as any, signatures);
-
-        // Forward deduction event to seed node so canonical ledger stays in sync
-        const seedResult = await this.submitCanonicalEventToSeed(eventPayload, signatures);
-        if (!seedResult.ok) {
-          console.warn(`[Premium] Failed to sync deduction to seed: ${seedResult.error}`);
-        }
-
-        // Update in-memory state immediately so UI/gateways see the deduction without a full rebuild
-        (account as any).serviceBalanceSats = currentBalance - actionCost;
-        (account as any).serviceBalanceTotalUsedSats = ((account as any).serviceBalanceTotalUsedSats || 0) + actionCost;
-        (account as any).updatedAt = now;
-
-        this.broadcastRegistryUpdate();
-
-        console.log(`[Premium] ${actionPurpose}: ${actionCost} sats deducted from account ${accountId} (tier=${tier || 'n/a'}, synced=${seedResult.ok})`);
-
-        res.json({
-          success: true,
-          accountId: String(accountId),
-          tier: tier || 'none',
-          action: actionPurpose,
-          fileName: fileName || 'file',
-          fileSize: fileSize || 0,
-          costSats: actionCost,
-          newBalance: currentBalance - actionCost,
-          message: `${actionPurpose} approved (${actionCost} sats)`,
-        });
-      } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    // Relay endpoint: Gateway credits a user's service balance and
-    // forwards the funding event here so the canonical ledger stays
-    // in sync.  Deduplicated by txid.
-    this.app.post('/api/service/relay-funding', async (req: Request, res: Response) => {
-      try {
-        const { accountId, amountSats, txid } = req.body;
-
-        if (!accountId || typeof amountSats !== 'number' || amountSats <= 0 || !txid) {
-          res.status(400).json({ success: false, error: 'Missing accountId, amountSats, or txid' });
-          return;
-        }
-
-        const account = this.state.accounts.get(String(accountId));
-        if (!account) {
-          res.status(404).json({ success: false, error: 'Account not found' });
-          return;
-        }
-
-        // Deduplicate by txid – avoid double-crediting on retries
-        const dedupeKey = `funded:${txid}`;
-        if ((this as any)._relayedFundingTxids?.has(dedupeKey)) {
-          res.json({ success: true, duplicate: true, message: 'Funding already recorded' });
-          return;
-        }
-        if (!(this as any)._relayedFundingTxids) {
-          (this as any)._relayedFundingTxids = new Set<string>();
-        }
-        (this as any)._relayedFundingTxids.add(dedupeKey);
-
-        const now = Date.now();
-        const nonce = randomBytes(32).toString('hex');
-        const signatures: QuorumSignature[] = [
-          {
-            operatorId: process.env.OPERATOR_ID || 'operator-1',
-            publicKey: this.config.publicKey || '',
-            signature: createHash('sha256')
-              .update(`ACCOUNT_SERVICE_BALANCE_FUNDED:${accountId}:${amountSats}:${txid}:${now}`)
-              .digest('hex'),
-          },
-        ];
-
-        await this.canonicalEventStore.appendEvent(
-          {
-            type: EventType.ACCOUNT_SERVICE_BALANCE_FUNDED,
-            timestamp: now,
-            nonce,
-            accountId: String(accountId),
-            amountSats,
-            txid,
-          } as any,
-          signatures
-        );
-
-        // Update in-memory state
-        const prev = (account as any).serviceBalanceSats || 0;
-        (account as any).serviceBalanceSats = prev + amountSats;
-        (account as any).serviceBalanceLastFundedAt = now;
-        (account as any).serviceBalanceTotalFundedSats = ((account as any).serviceBalanceTotalFundedSats || 0) + amountSats;
-        (account as any).updatedAt = now;
-
-        this.broadcastRegistryUpdate();
-
-        console.log(`[Funding Relay] Credited ${amountSats} sats to ${accountId} (txid=${txid}). Balance: ${prev} -> ${prev + amountSats}`);
-
-        res.json({
-          success: true,
-          accountId: String(accountId),
-          amountCredited: amountSats,
-          txid,
-          newBalance: prev + amountSats,
-        });
-      } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
-      }
-    });
-
-    // ============================================================
     // GROUP CHAT ENDPOINTS
     // ============================================================
 
@@ -5096,10 +4681,7 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const rawMessages = this.ephemeralStore!.getGroupMessages(groupId);
-        
-        // Restore any extracted large content from disk
-        const messages = await this.ephemeralStore!.restoreEventsContent(rawMessages);
+        const messages = this.ephemeralStore!.getGroupMessages(groupId);
         
         // Return messages with the encrypted content for current user
         const userMessages = messages.map(m => {
@@ -6999,14 +6581,6 @@ export class OperatorNode extends EventEmitter {
         this.sendSyncResponse(ws);
         break;
 
-      case 'auth':
-        if (conn && message.publicKey) {
-          (conn as any).messagingPublicKey = String(message.publicKey).trim();
-          (conn as any).isMessagingClient = true;
-        }
-        ws.send(JSON.stringify({ type: 'auth_ok' }));
-        break;
-
       case 'subscribe_consensus':
         // Subscribe to real-time consensus updates (for mempool visualizer)
         const meta = this.gatewayConnections.get(ws);
@@ -7038,72 +6612,6 @@ export class OperatorNode extends EventEmitter {
 
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-        break;
-
-      case 'call_signal':
-        try {
-          const senderId = (conn as any)?.messagingPublicKey ? String((conn as any).messagingPublicKey) : '';
-          if (!senderId) {
-            ws.send(JSON.stringify({ type: 'error', error: 'Not authenticated for calls' }));
-            break;
-          }
-          const targetId = String(message.targetId || '').trim();
-          let delivered = false;
-          for (const [clientWs, meta] of this.gatewayConnections.entries()) {
-            if ((meta as any)?.messagingPublicKey === targetId && clientWs !== ws && clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({
-                type: 'call_signal',
-                fromId: senderId,
-                signal: message.signal,
-              }));
-              delivered = true;
-              break;
-            }
-          }
-          if (!delivered) {
-            this.relayCallSignalToNetwork(targetId, senderId, message.signal).catch(() => {});
-          }
-        } catch {}
-        break;
-
-      case 'call_signal_relay':
-        // Receive relayed call signal from another operator/gateway — deliver to local client
-        if (message.targetId && message.fromId && message.signal) {
-          const relayTargetId = String(message.targetId).trim();
-          const relayFromId = String(message.fromId).trim();
-          let relayDelivered = false;
-          for (const [clientWs, meta] of this.gatewayConnections.entries()) {
-            if ((meta as any)?.messagingPublicKey === relayTargetId && clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({
-                type: 'call_signal',
-                fromId: relayFromId,
-                signal: message.signal,
-              }));
-              relayDelivered = true;
-              console.log(`📞 [Call] Relayed signal to local client ${relayTargetId.substring(0, 12)}...`);
-              break;
-            }
-          }
-          // Forward to all connected gateway nodes so they can check their local messaging clients
-          if (!relayDelivered) {
-            const hops = Number(message.hops || 0);
-            if (hops < 10) {
-              const fwdMsg = JSON.stringify({
-                type: 'call_signal_relay',
-                targetId: relayTargetId,
-                fromId: relayFromId,
-                signal: message.signal,
-                sourceOperatorId: this.config.operatorId,
-                hops: hops + 1,
-              });
-              for (const [gwWs] of this.gatewayConnections.entries()) {
-                if (gwWs !== ws && gwWs.readyState === WebSocket.OPEN) {
-                  try { gwWs.send(fwdMsg); } catch {}
-                }
-              }
-            }
-          }
-        }
         break;
 
       // Handle append_event from operators - add to canonical ledger and broadcast
@@ -7158,56 +6666,21 @@ export class OperatorNode extends EventEmitter {
             break;
           }
 
-          // Clone payload before importEvent mutates it via extractLargeContent
-          // (replaces large strings with __contentRef: placeholders on disk).
-          // We need the full content for re-broadcast to other peer nodes.
-          const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
+          // IMPORTANT: Save a deep copy of the event BEFORE importEvent modifies it.
+          // importEvent calls extractLargeContent which chunks/extracts content in-place.
+          // We need the original full content for re-broadcasting to other peers.
+          const broadcastCopy = JSON.parse(JSON.stringify(eventData));
+
           const imported = await this.ephemeralStore!.importEvent(eventData);
 
           if (imported) {
             console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from ${sourceOperatorId}: ${eventData.eventId}`);
-            // Re-broadcast the FULL copy to other peers (but not back to source)
+            // Re-broadcast the FULL copy to other peers (not the modified eventData)
             this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
-            // Push real-time notification to local messaging clients
-            this.pushMessageNotificationToLocalClients(eventData);
           }
         } catch (e: any) {
           console.log(`[Ephemeral] Error importing event:`, e?.message);
         }
-        break;
-
-      // Transient signals (typing, read receipts, reactions) from gateways — relay to network
-      case 'transient_signal':
-        try {
-          const hops = Number(message?.hops || 0);
-          if (hops >= 10) break;
-          const signalData = message?.data;
-          const convId = signalData?.conversationId;
-          // Deliver to local messaging clients
-          if (convId) {
-            const localMsg = JSON.stringify(signalData);
-            for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
-              if (clientWs !== ws && clientWs.readyState === WebSocket.OPEN &&
-                  (clientMeta as any)?.subscribedConversation === convId) {
-                try { clientWs.send(localMsg); } catch {}
-              }
-            }
-          }
-          // Forward to peer operators and other gateways
-          const fwdMsg = JSON.stringify({ type: 'transient_signal', signalType: message.signalType, data: signalData, hops: hops + 1 });
-          for (const [, peer] of this.operatorPeerConnections.entries()) {
-            try {
-              if (peer.ws && peer.ws.readyState === WebSocket.OPEN) {
-                peer.ws.send(fwdMsg);
-              }
-            } catch {}
-          }
-          for (const [gwWs] of this.gatewayConnections.entries()) {
-            if (gwWs !== ws && gwWs.readyState === WebSocket.OPEN) {
-              try { gwWs.send(fwdMsg); } catch {}
-            }
-          }
-        } catch {}
         break;
 
       case 'ephemeral_sync_request':
@@ -7216,16 +6689,13 @@ export class OperatorNode extends EventEmitter {
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
           const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
 
-          // Restore content from disk before sending - in-memory events have __contentRef: placeholders
-          const eventsWithContent = await this.ephemeralStore!.restoreEventsContent(events);
-
           ws.send(JSON.stringify({
             type: 'ephemeral_sync_response',
-            events: eventsWithContent,
+            events,
             sinceTimestamp,
             latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
           }));
-          console.log(`[Ephemeral] 📤 Sent ${eventsWithContent.length} events in sync response (content restored)`);
+          console.log(`[Ephemeral] 📤 Sent ${events.length} events in sync response`);
         } catch (e: any) {
           console.log(`[Ephemeral] Error handling sync request:`, e?.message);
         }
@@ -7297,120 +6767,33 @@ export class OperatorNode extends EventEmitter {
    * Broadcast an ephemeral event to all operator peers AND gateways (for decentralized messaging)
    * Gateways serve as backup storage - they persist messages and can restore them to operators after restart
    */
-  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string, excludeSeed: boolean = false): void {
-    // Use setImmediate to yield to event loop before heavy JSON.stringify
-    // This prevents blocking on large base64 video/photo payloads
-    setImmediate(async () => {
+  private broadcastEphemeralEvent(event: EphemeralEvent, excludePeerId?: string): void {
+    const message = {
+      type: 'ephemeral_event',
+      event,
+      sourceOperatorId: this.config.operatorId,
+      timestamp: Date.now(),
+    };
+    const msgStr = JSON.stringify(message);
+
+    // Broadcast to operator peers
+    for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
+      if (excludePeerId && peerId === excludePeerId) continue;
       try {
-        const message = {
-          type: 'ephemeral_event',
-          event,
-          sourceOperatorId: this.config.operatorId,
-          timestamp: Date.now(),
-        };
-        const msgStr = JSON.stringify(message);
+        if (peer.ws.readyState === WebSocket.OPEN) {
+          peer.ws.send(msgStr);
+        }
+      } catch {}
+    }
 
-        // DEBUG: Log broadcast attempt
-        const seedConnected = this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN;
-        const peerCount = this.operatorPeerConnections?.size || 0;
-        const gwCount = this.gatewayConnections?.size || 0;
-        console.log(`[Ephemeral] 📡 broadcastEphemeralEvent ${event.eventId.substring(0,8)}... seedConnected=${seedConnected}, peers=${peerCount}, gateways=${gwCount}, excludeSeed=${excludeSeed}`);
-
-        try {
-          if (!excludeSeed && this.mainSeedWs && this.mainSeedWs.readyState === WebSocket.OPEN) {
-            this.mainSeedWs.send(msgStr);
-            console.log(`[Ephemeral] ✅ Sent to seed/gateway`);
-          }
-        } catch (e: any) {
-          console.log(`[Ephemeral] ❌ Failed to send to seed:`, e?.message);
+    // Also broadcast to connected gateways (they store as backup)
+    for (const [ws, conn] of this.gatewayConnections.entries()) {
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(msgStr);
         }
-
-        // Broadcast to operator peers
-        for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
-          if (excludePeerId && peerId === excludePeerId) continue;
-          try {
-            if (peer.ws.readyState === WebSocket.OPEN) {
-              peer.ws.send(msgStr);
-            }
-          } catch {}
-        }
-
-        // Also broadcast to connected gateways (they store as backup)
-        for (const [ws, conn] of this.gatewayConnections.entries()) {
-          try {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(msgStr);
-            }
-          } catch {}
-        }
-
-        // After broadcasting, extract large content from the event to separate files.
-        // This keeps the in-memory event lightweight so future persistence (structured clone
-        // + JSON.stringify) won't block the event loop. Content is restored on retrieval.
-        if (this.ephemeralStore) {
-          await this.ephemeralStore.extractLargeContent(event);
-        }
-      } catch (e: any) {
-        console.error('[Ephemeral] Failed to broadcast event:', e.message);
-      }
-    });
-  }
-
-  /**
-   * Push real-time WS notification to local clients when a message event is imported from a peer
-   */
-  private pushMessageNotificationToLocalClients(eventData: any): void {
-    try {
-      if (!eventData || !eventData.eventType || !eventData.payload) return;
-
-      if (eventData.eventType === 'MESSAGE_SENT') {
-        const { conversationId, messageId, senderId, recipientId } = eventData.payload;
-        const pushMsg = JSON.stringify({
-          type: 'new_message',
-          conversationId,
-          messageId,
-          senderId,
-          timestamp: eventData.timestamp || Date.now(),
-        });
-        for (const [clientWs, meta] of this.gatewayConnections.entries()) {
-          if (clientWs.readyState === WebSocket.OPEN) {
-            const clientPk = (meta as any)?.messagingPublicKey;
-            const subConv = (meta as any)?.subscribedConversation;
-            if (subConv === conversationId || clientPk === recipientId || clientPk === senderId) {
-              try { clientWs.send(pushMsg); } catch {}
-            }
-          }
-        }
-      } else if (eventData.eventType === 'GROUP_MESSAGE_SENT') {
-        const { groupId, messageId, senderId } = eventData.payload;
-        const pushMsg = JSON.stringify({
-          type: 'new_group_message',
-          groupId,
-          messageId,
-          senderId,
-          timestamp: eventData.timestamp || Date.now(),
-        });
-        for (const [clientWs, meta] of this.gatewayConnections.entries()) {
-          if (clientWs.readyState === WebSocket.OPEN && (meta as any)?.subscribedGroup === groupId) {
-            try { clientWs.send(pushMsg); } catch {}
-          }
-        }
-      } else if (eventData.eventType === 'MESSAGE_DELETED') {
-        const pushMsg = JSON.stringify({ type: 'message_deleted', data: eventData.payload });
-        for (const [clientWs] of this.gatewayConnections.entries()) {
-          if (clientWs.readyState === WebSocket.OPEN) {
-            try { clientWs.send(pushMsg); } catch {}
-          }
-        }
-      } else if (eventData.eventType === 'MESSAGE_EDITED') {
-        const pushMsg = JSON.stringify({ type: 'message_edited', data: eventData.payload });
-        for (const [clientWs] of this.gatewayConnections.entries()) {
-          if (clientWs.readyState === WebSocket.OPEN) {
-            try { clientWs.send(pushMsg); } catch {}
-          }
-        }
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
   private broadcastRegistryUpdate(): void {
@@ -7424,9 +6807,9 @@ export class OperatorNode extends EventEmitter {
    * Fetch encryption key from peer operators when not found locally
    * This enables cross-operator messaging when key gossip hasn't propagated yet
    */
-  private async fetchEncryptionKeyFromNetwork(accountId: string): Promise<{ encryptionPublicKeyHex: string; updatedAt: number } | null> {
+  private async fetchEncryptionKeyFromNetwork(accountId: string): Promise<{ encryptionPublicKeyHex: string; updatedAt: number } | undefined> {
     if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
-      return null;
+      return undefined;
     }
 
     // Try each connected peer
@@ -7459,7 +6842,7 @@ export class OperatorNode extends EventEmitter {
         clearTimeout(timeout);
         
         if (response.ok) {
-          const data = await response.json() as { success?: boolean; encryptionPublicKeyHex?: string; updatedAt?: number };
+          const data: any = await response.json();
           if (data.success && data.encryptionPublicKeyHex) {
             console.log(`[Messaging] Fetched key for ${accountId.substring(0, 12)}... from peer ${peerId.substring(0, 12)}...`);
             // Store in local registry for future lookups
@@ -7476,81 +6859,7 @@ export class OperatorNode extends EventEmitter {
       }
     }
 
-    return null;
-  }
-
-  private async relayCallSignalToNetwork(targetId: string, fromId: string, signal: any): Promise<boolean> {
-    // Layer 1: Broadcast via WebSocket to all connected gateways and peer operators
-    const relayMsg = JSON.stringify({
-      type: 'call_signal_relay',
-      targetId,
-      fromId,
-      signal,
-    });
-    let sentViaWs = false;
-    for (const [clientWs] of this.gatewayConnections.entries()) {
-      try {
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(relayMsg);
-          sentViaWs = true;
-        }
-      } catch {}
-    }
-
-    // Also send to peer operator WebSocket connections
-    if (this.operatorPeerConnections) {
-      for (const [, peer] of this.operatorPeerConnections.entries()) {
-        try {
-          if (peer.ws && peer.ws.readyState === WebSocket.OPEN) {
-            peer.ws.send(relayMsg);
-            sentViaWs = true;
-          }
-        } catch {}
-      }
-    }
-
-    // Layer 2: HTTP POST to peer operator URLs (always try, WS broadcast only reaches local clients)
-    if (!this.operatorPeerConnections || this.operatorPeerConnections.size === 0) {
-      return sentViaWs;
-    }
-
-    const peers = Array.from(this.operatorPeerConnections.entries());
-    const timeoutMs = 3000;
-
-    for (const [peerId, peer] of peers) {
-      try {
-        let httpUrl = peer.wsUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
-        if (httpUrl.endsWith('/ws')) {
-          httpUrl = httpUrl.slice(0, -3); // Remove /ws suffix
-        }
-
-        const fetchUrl = `${httpUrl}/api/messages/call-signal`;
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-        const response = await fetch(fetchUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Internal-Request': 'operator-to-operator',
-          },
-          body: JSON.stringify({ targetId, fromId, signal }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-
-        if (response.ok) {
-          const data = await response.json().catch(() => ({} as any));
-          if (data && (data as any).delivered) return true;
-        }
-      } catch {
-        console.log(`[Call] Failed to relay signal to peer ${peerId.substring(0, 12)}...`);
-      }
-    }
-
-    return false;
+    return undefined;
   }
 
   private startPeerDiscovery(): void {
@@ -7564,7 +6873,6 @@ export class OperatorNode extends EventEmitter {
 
     this.peerDiscovery = new OperatorPeerDiscovery({
       mainSeedHttpUrl: base,
-      fallbackSeedUrls: this.config.fallbackSeedUrls || [],
       myOperatorId,
       discoveryIntervalMs: 5 * 60 * 1000,
     });
@@ -7812,70 +7120,8 @@ export class OperatorNode extends EventEmitter {
         }
         break;
 
-      case 'call_signal_relay':
-        // Receive relayed call signal from a peer operator — deliver to local client or forward to gateways
-        if (message.targetId && message.fromId && message.signal) {
-          const peerRelayTargetId = String(message.targetId).trim();
-          const peerRelayFromId = String(message.fromId).trim();
-          let peerRelayDelivered = false;
-          for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
-            if ((clientMeta as any)?.messagingPublicKey === peerRelayTargetId && clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({
-                type: 'call_signal',
-                fromId: peerRelayFromId,
-                signal: message.signal,
-              }));
-              peerRelayDelivered = true;
-              console.log(`📞 [Call] Peer relay → delivered to local client ${peerRelayTargetId.substring(0, 12)}...`);
-              break;
-            }
-          }
-          // Forward to all connected gateway nodes (they may have the target as a messaging client)
-          if (!peerRelayDelivered) {
-            const hops = Number(message.hops || 0);
-            if (hops < 10) {
-              const fwdMsg = JSON.stringify({
-                type: 'call_signal_relay',
-                targetId: peerRelayTargetId,
-                fromId: peerRelayFromId,
-                signal: message.signal,
-                sourceOperatorId: this.config.operatorId,
-                hops: hops + 1,
-              });
-              for (const [gwWs] of this.gatewayConnections.entries()) {
-                if (gwWs.readyState === WebSocket.OPEN) {
-                  try { gwWs.send(fwdMsg); } catch {}
-                }
-              }
-            }
-          }
-        }
-        break;
-
-      // Transient signals from peer operators (typing, read receipts, reactions) — relay to local clients + gateways
-      case 'transient_signal':
-        try {
-          const tsHops = Number(message?.hops || 0);
-          if (tsHops >= 10) break;
-          const tsData = message?.data;
-          const tsConvId = tsData?.conversationId;
-          if (tsConvId) {
-            const tsLocalMsg = JSON.stringify(tsData);
-            for (const [clientWs, clientMeta] of this.gatewayConnections.entries()) {
-              if (clientWs.readyState === WebSocket.OPEN &&
-                  (clientMeta as any)?.subscribedConversation === tsConvId) {
-                try { clientWs.send(tsLocalMsg); } catch {}
-              }
-            }
-          }
-          // Forward to connected gateways (not back to sender)
-          const tsFwdMsg = JSON.stringify({ type: 'transient_signal', signalType: message.signalType, data: tsData, hops: tsHops + 1 });
-          for (const [gwWs] of this.gatewayConnections.entries()) {
-            if (gwWs !== ws && gwWs.readyState === WebSocket.OPEN) {
-              try { gwWs.send(tsFwdMsg); } catch {}
-            }
-          }
-        } catch {}
+      case 'new_event_ack':
+        // Acknowledgment from peer that they received our event
         break;
 
       // ============================================================
@@ -7891,21 +7137,15 @@ export class OperatorNode extends EventEmitter {
             break;
           }
 
-          // Clone payload before importEvent mutates it via extractLargeContent
-          const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
-
           // Import the event (with dedupe)
           const imported = await this.ephemeralStore!.importEvent(eventData);
 
           if (imported) {
             console.log(`[Ephemeral] 📥 Imported ${eventData.eventType} from peer ${sourceOperatorId}: ${eventData.eventId}`);
 
-            // Re-broadcast the FULL copy to other peers (gossip protocol)
+            // Re-broadcast to other peers (gossip protocol)
             // Don't send back to the source
-            this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
-
-            // Push real-time notification to local messaging clients
-            this.pushMessageNotificationToLocalClients(eventData);
+            this.broadcastEphemeralEvent(eventData, sourceOperatorId);
 
             // Send ack back
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -7932,13 +7172,10 @@ export class OperatorNode extends EventEmitter {
           const maxEvents = Math.min(Number(message?.limit || 500), 1000);
           const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
 
-          // Restore content from disk before sending - in-memory events have __contentRef: placeholders
-          const eventsWithContent = await this.ephemeralStore!.restoreEventsContent(events);
-
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
               type: 'ephemeral_sync_response',
-              events: eventsWithContent,
+              events,
               sinceTimestamp,
               latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
             }));
@@ -8127,13 +7364,6 @@ export class OperatorNode extends EventEmitter {
       });
     }
 
-    // Flush ephemeral message ledger to disk (immediate sync write)
-    if (this.ephemeralStore) {
-      this.ephemeralStore.flushToDisk();
-      this.ephemeralStore.stopPruning();
-      console.log('[Operator] Flushed message ledger');
-    }
-
     await this.persistState();
     console.log('[Operator] Stopped');
   }
@@ -8214,23 +7444,6 @@ export class OperatorNode extends EventEmitter {
           lastSequence: this.state.lastSyncedSequence,
           timestamp: Date.now()
         }));
-
-        // Request ephemeral messaging backfill from main seed
-        setTimeout(() => {
-          try {
-            if (!this.mainSeedWs || this.mainSeedWs.readyState !== WebSocket.OPEN) return;
-            const sinceTimestamp = this.ephemeralStore?.getLatestTimestamp() || 0;
-            this.mainSeedWs.send(JSON.stringify({
-              type: 'ephemeral_sync_request',
-              since: sinceTimestamp,
-              limit: 1000,
-              timestamp: Date.now(),
-            }));
-            console.log(`[Ephemeral] 📤 Requesting backfill from main seed (since ${sinceTimestamp})`);
-          } catch (e: any) {
-            console.log(`[Ephemeral] Failed to request backfill from main seed:`, e?.message);
-          }
-        }, 3000);
       });
 
       this.mainSeedWs.on('message', async (data: WebSocket.Data) => {
@@ -8291,66 +7504,6 @@ export class OperatorNode extends EventEmitter {
       case 'new_event':
         await this.handleNewEvent(message.event);
         this.broadcastRegistryUpdate();
-        break;
-      case 'ephemeral_event':
-        try {
-          const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
-          const eventData = message?.event as EphemeralEvent;
-          if (eventData && eventData.eventId && eventData.eventType && this.ephemeralStore) {
-            // DEBUG: Log received content sizes
-            const ep = eventData.payload as any;
-            const recvContentLen = typeof ep?.encryptedContent === 'string' ? ep.encryptedContent.length : 0;
-            const recvForSenderLen = typeof ep?.encryptedForSender === 'string' ? ep.encryptedForSender.length : 0;
-            const recvHasChunks = !!ep?.__chunks_encryptedContent;
-            const recvIsChunked = typeof ep?.encryptedContent === 'string' && ep.encryptedContent.startsWith('__chunked:');
-            console.log(`[Ephemeral] 📨 Received from seed ${eventData.eventId.substring(0,8)}... contentLen=${recvContentLen}, forSenderLen=${recvForSenderLen}, hasChunks=${recvHasChunks}, isChunked=${recvIsChunked}`);
-            
-            // Clone payload before importEvent mutates it via extractLargeContent
-            const broadcastCopy = { ...eventData, payload: { ...eventData.payload } };
-            const imported = await this.ephemeralStore.importEvent(eventData);
-            if (imported) {
-              // DEBUG: Log broadcast copy content sizes
-              const bp = broadcastCopy.payload as any;
-              const bcContentLen = typeof bp?.encryptedContent === 'string' ? bp.encryptedContent.length : 0;
-              console.log(`[Ephemeral] 📤 Broadcasting copy contentLen=${bcContentLen}`);
-              this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId, true);
-            }
-          }
-        } catch (e: any) {
-          console.log(`[Ephemeral] Error importing event from seed:`, e?.message);
-        }
-        break;
-      case 'ephemeral_sync_request':
-        try {
-          const sinceTimestamp = Number(message?.since || 0);
-          const maxEvents = Math.min(Number(message?.limit || 500), 1000);
-          const events = this.ephemeralStore!.getEventsSince(sinceTimestamp, maxEvents);
-
-          // Restore content from disk before sending - in-memory events have __contentRef: placeholders
-          const eventsWithContent = await this.ephemeralStore!.restoreEventsContent(events);
-
-          this.mainSeedWs?.send(JSON.stringify({
-            type: 'ephemeral_sync_response',
-            events: eventsWithContent,
-            sinceTimestamp,
-            latestTimestamp: this.ephemeralStore!.getLatestTimestamp(),
-          }));
-          console.log(`[Ephemeral] 📤 Sent ${eventsWithContent.length} events in sync response to seed (content restored)`);
-        } catch (e: any) {
-          console.log(`[Ephemeral] Error handling seed sync request:`, e?.message);
-        }
-        break;
-      case 'ephemeral_sync_response':
-        try {
-          const events = message?.events as EphemeralEvent[];
-          if (Array.isArray(events) && this.ephemeralStore) {
-            for (const ev of events) {
-              await this.ephemeralStore.importEvent(ev);
-            }
-          }
-        } catch (e: any) {
-          console.log(`[Ephemeral] Error processing seed sync response:`, e?.message);
-        }
         break;
       case 'registry_update':
         try {
