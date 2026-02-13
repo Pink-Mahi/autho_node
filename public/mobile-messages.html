@@ -1747,6 +1747,39 @@
     let lastIncomingCallerId = null;
     let lastIncomingCallerName = null;
     const POLL_INTERVAL_MS = 5000; // Check for new messages every 5 seconds
+    const selfConversationIdentity = {
+      accountId: '',
+      walletAddress: '',
+      publicKey: ''
+    };
+
+    function normalizeConversationId(id) {
+      return String(id || '').trim();
+    }
+
+    function isSelfConversationParticipant(participant) {
+      const pid = normalizeConversationId(participant?.participantId || participant?.accountId);
+      const aid = normalizeConversationId(participant?.accountId);
+
+      if (!pid && !aid) return false;
+
+      const selfIds = new Set([
+        normalizeConversationId(selfConversationIdentity.accountId),
+        normalizeConversationId(selfConversationIdentity.walletAddress),
+        normalizeConversationId(selfConversationIdentity.publicKey)
+      ].filter(Boolean));
+
+      return selfIds.has(pid) || selfIds.has(aid);
+    }
+
+    function getOtherConversationParticipant(conv) {
+      const participants = Array.isArray(conv?.participantInfo) ? conv.participantInfo : [];
+      const other = participants.find(p => !isSelfConversationParticipant(p));
+      if (other) return other;
+
+      // Fallback if we cannot resolve self reliably.
+      return participants[0] || null;
+    }
 
     // ============================================================
     // WEBSOCKET REAL-TIME MESSAGING (replaces polling when connected)
@@ -2923,10 +2956,14 @@
         if (!response.ok) {
           throw new Error('Failed to load conversations');
         }
-        
         const data = await response.json();
 
         if (data.success) {
+          const wallet = WalletAuth.getWallet();
+          selfConversationIdentity.accountId = normalizeConversationId(data.selfAccountId);
+          selfConversationIdentity.walletAddress = normalizeConversationId(data.selfWalletAddress);
+          selfConversationIdentity.publicKey = normalizeConversationId(wallet?.publicKey);
+
           conversations = data.conversations;
           renderConversations();
           document.getElementById('inboxStats').textContent = 
@@ -2956,15 +2993,15 @@
         return;
       }
 
-      const wallet = WalletAuth.getWallet();
       container.innerHTML = conversations.map(conv => {
-        const otherParticipant = conv.participantInfo.find(p => p.accountId !== wallet.publicKey);
+        const otherParticipant = getOtherConversationParticipant(conv);
+        const recipientId = normalizeConversationId(otherParticipant?.accountId || otherParticipant?.participantId);
         const lastMsg = conv.lastMessage;
         const timeAgo = lastMsg ? formatTimeAgo(lastMsg.timestamp) : '';
         
         return `
           <div class="conversation-card ${conv.unreadCount > 0 ? 'unread' : ''}" 
-               onclick="openConversation('${conv.conversationId}', '${otherParticipant?.accountId}')">
+               onclick="openConversation('${conv.conversationId}', '${recipientId}')">
             <div class="conversation-header">
               <div class="conversation-participant">${escapeHtml(otherParticipant?.displayName || 'Unknown')}</div>
               <div style="display: flex; align-items: center; gap: 0.5rem;">

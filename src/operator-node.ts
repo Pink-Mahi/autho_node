@@ -4344,9 +4344,11 @@ export class OperatorNode extends EventEmitter {
           ...conv,
           participantInfo: conv.participants.map(p => {
             const acc = resolveAccountForParticipant(p);
+            const pid = String(p || '').trim();
             const resolvedId = String((acc as any)?.accountId || p);
             return {
               accountId: resolvedId,
+              participantId: pid,
               displayName: (acc as any)?.username || (acc as any)?.companyName || p.substring(0, 12) + '...',
               isManufacturer: (acc as any)?.role === 'manufacturer',
               isAuthenticator: (acc as any)?.role === 'authenticator',
@@ -4356,6 +4358,8 @@ export class OperatorNode extends EventEmitter {
 
         res.json({
           success: true,
+          selfAccountId: String(account.accountId || '').trim(),
+          selfWalletAddress: String(walletAddress || '').trim(),
           conversations: enriched,
         });
       } catch (error: any) {
