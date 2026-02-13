@@ -273,6 +273,7 @@ class GatewayNode {
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.currentReconnectDelay = CONFIG.reconnect.initialDelayMs;
+    this.operatorReconnectTimers = new Map(); // operatorId -> timeout
     
     // Gossip state - share peer info with other nodes
     this.lastGossipAt = 0;
@@ -4800,9 +4801,13 @@ class GatewayNode {
       if (!op.wsUrl) continue;
       if (!this.isTorEnabled() && this.isOnionUrl(op.wsUrl)) continue;
       
+      if (this.hasActiveConnectionForWsUrl(op.wsUrl)) {
+        continue;
+      }
+
       if (this.operatorConnections.has(op.operatorId)) {
         const existing = this.operatorConnections.get(op.operatorId);
-        if (existing.ws && existing.ws.readyState === WebSocket.OPEN) {
+        if (existing.ws && (existing.ws.readyState === WebSocket.OPEN || existing.ws.readyState === WebSocket.CONNECTING)) {
           continue;
         }
       }
@@ -4823,8 +4828,35 @@ class GatewayNode {
     return port ? `${protocol}://${host}:${port}` : `${protocol}://${host}`;
   }
 
+  hasActiveConnectionForWsUrl(wsUrl) {
+    if (!wsUrl) return false;
+    for (const conn of this.operatorConnections.values()) {
+      if (!conn || !conn.ws) continue;
+      if (conn.wsUrl !== wsUrl) continue;
+      if (conn.ws.readyState === WebSocket.OPEN || conn.ws.readyState === WebSocket.CONNECTING) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   connectToOperator(operator) {
     const { operatorId, wsUrl } = operator;
+
+    if (this.hasActiveConnectionForWsUrl(wsUrl)) {
+      return;
+    }
+
+    const existing = this.operatorConnections.get(operatorId);
+    if (existing && existing.ws && (existing.ws.readyState === WebSocket.OPEN || existing.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const pendingTimer = this.operatorReconnectTimers.get(operatorId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.operatorReconnectTimers.delete(operatorId);
+    }
     
     try {
       const ws = new WebSocket(wsUrl);
@@ -4842,6 +4874,12 @@ class GatewayNode {
         connectionInfo.lastSeen = Date.now();
         this.isConnectedToSeed = true;
         this.recordSeedSuccess(wsUrl, 0);
+
+        const reconnectTimer = this.operatorReconnectTimers.get(operatorId);
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          this.operatorReconnectTimers.delete(operatorId);
+        }
 
         ws.send(JSON.stringify({
           type: 'sync_request',
@@ -4873,15 +4911,7 @@ class GatewayNode {
           this.isConnectedToSeed = false;
         }
 
-        // Reconnect with exponential backoff
-        const health = this.seedHealth.get(wsUrl);
-        const failCount = health?.failCount || 1;
-        const delay = Math.min(10000 * Math.pow(1.5, failCount - 1), 300000); // Max 5 min
-        console.log(`🔄 Reconnecting to ${operatorId} in ${Math.round(delay/1000)}s...`);
-        
-        setTimeout(() => {
-          this.connectToOperator(operator);
-        }, delay);
+        this.scheduleOperatorReconnect(operator);
       });
 
       ws.on('error', (error) => {
@@ -4892,6 +4922,31 @@ class GatewayNode {
     } catch (error) {
       console.error(`❌ Failed to connect to operator ${operatorId}:`, error.message);
     }
+  }
+
+  scheduleOperatorReconnect(operator) {
+    const { operatorId, wsUrl } = operator;
+
+    const existing = this.operatorConnections.get(operatorId);
+    if (existing && existing.ws && (existing.ws.readyState === WebSocket.OPEN || existing.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    if (this.operatorReconnectTimers.has(operatorId)) {
+      return;
+    }
+
+    const health = this.seedHealth.get(wsUrl);
+    const failCount = health?.failCount || 1;
+    const delay = Math.min(10000 * Math.pow(1.5, failCount - 1), 300000); // Max 5 min
+    console.log(`🔄 Reconnecting to ${operatorId} in ${Math.round(delay / 1000)}s...`);
+
+    const timer = setTimeout(() => {
+      this.operatorReconnectTimers.delete(operatorId);
+      this.connectToOperator(operator);
+    }, delay);
+
+    this.operatorReconnectTimers.set(operatorId, timer);
   }
 
   /**
@@ -4921,7 +4976,7 @@ class GatewayNode {
         // Find operator info and schedule reconnect
         const operator = this.discoveredOperators.find(op => op.operatorId === operatorId);
         if (operator) {
-          setTimeout(() => this.connectToOperator(operator), 5000);
+          this.scheduleOperatorReconnect(operator);
           reconnecting++;
         }
       }
@@ -6846,8 +6901,10 @@ class GatewayNode {
     // Connect to operators with discovery
     await this.connectToOperators();
 
-    // Fallback: also try legacy seed connection
-    this.connectToSeeds();
+    // Fallback: only start legacy direct-seed sockets if operator mesh did not connect.
+    if (this.operatorConnections.size === 0) {
+      this.connectToSeeds();
+    }
 
     // Start useful work (network verification)
     this.startUsefulWork();
