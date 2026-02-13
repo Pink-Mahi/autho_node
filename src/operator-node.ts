@@ -868,6 +868,8 @@ export class OperatorNode extends EventEmitter {
       if (contentType) headers['content-type'] = contentType;
       const auth = String(req.headers['authorization'] || '').trim();
       if (auth) headers['authorization'] = auth;
+      const sessionToken = String(req.headers['x-session-token'] || '').trim();
+      if (sessionToken) headers['x-session-token'] = sessionToken;
 
       let body: any = undefined;
       if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -3395,6 +3397,11 @@ export class OperatorNode extends EventEmitter {
     });
 
     this.app.post('/api/auth/login', async (req: Request, res: Response) => {
+      await this.proxyToSeed(req, res);
+    });
+
+    // Verify session — gateway nodes call this to validate session tokens
+    this.app.post('/api/auth/verify-session', async (req: Request, res: Response) => {
       await this.proxyToSeed(req, res);
     });
 
