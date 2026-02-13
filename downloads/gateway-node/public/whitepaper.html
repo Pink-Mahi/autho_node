@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autho Whitepaper</title>
+    <style>
+        :root {
+            --gold: #d4af37;
+            --dark: #0a0a0a;
+            --dark-2: #151515;
+            --text: #f5e6d3;
+            --muted: #cbbd9d;
+            --line: rgba(212, 175, 55, 0.2);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Georgia, serif;
+            color: var(--text);
+            background: linear-gradient(135deg, #0a0a0a 0%, #161616 50%, #0a0a0a 100%);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px 40px;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 0;
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 24px;
+        }
+
+        .logo {
+            color: var(--gold);
+            text-decoration: none;
+            font-size: 2rem;
+            letter-spacing: 6px;
+            font-weight: bold;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9rem;
+        }
+
+        .nav-links a:hover {
+            color: var(--gold);
+        }
+
+        .hero {
+            margin-bottom: 18px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            color: var(--gold);
+            font-weight: 400;
+            letter-spacing: 1px;
+        }
+
+        .sub {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .actions {
+            margin: 18px 0;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            border: 1px solid var(--gold);
+            color: var(--gold);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background: var(--gold);
+            color: var(--dark);
+        }
+
+        .paper {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: rgba(15, 15, 15, 0.95);
+            padding: 18px;
+            min-height: 400px;
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text);
+            line-height: 1.45;
+            font-size: 0.95rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .logo { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a class="logo" href="/">AUTHO</a>
+            <div class="nav-links">
+                <a href="/how-it-works">How It Works</a>
+                <a href="/whitepaper">Whitepaper</a>
+                <a href="/join">Join</a>
+                <a href="/operator">Dashboard</a>
+            </div>
+        </nav>
+
+        <section class="hero">
+            <h1>Autho Whitepaper</h1>
+            <p class="sub">Protocol design, security model, economics, and long-term architecture.</p>
+        </section>
+
+        <div class="actions">
+            <a class="btn" href="/AUTHO_WHITEPAPER.md" target="_blank" rel="noopener noreferrer">Open raw markdown</a>
+            <a class="btn" href="https://github.com/Pink-Mahi/autho" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+
+        <section class="paper">
+            <pre id="paperContent">Loading whitepaper...</pre>
+        </section>
+    </div>
+
+    <script>
+        (async function loadWhitepaper() {
+            const el = document.getElementById('paperContent');
+            try {
+                const res = await fetch('/AUTHO_WHITEPAPER.md', { cache: 'no-store' });
+                if (!res.ok) throw new Error('Failed to load whitepaper');
+                const text = await res.text();
+                el.textContent = text;
+            } catch (e) {
+                el.textContent = 'Unable to load the whitepaper from this node. Please use the "Open raw markdown" button above.';
+            }
+        })();
+    </script>
+</body>
+</html>

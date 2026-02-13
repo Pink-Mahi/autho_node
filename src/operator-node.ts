@@ -1292,6 +1292,21 @@ export class OperatorNode extends EventEmitter {
       res.status(404).send('Not Found');
     });
 
+    this.app.get('/whitepaper', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('whitepaper.html');
+      if (fs.existsSync(fp)) return res.sendFile(fp);
+      res.status(404).send('Not Found');
+    });
+
+    this.app.get('/AUTHO_WHITEPAPER.md', (req: Request, res: Response) => {
+      const fp = this.resolvePublicFile('AUTHO_WHITEPAPER.md');
+      if (fs.existsSync(fp)) {
+        res.type('text/markdown; charset=utf-8');
+        return res.sendFile(fp);
+      }
+      res.status(404).send('Not Found');
+    });
+
     this.app.get('/buy', (req: Request, res: Response) => {
       const fp = this.resolvePublicFile('buy.html');
       if (fs.existsSync(fp)) return res.sendFile(fp);

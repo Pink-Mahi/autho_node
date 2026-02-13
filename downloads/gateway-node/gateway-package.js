@@ -4388,6 +4388,8 @@ class GatewayNode {
     this.app.get('/', sendPublicFile('landing.html'));
     this.app.get('/join', sendPublicFile('join.html'));
     this.app.get('/how-it-works', sendPublicFile('how-it-works.html'));
+    this.app.get('/whitepaper', sendPublicFile('whitepaper.html'));
+    this.app.get('/AUTHO_WHITEPAPER.md', sendPublicFile('AUTHO_WHITEPAPER.md'));
     this.app.get('/buy', sendPublicFile('buy.html'));
     this.app.get('/setup', sendPublicFile('setup-wizard.html'));
     this.app.get('/manufacturer', sendPublicFile('manufacturer-dashboard.html'));
