@@ -144,7 +144,7 @@
 
         <div class="actions">
             <a class="btn" href="/AUTHO_WHITEPAPER.md" target="_blank" rel="noopener noreferrer">Open raw markdown</a>
-            <a class="btn" href="https://github.com/Pink-Mahi/autho" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a class="btn" href="https://github.com/Pink-Mahi/autho_node" target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
 
         <section class="paper">
@@ -155,11 +155,24 @@
     <script>
         (async function loadWhitepaper() {
             const el = document.getElementById('paperContent');
+            const candidates = [
+                '/AUTHO_WHITEPAPER.md',
+                '/public/AUTHO_WHITEPAPER.md',
+                '/downloads/gateway-node/public/AUTHO_WHITEPAPER.md'
+            ];
             try {
-                const res = await fetch('/AUTHO_WHITEPAPER.md', { cache: 'no-store' });
-                if (!res.ok) throw new Error('Failed to load whitepaper');
-                const text = await res.text();
-                el.textContent = text;
+                let loaded = false;
+                for (const url of candidates) {
+                    const res = await fetch(url, { cache: 'no-store' });
+                    if (!res.ok) continue;
+                    const text = await res.text();
+                    if (text && text.trim()) {
+                        el.textContent = text;
+                        loaded = true;
+                        break;
+                    }
+                }
+                if (!loaded) throw new Error('Failed to load whitepaper');
             } catch (e) {
                 el.textContent = 'Unable to load the whitepaper from this node. Please use the "Open raw markdown" button above.';
             }
