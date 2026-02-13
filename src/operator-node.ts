@@ -7427,6 +7427,11 @@ export class OperatorNode extends EventEmitter {
   }
 
   private async connectToMainSeed(): Promise<void> {
+    const existingWs = this.mainSeedWs;
+    if (existingWs && (existingWs.readyState === WebSocket.OPEN || existingWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
     const seedUrl = this.getNextSeedUrl();
     console.log(`[Operator] Connecting to seed: ${seedUrl}`);
     if (this.allSeedUrls.length > 1) {
@@ -7434,17 +7439,28 @@ export class OperatorNode extends EventEmitter {
     }
 
     try {
-      this.mainSeedWs = new WebSocket(seedUrl);
+      const ws = new WebSocket(seedUrl);
+      this.mainSeedWs = ws;
 
-      this.mainSeedWs.on('open', () => {
+      ws.on('open', () => {
+        if (this.mainSeedWs !== ws) {
+          try { ws.close(); } catch {}
+          return;
+        }
+
         console.log(`[Operator] ✅ Connected to Autho Network via ${seedUrl}`);
         this.isConnectedToMain = true;
         this.lastMainNodeHeartbeat = Date.now();
         this.lastSuccessfulSeedUrl = seedUrl;
         this.currentSeedIndex = 0; // Reset rotation on success
 
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = undefined;
+        }
+
         // Send sync request
-        this.mainSeedWs!.send(JSON.stringify({
+        ws.send(JSON.stringify({
           type: 'sync_request',
           operatorId: this.config.operatorId,
           networkId: this.computeNetworkId(),
@@ -7453,7 +7469,7 @@ export class OperatorNode extends EventEmitter {
         }));
       });
 
-      this.mainSeedWs.on('message', async (data: WebSocket.Data) => {
+      ws.on('message', async (data: WebSocket.Data) => {
         try {
           const message = JSON.parse(data.toString());
           
@@ -7474,13 +7490,22 @@ export class OperatorNode extends EventEmitter {
         }
       });
 
-      this.mainSeedWs.on('close', () => {
+      ws.on('close', () => {
+        if (this.mainSeedWs !== ws) {
+          return;
+        }
+
         console.log('[Operator] Disconnected from seed');
+        this.mainSeedWs = undefined;
         this.isConnectedToMain = false;
         this.scheduleReconnect();
       });
 
-      this.mainSeedWs.on('error', (error: Error) => {
+      ws.on('error', (error: Error) => {
+        if (this.mainSeedWs !== ws) {
+          return;
+        }
+
         console.error(`[Operator] WebSocket error with ${seedUrl}:`, error.message);
         // Will try next seed on reconnect
       });
@@ -7493,6 +7518,9 @@ export class OperatorNode extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
+    if (this.mainSeedWs && (this.mainSeedWs.readyState === WebSocket.OPEN || this.mainSeedWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
 
     const delay = this.allSeedUrls.length > 1 ? 5000 : 10000; // Faster retry with multiple seeds
     console.log(`[Operator] Will try next seed in ${delay/1000} seconds...`);
@@ -7529,6 +7557,20 @@ export class OperatorNode extends EventEmitter {
         break;
       case 'ping':
         this.mainSeedWs?.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        break;
+      case 'ephemeral_sync_request':
+        // Main seed may ask operators for ephemeral backfill; respond even if empty.
+        try {
+          const sinceTimestamp = Number(message?.since || 0);
+          const maxEvents = Math.min(Number(message?.limit || 500), 1000);
+          const events = this.ephemeralStore?.getEventsSince(sinceTimestamp, maxEvents) || [];
+          this.mainSeedWs?.send(JSON.stringify({
+            type: 'ephemeral_sync_response',
+            events,
+            sinceTimestamp,
+            latestTimestamp: this.ephemeralStore?.getLatestTimestamp?.() || 0,
+          }));
+        } catch {}
         break;
       default:
         console.log(`[Operator] Unknown message type: ${message.type}`);
