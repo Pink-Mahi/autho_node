@@ -51,6 +51,24 @@ interface WALEntry {
   completed: boolean;
 }
 
+/**
+ * Segment Index Entry - Maps event hash to segment file + byte offset for O(1) reads
+ * Like Bitcoin's block index mapping block hash to blk*.dat file position
+ */
+interface SegmentIndexEntry {
+  seg: number;     // Segment file number
+  off: number;     // Byte offset within segment file
+  len: number;     // Length of the JSON line in bytes
+}
+
+interface SegmentIndex {
+  version: number;
+  entries: { [eventHash: string]: SegmentIndexEntry };
+  currentSegment: number;       // Active segment number being written to
+  currentSegmentEvents: number; // How many events in the current segment
+  lastUpdated: number;
+}
+
 export class EventStore {
   private dataDir: string;
   private eventsDir: string;
@@ -68,6 +86,15 @@ export class EventStore {
   private eventCacheHits: number = 0;
   private eventCacheMisses: number = 0;
 
+  // Segment-based event storage — like Bitcoin's blk*.dat files
+  // Batches events into segment files instead of 1-file-per-event
+  // Eliminates filesystem overhead at scale (100K+ events)
+  private segmentsDir: string;
+  private segmentIndexFile: string;
+  private segmentIndex: SegmentIndex;
+  private segmentMaxEvents: number;  // Events per segment (default 1000)
+  private useSegments: boolean = true; // New events always go to segments
+
   constructor(dataDir: string) {
     this.dataDir = dataDir;
     this.eventsDir = path.join(dataDir, 'events');
@@ -84,6 +111,11 @@ export class EventStore {
       this.eventCacheMaxSize = isGateway ? 2000 : 10000;
     }
 
+    // Segment storage config
+    this.segmentsDir = path.join(dataDir, 'segments');
+    this.segmentIndexFile = path.join(dataDir, 'segment-index.json');
+    this.segmentMaxEvents = Number(process.env.AUTHO_SEGMENT_SIZE) || 1000;
+
     // Initialize directories
     if (!fs.existsSync(this.dataDir)) {
       fs.mkdirSync(this.dataDir, { recursive: true });
@@ -91,15 +123,33 @@ export class EventStore {
     if (!fs.existsSync(this.eventsDir)) {
       fs.mkdirSync(this.eventsDir, { recursive: true });
     }
+    if (!fs.existsSync(this.segmentsDir)) {
+      fs.mkdirSync(this.segmentsDir, { recursive: true });
+    }
 
     // Load or initialize state
     this.state = this.loadState();
     
     // Load or rebuild sequence index
     this.sequenceIndex = this.loadOrRebuildIndex();
+
+    // Load segment index
+    this.segmentIndex = this.loadSegmentIndex();
     
     // Recover from any interrupted operations (WAL replay)
     this.recoverFromWAL();
+
+    // Auto-compact: if >500 individual event files exist, compact them into segments on startup
+    // This transparently migrates existing nodes to segment storage without manual intervention
+    try {
+      const individualCount = fs.existsSync(this.eventsDir)
+        ? fs.readdirSync(this.eventsDir).filter(f => f.endsWith('.json') && !f.endsWith('.tmp') && !f.endsWith('.bak')).length
+        : 0;
+      if (individualCount > 500) {
+        console.log(`[EventStore] Auto-compacting ${individualCount} individual event files into segments...`);
+        this.compactToSegments().catch(err => console.error('[EventStore] Auto-compact failed:', err));
+      }
+    } catch {}
   }
 
   /**
@@ -249,7 +299,7 @@ export class EventStore {
   }
 
   /**
-   * Get event by hash — uses LRU cache to avoid disk reads for hot events
+   * Get event by hash — LRU cache → segment file → individual file (backward compat)
    */
   async getEvent(eventHash: string): Promise<Event | null> {
     // Check LRU cache first
@@ -264,6 +314,17 @@ export class EventStore {
 
     this.eventCacheMisses++;
 
+    // Check segment index for O(1) read from segment file
+    const segEntry = this.segmentIndex.entries[eventHash];
+    if (segEntry) {
+      const event = this.readEventFromSegment(segEntry);
+      if (event) {
+        this.addToCache(eventHash, event);
+        return event;
+      }
+    }
+
+    // Fall back to individual event file (backward compat for pre-segment events)
     const eventFile = path.join(this.eventsDir, `${eventHash}.json`);
     
     if (!AtomicStorage.exists(eventFile)) {
@@ -282,6 +343,27 @@ export class EventStore {
     
     console.error(`[EventStore] Failed to read event ${eventHash}:`, result.error);
     return null;
+  }
+
+  /**
+   * Read a single event from a segment file using byte offset (O(1) seek)
+   */
+  private readEventFromSegment(entry: SegmentIndexEntry): Event | null {
+    try {
+      const segFile = path.join(this.segmentsDir, `seg-${String(entry.seg).padStart(6, '0')}.ndjson`);
+      if (!fs.existsSync(segFile)) return null;
+
+      // Read exactly the bytes we need — no scanning
+      const fd = fs.openSync(segFile, 'r');
+      const buf = Buffer.alloc(entry.len);
+      fs.readSync(fd, buf, 0, entry.len, entry.off);
+      fs.closeSync(fd);
+
+      return JSON.parse(buf.toString('utf-8').trim());
+    } catch (err: any) {
+      console.warn(`[EventStore] Failed to read from segment ${entry.seg} offset ${entry.off}: ${err.message}`);
+      return null;
+    }
   }
 
   /**
@@ -466,12 +548,56 @@ export class EventStore {
   }
 
   /**
-   * Persist event to disk using atomic write
-   * This ensures crash-safety - either the full event is written or nothing
+   * Persist event to disk — uses segment storage (like Bitcoin's blk*.dat)
+   * Falls back to individual file if segments are disabled
    */
   private async persistEvent(event: Event): Promise<void> {
-    const eventFile = path.join(this.eventsDir, `${event.eventHash}.json`);
-    atomicWriteJSON(eventFile, event);
+    if (this.useSegments) {
+      this.persistEventToSegment(event);
+    } else {
+      const eventFile = path.join(this.eventsDir, `${event.eventHash}.json`);
+      atomicWriteJSON(eventFile, event);
+    }
+  }
+
+  /**
+   * Write event to current segment file (NDJSON: one JSON event per line)
+   * When segment is full, rotate to next segment
+   */
+  private persistEventToSegment(event: Event): void {
+    // Rotate segment if current is full
+    if (this.segmentIndex.currentSegmentEvents >= this.segmentMaxEvents) {
+      this.segmentIndex.currentSegment++;
+      this.segmentIndex.currentSegmentEvents = 0;
+    }
+
+    const segNum = this.segmentIndex.currentSegment;
+    const segFile = path.join(this.segmentsDir, `seg-${String(segNum).padStart(6, '0')}.ndjson`);
+
+    // Serialize event to a single JSON line
+    const jsonLine = JSON.stringify(event) + '\n';
+    const lineBytes = Buffer.byteLength(jsonLine, 'utf-8');
+
+    // Get current file size (byte offset for this event)
+    let offset = 0;
+    try {
+      if (fs.existsSync(segFile)) {
+        offset = fs.statSync(segFile).size;
+      }
+    } catch {}
+
+    // Append to segment file
+    fs.appendFileSync(segFile, jsonLine, 'utf-8');
+
+    // Update segment index
+    this.segmentIndex.entries[event.eventHash] = { seg: segNum, off: offset, len: lineBytes };
+    this.segmentIndex.currentSegmentEvents++;
+    this.segmentIndex.lastUpdated = Date.now();
+
+    // Batch save segment index every 50 events for performance
+    if (this.segmentIndex.currentSegmentEvents % 50 === 0 || this.segmentIndex.currentSegmentEvents === 1) {
+      this.saveSegmentIndex();
+    }
   }
 
   /**
@@ -567,6 +693,7 @@ export class EventStore {
 
   /**
    * Rebuild index synchronously (used during startup)
+   * Scans both individual event files AND segment files for full coverage
    */
   private rebuildIndexSync(): SequenceIndex {
     const index: SequenceIndex = {
@@ -575,33 +702,51 @@ export class EventStore {
       lastUpdated: Date.now(),
     };
 
-    if (!fs.existsSync(this.eventsDir)) {
-      // Save empty index
-      atomicWriteJSON(this.indexFile, index);
-      return index;
-    }
-
-    const files = fs.readdirSync(this.eventsDir);
     let count = 0;
 
-    for (const file of files) {
-      if (!file.endsWith('.json') || file.endsWith('.tmp') || file.endsWith('.bak')) continue;
-
-      try {
-        const eventFile = path.join(this.eventsDir, file);
-        const result = atomicReadJSONWithRecovery<Event>(eventFile);
-        
-        if (result.success && result.data) {
-          index.entries[result.data.sequenceNumber] = result.data.eventHash;
-          count++;
+    // Phase 1: Scan individual event files (pre-compaction or mixed mode)
+    if (fs.existsSync(this.eventsDir)) {
+      const files = fs.readdirSync(this.eventsDir);
+      for (const file of files) {
+        if (!file.endsWith('.json') || file.endsWith('.tmp') || file.endsWith('.bak')) continue;
+        try {
+          const eventFile = path.join(this.eventsDir, file);
+          const result = atomicReadJSONWithRecovery<Event>(eventFile);
+          if (result.success && result.data) {
+            index.entries[result.data.sequenceNumber] = result.data.eventHash;
+            count++;
+          }
+        } catch (err) {
+          console.warn(`[EventStore] Skipping unreadable file during index rebuild: ${file}`);
         }
-      } catch (err) {
-        console.warn(`[EventStore] Skipping unreadable file during index rebuild: ${file}`);
+      }
+    }
+
+    // Phase 2: Scan segment files (NDJSON — one event per line)
+    if (fs.existsSync(this.segmentsDir)) {
+      const segFiles = fs.readdirSync(this.segmentsDir)
+        .filter(f => f.endsWith('.ndjson'))
+        .sort();
+      for (const segFile of segFiles) {
+        try {
+          const content = fs.readFileSync(path.join(this.segmentsDir, segFile), 'utf-8');
+          const lines = content.split('\n').filter(l => l.trim());
+          for (const line of lines) {
+            try {
+              const event: Event = JSON.parse(line);
+              if (event.sequenceNumber && event.eventHash) {
+                index.entries[event.sequenceNumber] = event.eventHash;
+                count++;
+              }
+            } catch {}
+          }
+        } catch (err) {
+          console.warn(`[EventStore] Skipping unreadable segment during index rebuild: ${segFile}`);
+        }
       }
     }
 
     index.lastUpdated = Date.now();
-    // Save index directly (this.sequenceIndex may not be set yet)
     atomicWriteJSON(this.indexFile, index);
     console.log(`[EventStore] Built index with ${count} entries`);
     return index;
@@ -1112,5 +1257,164 @@ export class EventStore {
       return false;
     }
     return verifyMerkleProof(proof);
+  }
+
+  // ============================================================
+  // SEGMENT STORAGE (like Bitcoin's blk*.dat files)
+  // ============================================================
+
+  /**
+   * Load segment index from disk
+   */
+  private loadSegmentIndex(): SegmentIndex {
+    if (AtomicStorage.exists(this.segmentIndexFile)) {
+      const result = atomicReadJSONWithRecovery<SegmentIndex>(this.segmentIndexFile);
+      if (result.success && result.data && result.data.version === 1) {
+        const entryCount = Object.keys(result.data.entries).length;
+        if (entryCount > 0) {
+          console.log(`[EventStore] Loaded segment index: ${entryCount} entries across ${result.data.currentSegment + 1} segments`);
+        }
+        return result.data;
+      }
+    }
+
+    // Initialize empty segment index
+    return {
+      version: 1,
+      entries: {},
+      currentSegment: 0,
+      currentSegmentEvents: 0,
+      lastUpdated: Date.now(),
+    };
+  }
+
+  /**
+   * Save segment index to disk
+   */
+  private saveSegmentIndex(): void {
+    atomicWriteJSON(this.segmentIndexFile, this.segmentIndex);
+  }
+
+  /**
+   * Compact individual event files into segment files
+   * This migrates pre-segment events into the segment storage format
+   * Like Bitcoin's reindex: reorganizes on-disk layout for efficiency
+   * Safe to run while the node is serving reads (backward compat maintained until complete)
+   * 
+   * @returns Number of events compacted
+   */
+  async compactToSegments(): Promise<{ compacted: number; segments: number; deletedFiles: number; errors: string[] }> {
+    const startTime = Date.now();
+    const errors: string[] = [];
+    let compacted = 0;
+    let deletedFiles = 0;
+
+    if (!fs.existsSync(this.eventsDir)) {
+      return { compacted: 0, segments: 0, deletedFiles: 0, errors: [] };
+    }
+
+    // Find all individual event files that aren't yet in segments
+    const eventFiles = fs.readdirSync(this.eventsDir)
+      .filter(f => f.endsWith('.json') && !f.endsWith('.tmp') && !f.endsWith('.bak'));
+
+    if (eventFiles.length === 0) {
+      console.log('[EventStore] No individual event files to compact');
+      return { compacted: 0, segments: 0, deletedFiles: 0, errors: [] };
+    }
+
+    console.log(`[EventStore] Compacting ${eventFiles.length} individual event files into segments...`);
+
+    // Read all events and sort by sequence number
+    const events: Event[] = [];
+    for (const file of eventFiles) {
+      try {
+        const eventPath = path.join(this.eventsDir, file);
+        const result = atomicReadJSONWithRecovery<Event>(eventPath);
+        if (result.success && result.data) {
+          // Skip if already in segment index
+          if (!this.segmentIndex.entries[result.data.eventHash]) {
+            events.push(result.data);
+          }
+        }
+      } catch (err: any) {
+        errors.push(`Failed to read ${file}: ${err.message}`);
+      }
+    }
+
+    // Sort by sequence number for ordered segments
+    events.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+
+    if (events.length === 0) {
+      console.log('[EventStore] All events already in segments');
+      return { compacted: 0, segments: 0, deletedFiles: 0, errors };
+    }
+
+    // Write events into segments
+    for (const event of events) {
+      try {
+        this.persistEventToSegment(event);
+        compacted++;
+      } catch (err: any) {
+        errors.push(`Failed to compact event ${event.eventHash.slice(0, 12)}: ${err.message}`);
+      }
+    }
+
+    // Save segment index
+    this.saveSegmentIndex();
+
+    // Delete individual files now that they're safely in segments
+    for (const event of events) {
+      try {
+        const eventFile = path.join(this.eventsDir, `${event.eventHash}.json`);
+        if (fs.existsSync(eventFile)) {
+          fs.unlinkSync(eventFile);
+          deletedFiles++;
+        }
+        // Also delete backup files
+        const bakFile = eventFile + '.bak';
+        if (fs.existsSync(bakFile)) {
+          fs.unlinkSync(bakFile);
+        }
+      } catch {}
+    }
+
+    const elapsed = Date.now() - startTime;
+    const segCount = this.segmentIndex.currentSegment + 1;
+    console.log(`[EventStore] ✅ Compacted ${compacted} events into ${segCount} segments in ${elapsed}ms (deleted ${deletedFiles} individual files)`);
+
+    return { compacted, segments: segCount, deletedFiles, errors };
+  }
+
+  /**
+   * Get segment storage stats for diagnostics
+   */
+  getSegmentStats(): {
+    segmentCount: number;
+    eventsInSegments: number;
+    individualFiles: number;
+    currentSegment: number;
+    currentSegmentEvents: number;
+    segmentMaxEvents: number;
+  } {
+    let individualFiles = 0;
+    try {
+      individualFiles = fs.readdirSync(this.eventsDir)
+        .filter(f => f.endsWith('.json') && !f.endsWith('.tmp') && !f.endsWith('.bak')).length;
+    } catch {}
+
+    let segmentCount = 0;
+    try {
+      segmentCount = fs.readdirSync(this.segmentsDir)
+        .filter(f => f.endsWith('.ndjson')).length;
+    } catch {}
+
+    return {
+      segmentCount,
+      eventsInSegments: Object.keys(this.segmentIndex.entries).length,
+      individualFiles,
+      currentSegment: this.segmentIndex.currentSegment,
+      currentSegmentEvents: this.segmentIndex.currentSegmentEvents,
+      segmentMaxEvents: this.segmentMaxEvents,
+    };
   }
 }
