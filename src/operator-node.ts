@@ -5452,8 +5452,8 @@ export class OperatorNode extends EventEmitter {
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const commitmentHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-        // Fee goes to sponsor address
-        const feeAddress = process.env.SPONSOR_ADDRESS || '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U';
+        // Fee goes to canonical sponsor address
+        const feeAddress = this.getFeeAddress();
         const feeSats = Number(process.env.USER_MINT_FEE_SATS || 1000);
 
         res.json({
@@ -5502,8 +5502,8 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        // Verify fee transaction pays to sponsor address with minimum 1000 sats
-        const sponsorAddress = process.env.SPONSOR_ADDRESS || '1FMcxZRUWVDbKy7DxAosW7sM5PUntAkJ9U';
+        // Verify fee transaction pays to canonical sponsor address with minimum 1000 sats
+        const sponsorAddress = this.getFeeAddress();
         const minFeeSats = Number(process.env.USER_MINT_FEE_SATS || 1000);
 
         try {
@@ -6680,41 +6680,14 @@ export class OperatorNode extends EventEmitter {
 
       // Handle append_event from operators - add to canonical ledger and broadcast
       case 'append_event':
-        try {
-          const { requestId, payload, signatures, operatorId } = message;
-          
-          if (!payload || !signatures || !Array.isArray(signatures)) {
-            ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: 'Invalid payload or signatures' }));
-            break;
-          }
-
-          // Append to canonical event store (this IS the ledger)
-          const event = await this.canonicalEventStore.appendEvent(payload, signatures);
-          
-          console.log(`[Operator] Appended event from ${operatorId}: ${payload.type} (seq #${event.sequenceNumber})`);
-
-          // Send ack back to sender
-          ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: true, eventHash: event.eventHash, sequenceNumber: event.sequenceNumber }));
-
-          // Broadcast to all other connected operators/gateways (excluding sender)
-          const broadcastMsg = JSON.stringify({ type: 'new_event', event, sourceOperatorId: this.config.operatorId });
-          for (const [peerWs] of this.gatewayConnections) {
-            if (peerWs !== ws && peerWs.readyState === WebSocket.OPEN) {
-              try { peerWs.send(broadcastMsg); } catch {}
-            }
-          }
-          for (const peer of this.operatorPeerConnections.values()) {
-            if (peer.ws !== ws && peer.ws.readyState === WebSocket.OPEN) {
-              try { peer.ws.send(broadcastMsg); } catch {}
-            }
-          }
-
-          // Rebuild local state
-          await this.rebuildLocalStateFromCanonical();
-          this.broadcastRegistryUpdate();
-        } catch (e: any) {
+        {
           const { requestId } = message || {};
-          ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: e?.message || String(e) }));
+          ws.send(JSON.stringify({
+            type: 'append_event_ack',
+            requestId,
+            ok: false,
+            error: 'append_event is disabled; use consensus mempool/checkpoint flow'
+          }));
         }
         break;
 
@@ -7298,46 +7271,15 @@ export class OperatorNode extends EventEmitter {
 
       // Handle append_event from peer operators - allows direct operator-to-operator sync when main node is offline
       case 'append_event':
-        try {
-          const { requestId, payload, signatures, operatorId: senderOpId } = message;
-          
-          if (!payload || !signatures || !Array.isArray(signatures)) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: 'Invalid payload or signatures' }));
-            }
-            break;
-          }
-
-          // Append to canonical event store (this IS the ledger)
-          const event = await this.canonicalEventStore.appendEvent(payload, signatures);
-          
-          console.log(`[Operator] Appended event from peer ${senderOpId}: ${payload.type} (seq #${event.sequenceNumber})`);
-
-          // Send ack back to sender
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: true, eventHash: event.eventHash, sequenceNumber: event.sequenceNumber }));
-          }
-
-          // Broadcast to all OTHER connected operators (excluding sender and original source)
-          const broadcastMsg = JSON.stringify({ type: 'new_event', event, sourceOperatorId: this.config.operatorId });
-          for (const [peerOpId, peer] of this.operatorPeerConnections) {
-            if (peerOpId !== peerId && peer.ws.readyState === WebSocket.OPEN) {
-              try { peer.ws.send(broadcastMsg); } catch {}
-            }
-          }
-          for (const [gwWs] of this.gatewayConnections) {
-            if (gwWs.readyState === WebSocket.OPEN) {
-              try { gwWs.send(broadcastMsg); } catch {}
-            }
-          }
-
-          // Rebuild local state
-          await this.rebuildLocalStateFromCanonical();
-          this.broadcastRegistryUpdate();
-        } catch (e: any) {
+        {
           const { requestId } = message || {};
           if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'append_event_ack', requestId, ok: false, error: e?.message || String(e) }));
+            ws.send(JSON.stringify({
+              type: 'append_event_ack',
+              requestId,
+              ok: false,
+              error: 'append_event is disabled; use consensus mempool/checkpoint flow'
+            }));
           }
         }
         break;

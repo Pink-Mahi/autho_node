@@ -581,7 +581,6 @@ The protocol is live, open-source, and available at [github.com/Pink-Mahi/autho]
 
 | Repository | Purpose |
 |------------|---------|
-| [Pink-Mahi/autho](https://github.com/Pink-Mahi/autho) | Main node + gateway download packages |
 | [Pink-Mahi/autho_node](https://github.com/Pink-Mahi/autho_node) | Operator node deployment |
 
 ## Appendix C: Glossary
