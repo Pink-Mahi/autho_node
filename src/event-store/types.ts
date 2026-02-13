@@ -201,6 +201,21 @@ export interface ItemRegisteredPayload extends BaseEventPayload {
   
   /** The account ID of whoever actually minted this item */
   issuerAccountId: string;
+
+  /** Optional digital asset class (defaults to physical_title semantics when absent) */
+  assetClass?: 'physical_title' | 'ticket_access' | 'encrypted_document' | 'course_access' | 'secret_code_access';
+
+  /** Optional access policy for digital items */
+  accessPolicy?: {
+    isRedeemableOnce?: boolean;
+    expiresAt?: number;
+    transferable?: boolean;
+    maxTransfers?: number;
+    visibility?: 'private' | 'invite_only' | 'public';
+  };
+
+  /** Optional commitment hash for off-canonical payload integrity */
+  contentCommitmentHash?: string;
   
   serialNumberHash: string;
   serialNumberDisplay?: string;

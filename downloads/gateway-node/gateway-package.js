@@ -2272,6 +2272,16 @@ class GatewayNode {
       res.send(this.generateInstallPage());
     });
 
+    const normalizeRegistryItem = (item) => {
+      if (!item || typeof item !== 'object') return item;
+      return {
+        ...item,
+        assetClass: item.assetClass,
+        accessPolicy: item.accessPolicy,
+        contentCommitmentHash: item.contentCommitmentHash,
+      };
+    };
+
     // Registry endpoints
     this.app.get('/api/registry/state', (req, res) => {
       const cacheKey = 'registry_state';
@@ -2321,7 +2331,7 @@ class GatewayNode {
           return;
         }
 
-        res.json(item);
+        res.json(normalizeRegistryItem(item));
       }).catch((e) => {
         const statusCode = e?.statusCode;
         res.status(statusCode || 503).json({
@@ -2335,7 +2345,9 @@ class GatewayNode {
     this.app.get('/api/registry/owners/:address/items', (req, res) => {
       const { address } = req.params;
       Promise.resolve(this.assertSyncedForQuorum('', false)).then(() => {
-        const items = Object.values(this.registryData.items || {}).filter(item => item.currentOwner === address);
+        const items = Object.values(this.registryData.items || {})
+          .filter(item => item.currentOwner === address)
+          .map(normalizeRegistryItem);
         res.json(items);
       }).catch((e) => {
         const statusCode = e?.statusCode;

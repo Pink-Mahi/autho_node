@@ -28,6 +28,11 @@ export interface ItemRecord {
   // Issuer information (manufacturer/authenticator/user)
   issuerRole?: 'manufacturer' | 'authenticator' | 'user';
   issuerAccountId?: string;
+
+  // Asset class + access control (digital expansion, optional/backward-compatible)
+  assetClass?: AssetClass;
+  accessPolicy?: AccessPolicy;
+  contentCommitmentHash?: string;
   
   // Physical item identification (hashed for privacy)
   serialNumberHash: string;
@@ -133,6 +138,9 @@ export interface ItemRegistrationRequest {
   manufacturerName?: string;
   issuerRole?: 'manufacturer' | 'authenticator' | 'user';
   issuerAccountId?: string;
+  assetClass?: AssetClass;
+  accessPolicy?: AccessPolicy;
+  contentCommitmentHash?: string;
   serialNumber: string; // Will be hashed
   metadata: {
     itemType: string;
@@ -209,6 +217,21 @@ export interface LedgerImage {
   w: number;
   h: number;
  }
+
+export type AssetClass =
+  | 'physical_title'
+  | 'ticket_access'
+  | 'encrypted_document'
+  | 'course_access'
+  | 'secret_code_access';
+
+export interface AccessPolicy {
+  isRedeemableOnce?: boolean;
+  expiresAt?: number;
+  transferable?: boolean;
+  maxTransfers?: number;
+  visibility?: 'private' | 'invite_only' | 'public';
+}
 
 /**
  * Registry Event

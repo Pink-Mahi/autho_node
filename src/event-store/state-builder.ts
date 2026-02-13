@@ -53,6 +53,15 @@ export interface ItemState {
   serialNumberHash: string;
   serialNumberDisplay?: string;
   metadataHash: string;
+  assetClass?: 'physical_title' | 'ticket_access' | 'encrypted_document' | 'course_access' | 'secret_code_access';
+  accessPolicy?: {
+    isRedeemableOnce?: boolean;
+    expiresAt?: number;
+    transferable?: boolean;
+    maxTransfers?: number;
+    visibility?: 'private' | 'invite_only' | 'public';
+  };
+  contentCommitmentHash?: string;
   currentOwner: string;
   metadata: any;
   registeredAt: number;
@@ -1174,6 +1183,9 @@ export class StateBuilder {
       serialNumberHash: payload.serialNumberHash,
       serialNumberDisplay: payload.serialNumberDisplay,
       metadataHash: payload.metadataHash,
+      assetClass: payload.assetClass,
+      accessPolicy: payload.accessPolicy,
+      contentCommitmentHash: payload.contentCommitmentHash,
       currentOwner: payload.initialOwner,
       metadata: payload.metadata,
       registeredAt: payload.timestamp,
