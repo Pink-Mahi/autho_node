@@ -7471,6 +7471,15 @@ export class OperatorNode extends EventEmitter {
           lastSequence: this.state.lastSyncedSequence,
           timestamp: Date.now()
         }));
+
+        // Also backfill ephemeral conversation events from seed.
+        const sinceTimestamp = this.ephemeralStore?.getLatestTimestamp() || 0;
+        ws.send(JSON.stringify({
+          type: 'ephemeral_sync_request',
+          since: sinceTimestamp,
+          limit: 1000,
+          timestamp: Date.now(),
+        }));
       });
 
       ws.on('message', async (data: WebSocket.Data) => {
@@ -7561,6 +7570,42 @@ export class OperatorNode extends EventEmitter {
         break;
       case 'ping':
         this.mainSeedWs?.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        break;
+      case 'ephemeral_event':
+        try {
+          const sourceOperatorId = String(message?.sourceOperatorId || '').trim();
+          const eventData = message?.event as EphemeralEvent;
+
+          if (!eventData || !eventData.eventId || !eventData.eventType) {
+            break;
+          }
+
+          // Keep full payload copy before importEvent mutates large content fields.
+          const broadcastCopy = JSON.parse(JSON.stringify(eventData));
+          const imported = await this.ephemeralStore!.importEvent(eventData);
+          if (imported) {
+            this.broadcastEphemeralEvent(broadcastCopy, sourceOperatorId);
+          }
+        } catch (e: any) {
+          console.log('[Ephemeral] Error importing ephemeral_event from seed:', e?.message);
+        }
+        break;
+      case 'ephemeral_sync_response':
+        try {
+          const events = message?.events as EphemeralEvent[];
+          if (Array.isArray(events)) {
+            let importedCount = 0;
+            for (const event of events) {
+              const imported = await this.ephemeralStore!.importEvent(event);
+              if (imported) importedCount++;
+            }
+            if (importedCount > 0) {
+              console.log(`[Ephemeral] 📥 Backfill sync: imported ${importedCount} events from seed`);
+            }
+          }
+        } catch (e: any) {
+          console.log('[Ephemeral] Error processing ephemeral_sync_response from seed:', e?.message);
+        }
         break;
       case 'ephemeral_sync_request':
         // Main seed may ask operators for ephemeral backfill; respond even if empty.
