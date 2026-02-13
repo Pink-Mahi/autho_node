@@ -4326,31 +4326,72 @@ export class OperatorNode extends EventEmitter {
         }
         const conversations = Array.from(conversationMap.values());
 
-        // Resolve account by accountId OR walletAddress (reverse lookup)
-        const resolveAccountForParticipant = (participantId: string): any | undefined => {
-          const direct = this.state.accounts.get(participantId);
-          if (direct) return direct;
-          const pid = String(participantId || '').trim();
-          if (!pid) return undefined;
+        // Collect all unique participant IDs that need resolution
+        const allParticipantIds = new Set<string>();
+        for (const conv of conversations) {
+          for (const p of conv.participants) {
+            allParticipantIds.add(String(p || '').trim());
+          }
+        }
+
+        // Build a local account cache from this.state.accounts (by accountId AND walletAddress)
+        const accountCache = new Map<string, any>();
+        for (const pid of allParticipantIds) {
+          if (!pid) continue;
+          const direct = this.state.accounts.get(pid);
+          if (direct) { accountCache.set(pid, direct); continue; }
           for (const a of this.state.accounts.values()) {
             const wa = String((a as any)?.walletAddress || (a as any)?.identityAddress || '').trim();
-            if (wa && wa === pid) return a;
+            if (wa && wa === pid) { accountCache.set(pid, a); break; }
           }
-          return undefined;
-        };
+        }
+
+        // If any participants are unresolved, try to fetch from seed
+        const unresolvedIds = [...allParticipantIds].filter(pid => pid && !accountCache.has(pid));
+        if (unresolvedIds.length > 0) {
+          const base = this.getSeedHttpBase();
+          if (base) {
+            try {
+              // Try fetching the seed's conversations endpoint to get enriched participant info
+              const seedRes = await fetch(`${base}/api/messages/conversations`, {
+                headers: {
+                  'authorization': String(req.headers.authorization || ''),
+                  'x-session-token': String(req.headers['x-session-token'] || ''),
+                  'cookie': String(req.headers.cookie || ''),
+                },
+              });
+              if (seedRes.ok) {
+                const seedData = await seedRes.json() as any;
+                if (seedData?.success && Array.isArray(seedData.conversations)) {
+                  for (const conv of seedData.conversations) {
+                    if (!Array.isArray(conv.participantInfo)) continue;
+                    for (const pi of conv.participantInfo) {
+                      const aid = String(pi?.accountId || '').trim();
+                      if (aid && !accountCache.has(aid)) {
+                        accountCache.set(aid, pi);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.log(`[Messaging] Seed account lookup fallback failed: ${e?.message}`);
+            }
+          }
+        }
 
         // Enrich with participant info
         const enriched = conversations.map(conv => ({
           ...conv,
           participantInfo: conv.participants.map(p => {
             const pid = String(p || '').trim();
-            const acc = resolveAccountForParticipant(pid);
+            const acc = accountCache.get(pid);
             const resolvedId = String((acc as any)?.accountId || pid);
             return {
               accountId: resolvedId,
-              displayName: (acc as any)?.username || pid.substring(0, 12) + '...',
-              isManufacturer: (acc as any)?.role === 'manufacturer',
-              isAuthenticator: (acc as any)?.role === 'authenticator',
+              displayName: (acc as any)?.username || (acc as any)?.displayName || pid.substring(0, 12) + '...',
+              isManufacturer: (acc as any)?.role === 'manufacturer' || (acc as any)?.isManufacturer === true,
+              isAuthenticator: (acc as any)?.role === 'authenticator' || (acc as any)?.isAuthenticator === true,
             };
           }),
         }));
