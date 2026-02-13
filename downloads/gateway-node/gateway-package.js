@@ -6584,6 +6584,18 @@ class GatewayNode {
         }
         this.broadcastToPeers(message);
         break;
+
+      case 'registry_delta':
+        // Incremental state sync — operator sends only new events when gap is small
+        if (message.data && message.data.toSequence > (this.registryData.sequenceNumber || 0)) {
+          console.log(`📥 Registry delta from seed: ${seed} (seq ${message.data.fromSequence}→${message.data.toSequence}, ${(message.data.events || []).length} events)`);
+          this.registryData = {
+            sequenceNumber: message.data.toSequence,
+            lastEventHash: message.data.lastEventHash || this.registryData.lastEventHash,
+          };
+          this.broadcastToPeers(message);
+        }
+        break;
       
       case 'state_verification':
         // Gateway acknowledges consensus verification from network
@@ -8508,6 +8520,18 @@ class GatewayNode {
         if (message.data && message.data.sequenceNumber > (this.registryData.sequenceNumber || 0)) {
           console.log(`📥 Registry update from gateway ${gatewayId}`);
           this.registryData = message.data;
+          this.broadcastToPeers(message);
+        }
+        break;
+
+      case 'registry_delta':
+        // Relay incremental deltas from gateway peers
+        if (message.data && message.data.toSequence > (this.registryData.sequenceNumber || 0)) {
+          console.log(`📥 Registry delta from gateway ${gatewayId} (seq ${message.data.fromSequence}→${message.data.toSequence})`);
+          this.registryData = {
+            sequenceNumber: message.data.toSequence,
+            lastEventHash: message.data.lastEventHash || this.registryData.lastEventHash,
+          };
           this.broadcastToPeers(message);
         }
         break;
