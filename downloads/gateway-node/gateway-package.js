@@ -1322,7 +1322,9 @@ class GatewayNode {
     const isMessagingVaultLookup = isMessagingVaultEndpoint && req.method === 'GET';
     const isMessagingVaultPublish = isMessagingVaultEndpoint && req.method === 'POST';
 
-    if (!isAuthEndpoint) {
+    const isMessagingEndpoint = originalUrl.startsWith('/api/messages/');
+
+    if (!isAuthEndpoint && !isMessagingEndpoint) {
       try {
         await this.assertSyncedForQuorum('', isWrite);
       } catch (e) {
@@ -1339,7 +1341,7 @@ class GatewayNode {
 
     for (const operatorUrl of this.getCandidateOperatorUrls()) {
       try {
-        if (isWrite && !isAuthEndpoint) {
+        if (isWrite && !isAuthEndpoint && !isMessagingEndpoint) {
           await this.assertSyncedForWrite(operatorUrl);
         }
 
