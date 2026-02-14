@@ -3643,7 +3643,9 @@
 
     async function loadGroupMessages(groupId) {
       try {
-        const response = await fetch(`/api/messages/groups/${groupId}/messages`, {
+        const debugCrypto = localStorage.getItem('messages_debug_crypto') === '1';
+        const debugQuery = debugCrypto ? '?debug=1' : '';
+        const response = await fetch(`/api/messages/groups/${groupId}/messages${debugQuery}`, {
           headers: WalletAuth.getAuthHeaders()
         });
         
@@ -3718,12 +3720,21 @@
         }
         
         const senderName = isSent ? 'You' : getAccountDisplayName(msg.senderId);
+        let cryptoBadge = '';
+        if (msg.debugCrypto) {
+          const cryptoPath = msg.debugCrypto.hasMlsEncryptedContent
+            ? 'MLS'
+            : (msg.debugCrypto.hasEncryptedContentByMember
+              ? 'P2P'
+              : (msg.debugCrypto.hasLegacyEncryptedContents ? 'LEGACY' : 'NONE'));
+          cryptoBadge = `[${cryptoPath}] `;
+        }
         
         rendered.push(`
           <div class="message-bubble ${isSent ? 'sent' : 'received'}">
             ${!isSent ? `<div class="group-message-sender">${senderName}</div>` : ''}
             <div class="message-text">${escapeHtml(content)}</div>
-            <div class="message-meta">${formatTime(msg.timestamp)}</div>
+            <div class="message-meta">${cryptoBadge}${formatTime(msg.timestamp)}</div>
           </div>
         `);
       }
