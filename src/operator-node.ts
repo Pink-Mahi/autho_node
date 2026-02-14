@@ -108,6 +108,7 @@ export class OperatorNode extends EventEmitter {
   private allSeedUrls: string[] = [];
   /** Last successful seed URL */
   private lastSuccessfulSeedUrl?: string;
+  private lastRegistryTriggeredSyncAt: number = 0;
 
   private pendingRegistrySignatureRequests: Map<string, {
     signatures: QuorumSignature[];
@@ -7676,16 +7677,21 @@ export class OperatorNode extends EventEmitter {
     switch (message.type) {
       case 'sync_data':
         await this.handleSyncData(message);
-        this.broadcastRegistryUpdate();
         break;
       case 'new_event':
         await this.handleNewEvent(message.event);
-        this.broadcastRegistryUpdate();
         break;
       case 'registry_update':
         try {
           const remoteSeq = Number(message?.data?.sequenceNumber || 0);
-          if (remoteSeq && remoteSeq > this.state.lastSyncedSequence) {
+          const now = Date.now();
+          if (
+            remoteSeq &&
+            remoteSeq > this.state.lastSyncedSequence &&
+            !this.syncInProgress &&
+            (now - this.lastRegistryTriggeredSyncAt) > 2000
+          ) {
+            this.lastRegistryTriggeredSyncAt = now;
             this.mainSeedWs?.send(JSON.stringify({
               type: 'sync_request',
               operatorId: this.config.operatorId,
@@ -7850,7 +7856,9 @@ export class OperatorNode extends EventEmitter {
         this.consecutiveSyncFailures = 0;
       }
 
-      this.broadcastRegistryUpdate();
+      if (appendedCount > 0) {
+        this.broadcastRegistryUpdate();
+      }
     } catch (error: any) {
       console.error('[Operator] Sync error:', error.message);
       await this.handleSyncDivergence('Sync', error);
