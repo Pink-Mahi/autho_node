@@ -7822,16 +7822,22 @@ export class OperatorNode extends EventEmitter {
       console.log(`[Operator] Syncing events from main node...`);
 
       const { events } = message;
+      const storeState = this.canonicalEventStore.getState();
+      let expectedNextSeq = Number(storeState.sequenceNumber || 0) + 1;
+      let appendedCount = 0;
 
       if (Array.isArray(events) && events.length > 0) {
-        const storeState = this.canonicalEventStore.getState();
-        const currentSeq = Number(storeState.sequenceNumber || 0);
-
         const ordered = [...events].sort((a: any, b: any) => Number(a.sequenceNumber || 0) - Number(b.sequenceNumber || 0));
         for (const ev of ordered) {
           const seq = Number(ev?.sequenceNumber || 0);
-          if (!seq || seq <= currentSeq) continue;
+          if (!seq || seq < expectedNextSeq) continue;
+          if (seq > expectedNextSeq) {
+            throw new Error(`Unexpected sequenceNumber (expected ${expectedNextSeq}, got ${seq})`);
+          }
+
           await this.canonicalEventStore.appendExistingEvent(ev);
+          expectedNextSeq = seq + 1;
+          appendedCount++;
         }
       }
 
@@ -7840,7 +7846,9 @@ export class OperatorNode extends EventEmitter {
       console.log(`[Operator] Sync complete. Accounts: ${this.state.accounts.size}, Items: ${this.state.items.size}`);
 
       await this.persistState();
-      this.consecutiveSyncFailures = 0;
+      if (appendedCount > 0 || this.consecutiveSyncFailures === 0) {
+        this.consecutiveSyncFailures = 0;
+      }
 
       this.broadcastRegistryUpdate();
     } catch (error: any) {
