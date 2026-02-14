@@ -4139,11 +4139,17 @@ export class OperatorNode extends EventEmitter {
         }
 
         let rec = this.messagingEncryptionKeyRegistry.get(id);
-        
-        // If not found locally and this is a client request, try to fetch from peer operators
-        // Don't recurse if this is already an internal request
-        if (!rec && !isInternalRequest) {
-          rec = await this.fetchEncryptionKeyFromNetwork(id);
+        if (!rec) {
+          rec = this.messagingEncryptionKeyRegistry.get(id.toLowerCase());
+        }
+
+        // For client requests, refresh from peers and prefer newer key material.
+        // This avoids stale local key cache causing cross-node decrypt failures.
+        if (!isInternalRequest) {
+          const networkRec = await this.fetchEncryptionKeyFromNetwork(id);
+          if (networkRec && (!rec || Number(networkRec.updatedAt || 0) > Number(rec.updatedAt || 0))) {
+            rec = networkRec;
+          }
         }
         
         if (!rec) {
