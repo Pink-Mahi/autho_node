@@ -7189,6 +7189,37 @@ export class OperatorNode extends EventEmitter {
             ? await this.canonicalEventStore.getEventsBySequence(fromSeq, toSeq)
             : [];
 
+          let syncGapAt = 0;
+          if (fromSeq <= toSeq) {
+            let expectedSeq = fromSeq;
+            for (const ev of events) {
+              const seq = Number(ev?.sequenceNumber || 0);
+              if (seq !== expectedSeq) {
+                syncGapAt = expectedSeq;
+                break;
+              }
+              expectedSeq++;
+            }
+            if (!syncGapAt && expectedSeq <= toSeq) {
+              syncGapAt = expectedSeq;
+            }
+          }
+
+          if (syncGapAt > 0) {
+            console.error(`[Operator] Refusing to serve non-contiguous sync range (${fromSeq}-${toSeq}); gap at ${syncGapAt}`);
+            ws.send(JSON.stringify({
+              type: 'sync_error',
+              operatorId: this.getOperatorId(),
+              networkId: this.computeNetworkId(),
+              reason: 'sequence_gap',
+              gapAt: syncGapAt,
+              fromSequence: fromSeq,
+              headSequence: toSeq,
+              timestamp: Date.now(),
+            }));
+            break;
+          }
+
           ws.send(JSON.stringify({
             type: 'sync_data',
             operatorId: this.getOperatorId(),
@@ -7788,6 +7819,15 @@ export class OperatorNode extends EventEmitter {
             sinceTimestamp,
             latestTimestamp: this.ephemeralStore?.getLatestTimestamp?.() || 0,
           }));
+        } catch {}
+        break;
+      case 'sync_error':
+        try {
+          const reason = String(message?.reason || 'unknown_sync_error');
+          const gapAt = Number(message?.gapAt || 0);
+          if (reason === 'sequence_gap' && gapAt > 0) {
+            await this.handleSyncDivergence('Seed sync response', new Error(`Seed sync gap at ${gapAt}`));
+          }
         } catch {}
         break;
       default:
