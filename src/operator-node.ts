@@ -4851,11 +4851,18 @@ export class OperatorNode extends EventEmitter {
         // Return messages with the encrypted content for current user
         const userMessages = messages.map(m => {
           const payload = m.payload as GroupMessagePayload;
+          const encryptedContent = resolveRecipientCiphertext(payload, account);
+          if (!encryptedContent) {
+            const byMemberKeys = Object.keys((payload?.encryptedContentByMember && typeof payload.encryptedContentByMember === 'object') ? payload.encryptedContentByMember : {});
+            const legacyKeys = Object.keys(((payload as any)?.encryptedContents && typeof (payload as any).encryptedContents === 'object') ? (payload as any).encryptedContents : {});
+            console.warn(`[GroupCrypto] Missing recipient ciphertext groupId=${groupId} messageId=${String(payload?.messageId || '')} recipient=${String(account?.accountId || '')} byMemberKeys=${byMemberKeys.join(',')} legacyKeys=${legacyKeys.join(',')}`);
+          }
+
           return {
             messageId: payload.messageId,
             groupId: payload.groupId,
             senderId: payload.senderId,
-            encryptedContent: resolveRecipientCiphertext(payload, account),
+            encryptedContent,
             mlsEncryptedContent: (payload as any).mlsEncryptedContent,
             timestamp: m.timestamp,
             expiresAt: m.expiresAt,
