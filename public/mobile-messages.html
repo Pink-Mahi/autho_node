@@ -3097,6 +3097,12 @@
         if (data.success) {
           conversations = data.conversations;
           renderConversations();
+          const contactsTab = document.getElementById('contactsTab');
+          if (contactsTab && contactsTab.style.display !== 'none') {
+            const localContacts = getLocalContacts();
+            renderContacts(localContacts);
+            updateAddContactButton(contactExistsInList(localContacts, currentRecipientId));
+          }
           document.getElementById('inboxStats').textContent = 
             `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`;
         } else if (data.error && data.error.includes('auth')) {
@@ -3237,6 +3243,31 @@
       return contacts.some(c => String(c?.accountId || c?.contactId || '').trim() === target);
     }
 
+    function getConversationDisplayName(accountId) {
+      const target = String(accountId || '').trim();
+      if (!target) return '';
+      for (const conv of conversations || []) {
+        const participant = (conv?.participantInfo || []).find(p => String(p?.accountId || '').trim() === target);
+        const name = String(participant?.displayName || '').trim();
+        if (name) return name;
+      }
+      return '';
+    }
+
+    function normalizeContactShape(contact) {
+      const accountId = String(contact?.accountId || contact?.contactId || '').trim();
+      if (!accountId) return null;
+      const fallbackName = accountId.substring(0, 12) + '...';
+      const conversationName = getConversationDisplayName(accountId);
+      const displayName = conversationName || String(contact?.displayName || contact?.nickname || '').trim() || fallbackName;
+      return {
+        ...contact,
+        accountId,
+        contactId: accountId,
+        displayName,
+      };
+    }
+
     function isCurrentRecipientInContacts() {
       if (!currentRecipientId || currentGroupId) return false;
       return contactExistsInList(getLocalContacts(), currentRecipientId);
@@ -3296,13 +3327,17 @@
 
         if (data.success) {
           // Merge server contacts with local backup
-          const serverContacts = data.contacts || [];
+          const serverContacts = Array.isArray(data.contacts)
+            ? data.contacts.map(normalizeContactShape).filter(Boolean)
+            : [];
           const localContacts = getLocalContacts();
           
           // Build merged list (server takes priority for display names)
           const merged = new Map();
           for (const c of localContacts) {
-            merged.set(c.accountId, c);
+            const normalized = normalizeContactShape(c);
+            if (!normalized) continue;
+            merged.set(normalized.accountId, normalized);
           }
           for (const c of serverContacts) {
             merged.set(c.accountId, c);
@@ -3315,12 +3350,14 @@
           
           // Re-add any local-only contacts to server
           for (const local of localContacts) {
-            if (!serverContacts.find(s => s.accountId === local.accountId)) {
+            const normalizedLocal = normalizeContactShape(local);
+            if (!normalizedLocal) continue;
+            if (!serverContacts.find(s => s.accountId === normalizedLocal.accountId)) {
               // Silently re-add to server
               fetch('/api/messages/contacts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...WalletAuth.getAuthHeaders() },
-                body: JSON.stringify({ contactId: local.accountId, displayName: local.displayName })
+                body: JSON.stringify({ contactId: normalizedLocal.accountId, displayName: normalizedLocal.displayName })
               }).catch(() => {});
             }
           }
@@ -3352,7 +3389,10 @@
         return;
       }
 
-      container.innerHTML = contacts.map(contact => `
+      container.innerHTML = contacts.map(rawContact => {
+        const contact = normalizeContactShape(rawContact);
+        if (!contact) return '';
+        return `
         <div class="contact-card">
           <div class="contact-info">
             <div class="contact-avatar">${contact.displayName[0].toUpperCase()}</div>
@@ -3368,7 +3408,8 @@
             <button onclick="removeContact('${contact.accountId}')">Remove</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     async function removeContact(contactId) {
