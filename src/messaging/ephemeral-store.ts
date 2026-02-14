@@ -651,8 +651,41 @@ export class EphemeralEventStore extends EventEmitter {
       
       // Group chat indexing
       case EphemeralEventType.GROUP_CREATED: {
-        const payload = event.payload as GroupPayload;
-        this.groups.set(payload.groupId, payload);
+        const rawPayload = (event.payload || {}) as any;
+        const groupId = String(rawPayload?.groupId || '').trim();
+        if (!groupId) break;
+
+        // Backward compatibility: some gateway builds send memberIds/creatorId
+        const rawMembers = Array.isArray(rawPayload?.members)
+          ? rawPayload.members
+          : (Array.isArray(rawPayload?.memberIds) ? rawPayload.memberIds : []);
+        const members: string[] = Array.from(
+          new Set(
+            rawMembers
+              .map((m: any): string => String(m || '').trim())
+              .filter((m: string) => m.length > 0)
+          )
+        );
+
+        const createdBy = String(rawPayload?.createdBy || rawPayload?.creatorId || '').trim();
+        if (createdBy && !members.includes(createdBy)) {
+          members.unshift(createdBy);
+        }
+
+        const admins: string[] = Array.isArray(rawPayload?.admins)
+          ? Array.from(new Set(rawPayload.admins.map((a: any): string => String(a || '').trim()).filter((a: string) => a.length > 0)))
+          : (createdBy ? [createdBy] : []);
+
+        const payload: GroupPayload = {
+          groupId,
+          name: String(rawPayload?.name || 'Unnamed Group'),
+          members,
+          admins,
+          createdBy: createdBy || members[0] || '',
+          createdAt: Number(rawPayload?.createdAt || event.timestamp || Date.now()),
+        };
+
+        this.groups.set(groupId, payload);
         // Index group for all members
         for (const memberId of payload.members) {
           if (!this.groupsByUser.has(memberId)) {
@@ -676,6 +709,9 @@ export class EphemeralEventStore extends EventEmitter {
       case EphemeralEventType.GROUP_MEMBER_ADDED: {
         const payload = event.payload as GroupMemberPayload;
         const group = this.groups.get(payload.groupId);
+        if (group && !Array.isArray(group.members)) {
+          group.members = [];
+        }
         if (group && !group.members.includes(payload.memberId)) {
           group.members.push(payload.memberId);
           // Index group for new member
@@ -1042,7 +1078,7 @@ export class EphemeralEventStore extends EventEmitter {
       payload.editHistory = [];
     }
     payload.editHistory.push({
-      content: payload.content || '',
+      content: payload.content,
       editedAt: Date.now(),
     });
     

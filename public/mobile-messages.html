@@ -3795,34 +3795,39 @@
           }
         }
 
-        let body;
-        if (mlsEncrypted) {
-          // MLS: single encrypted payload for all members
-          body = JSON.stringify({ mlsEncryptedContent: mlsEncrypted });
-        } else {
-          // Fallback: encrypt message for each group member individually
-          const encryptedContentByMember = {};
-          
-          for (const memberId of currentGroupMembers) {
-            try {
-              const wallet = WalletAuth.getWallet();
-              const isMe = wallet && memberId === wallet.publicKey;
-              const encrypted = isMe
-                ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
-                : await encryptForRecipient(messageEnvelope, memberId);
-              encryptedContentByMember[memberId] = encrypted;
-            } catch (e) {
-              console.error('SECURITY: Failed to encrypt for member:', memberId, e);
-            }
+        // Always send per-member ciphertext map for backend compatibility
+        const encryptedContentByMember = {};
+        
+        for (const memberId of currentGroupMembers) {
+          try {
+            const wallet = WalletAuth.getWallet();
+            const isMe = wallet && memberId === wallet.publicKey;
+            const encrypted = isMe
+              ? await encryptForEncryptionPublicKey(messageEnvelope, myEncryptionKeyPair.publicKey)
+              : await encryptForRecipient(messageEnvelope, memberId);
+            encryptedContentByMember[memberId] = encrypted;
+          } catch (e) {
+            console.error('SECURITY: Failed to encrypt for member:', memberId, e);
           }
-          
-          // SECURITY: Do NOT send if encryption fails for any member
-          if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
-            alert(`Failed to encrypt message for a group member. Message not sent.`);
-            return;
-          }
-          body = JSON.stringify({ encryptedContentByMember });
         }
+        
+        // SECURITY: Do NOT send if encryption fails for any member
+        if (Object.keys(encryptedContentByMember).length !== currentGroupMembers.length) {
+          alert('Failed to encrypt message for a group member. Message not sent.');
+          return;
+        }
+
+        // Support both API shapes:
+        // - operator-node/gateway: encryptedContentByMember
+        // - api-server: encryptedContents
+        const bodyPayload = {
+          encryptedContentByMember,
+          encryptedContents: encryptedContentByMember,
+        };
+        if (mlsEncrypted) {
+          bodyPayload.mlsEncryptedContent = mlsEncrypted;
+        }
+        const body = JSON.stringify(bodyPayload);
 
         const response = await fetch(`/api/messages/groups/${currentGroupId}/send`, {
           method: 'POST',
