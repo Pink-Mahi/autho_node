@@ -675,6 +675,15 @@
       </div>
 
       <div class="info-card">
+        <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Account Password</div>
+        <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">Set or change your login password while signed in.</div>
+        <input id="changePasswordInput" type="password" class="input" placeholder="New password" />
+        <input id="changePasswordConfirmInput" type="password" class="input" placeholder="Confirm new password" style="margin-top: 10px;" />
+        <button class="btn secondary" onclick="changeMyPassword()" style="margin-top: 10px;">Save Password</button>
+        <div id="changePasswordStatus" style="margin-top:10px; font-size: 13px; color:#999;"></div>
+      </div>
+
+      <div class="info-card">
         <div style="font-weight:600; color:#d4af37; margin-bottom: 10px;">Request Payment Link</div>
         <div style="color:#999; font-size: 13px; line-height: 1.6; margin-bottom: 10px;">Generate a shareable link that pre-fills an amount and memo in the wallet.</div>
         <input id="invoiceAmountUsd" type="number" inputmode="decimal" class="input" placeholder="Amount (USD) e.g. 105.87 (optional)" />
@@ -1084,6 +1093,64 @@
         if (statusEl) statusEl.textContent = `Error: ${e?.message || String(e)}`;
       }
     };
+
+    async function changeMyPassword() {
+      const statusEl = document.getElementById('changePasswordStatus');
+      const passwordEl = document.getElementById('changePasswordInput');
+      const confirmEl = document.getElementById('changePasswordConfirmInput');
+      if (!passwordEl || !confirmEl) return;
+
+      const password = String(passwordEl.value || '');
+      const confirm = String(confirmEl.value || '');
+
+      if (!password) {
+        if (statusEl) statusEl.textContent = 'Enter a password.';
+        return;
+      }
+      if (password !== confirm) {
+        if (statusEl) statusEl.textContent = 'Passwords do not match.';
+        return;
+      }
+      if (!isValidPassword(password)) {
+        if (statusEl) statusEl.textContent = 'Use a 14+ char passphrase (with spaces) OR 12+ chars with upper/lower/digit/special.';
+        return;
+      }
+
+      try {
+        const sid = getSessionId();
+        const me = await loadMe();
+        const accountId = String(me?.account?.accountId || '').trim();
+        if (!sid || !accountId) {
+          if (statusEl) statusEl.textContent = 'Sign in required.';
+          return;
+        }
+
+        if (statusEl) statusEl.textContent = 'Saving password...';
+        const r = await fetch(`/api/accounts/${encodeURIComponent(accountId)}/password/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sid}` },
+          body: JSON.stringify({ password })
+        });
+
+        if (r.status === 401) {
+          clearSession();
+          window.location.href = `/customer/login?return=${encodeURIComponent('/m/wallet')}`;
+          return;
+        }
+
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data || data.success !== true) {
+          if (statusEl) statusEl.textContent = data?.error || 'Failed to save password.';
+          return;
+        }
+
+        passwordEl.value = '';
+        confirmEl.value = '';
+        if (statusEl) statusEl.textContent = 'Password saved.';
+      } catch (error) {
+        if (statusEl) statusEl.textContent = `Save failed: ${error?.message || String(error)}`;
+      }
+    }
 
     function buildPaymentLink(params) {
       const base = `${location.origin}/m/wallet`;
