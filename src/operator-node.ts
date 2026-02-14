@@ -7755,6 +7755,52 @@ export class OperatorNode extends EventEmitter {
     }
   }
 
+  private isSyncDivergenceError(message: string): boolean {
+    const msg = String(message || '');
+    return msg.includes('Unexpected sequenceNumber') || msg.includes('Invalid event hash');
+  }
+
+  private requestMainSeedSync(fromSequence: number, reason: string): void {
+    if (!this.mainSeedWs || this.mainSeedWs.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    this.mainSeedWs.send(JSON.stringify({
+      type: 'sync_request',
+      operatorId: this.config.operatorId,
+      networkId: this.computeNetworkId(),
+      lastSequence: Math.max(0, Number(fromSequence || 0)),
+      timestamp: Date.now(),
+      reason,
+    }));
+  }
+
+  private async handleSyncDivergence(context: string, error: any): Promise<void> {
+    const message = String(error?.message || error || 'Unknown sync error');
+    if (!this.isSyncDivergenceError(message)) {
+      return;
+    }
+
+    this.consecutiveSyncFailures++;
+    const storeState = this.canonicalEventStore.getState();
+    const localSequence = Number(storeState?.sequenceNumber || 0);
+    const now = Date.now();
+
+    console.warn(`[Operator] ${context} divergence detected: ${message}`);
+
+    // First try: request targeted backfill from our local sequence
+    this.requestMainSeedSync(localSequence, 'auto_repair_targeted');
+
+    // Escalate to full local reset if divergence persists
+    if (this.consecutiveSyncFailures >= 2 && (now - this.lastMismatchSyncAt) > 15000) {
+      this.lastMismatchSyncAt = now;
+      console.log('[Operator] 🔄 Auto-repair escalation: resetting local event store and requesting full resync...');
+      await this.resetEventStore();
+      this.requestMainSeedSync(0, 'auto_repair_full');
+      this.consecutiveSyncFailures = 0;
+    }
+  }
+
   private async handleSyncData(message: any): Promise<void> {
     if (this.syncInProgress) return;
     this.syncInProgress = true;
@@ -7799,14 +7845,7 @@ export class OperatorNode extends EventEmitter {
       this.broadcastRegistryUpdate();
     } catch (error: any) {
       console.error('[Operator] Sync error:', error.message);
-      if (String(error?.message || '').includes('Invalid event hash')) {
-        this.consecutiveSyncFailures++;
-        if (this.consecutiveSyncFailures >= 3) {
-          console.log('[Operator] 🔄 Resetting event store after 3 consecutive sync failures...');
-          await this.resetEventStore();
-          this.consecutiveSyncFailures = 0;
-        }
-      }
+      await this.handleSyncDivergence('Sync', error);
     } finally {
       this.syncInProgress = false;
     }
@@ -7850,9 +7889,11 @@ export class OperatorNode extends EventEmitter {
       }
       await this.rebuildLocalStateFromCanonical();
       await this.persistState();
+      this.consecutiveSyncFailures = 0;
       this.broadcastRegistryUpdate();
     } catch (e: any) {
       console.error('[Operator] Failed to apply new event:', e?.message || String(e));
+      await this.handleSyncDivergence('New event', e);
     }
   }
 
