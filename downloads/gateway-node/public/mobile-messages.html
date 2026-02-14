@@ -3671,6 +3671,7 @@
       for (const msg of messages) {
         const isSent = msg.senderId === wallet.publicKey;
         let content = '[Encrypted]';
+        let mlsDecrypted = false;
         
         // Try MLS decryption first (shared group key)
         if (msg.mlsEncryptedContent && window.MLSGroup && currentGroupId && myEncryptionKeyPair) {
@@ -3680,6 +3681,7 @@
               const groupState = await getOrCreateMLSGroupState(currentGroupId, currentGroupMembers || []);
               if (groupState) {
                 content = await window.MLSGroup.decryptGroupMessage(groupState, envelope);
+                mlsDecrypted = true;
                 // Parse inner content if it's a message envelope
                 try {
                   const parsed = JSON.parse(content);
@@ -3689,11 +3691,12 @@
             }
           } catch (e) {
             console.warn('[MLS] Group decrypt failed:', e.message);
-            content = '[MLS decrypt failed]';
+            content = '[Encrypted]';
           }
         }
-        // Fallback: per-member encrypted content
-        else if (msg.encryptedContent && myEncryptionKeyPair) {
+
+        // Fallback: per-member encrypted content (required after relogin if MLS state is missing/stale)
+        if (!mlsDecrypted && msg.encryptedContent && myEncryptionKeyPair) {
           try {
             const result = decryptMessage(msg.encryptedContent, msg.senderId);
             if (result && typeof result === 'object' && result.encrypted) {
