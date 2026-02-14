@@ -3248,8 +3248,32 @@
         try {
           const vaultContacts = await loadPrivateContactsVault();
           if (Array.isArray(vaultContacts)) {
-            contacts = vaultContacts;
-            saveLocalContacts(vaultContacts);
+            const merged = new Map();
+            for (const c of contacts) {
+              const key = String(c?.accountId || c?.contactId || '').trim();
+              if (!key) continue;
+              merged.set(key, c);
+            }
+            for (const c of vaultContacts) {
+              const key = String(c?.accountId || c?.contactId || '').trim();
+              if (!key) continue;
+              if (merged.has(key)) {
+                const existing = merged.get(key) || {};
+                merged.set(key, {
+                  ...c,
+                  displayName: String(existing?.displayName || c?.displayName || '').trim() || undefined,
+                });
+              } else {
+                merged.set(key, c);
+              }
+            }
+            contacts = Array.from(merged.values());
+            saveLocalContacts(contacts);
+
+            const vaultHasAllMerged = contacts.every(c => contactExistsInList(vaultContacts, c?.accountId || c?.contactId));
+            if (!vaultHasAllMerged || contacts.length !== vaultContacts.length) {
+              await savePrivateContactsVault(contacts);
+            }
           } else if (contacts.length > 0) {
             await savePrivateContactsVault(contacts);
           }
