@@ -1078,7 +1078,7 @@ export class EphemeralEventStore extends EventEmitter {
       payload.editHistory = [];
     }
     payload.editHistory.push({
-      content: payload.content,
+      content: String(payload.content || ''),
       editedAt: Date.now(),
     });
     
