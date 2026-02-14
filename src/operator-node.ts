@@ -7622,11 +7622,14 @@ export class OperatorNode extends EventEmitter {
 
     const seedUrl = this.getNextSeedUrl();
     const cooldownRemainingMs = this.getSeedCooldownRemainingMs(seedUrl);
-    if (cooldownRemainingMs > 0) {
+    if (cooldownRemainingMs > 0 && this.allSeedUrls.length > 1) {
       const delayMs = Math.max(5000, cooldownRemainingMs);
       console.log(`[Operator] Seed ${seedUrl} is quarantined for ${Math.ceil(delayMs / 1000)}s; delaying reconnect`);
       this.scheduleReconnect(delayMs);
       return;
+    }
+    if (cooldownRemainingMs > 0) {
+      console.warn(`[Operator] Seed ${seedUrl} is quarantined but no alternate seeds are available; continuing in single-seed mode`);
     }
     console.log(`[Operator] Connecting to seed: ${seedUrl}`);
     if (this.allSeedUrls.length > 1) {
@@ -7879,10 +7882,16 @@ export class OperatorNode extends EventEmitter {
       const seedFailures = Number(this.seedDivergenceCounts.get(activeSeed) || 0) + 1;
       this.seedDivergenceCounts.set(activeSeed, seedFailures);
       if (seedFailures >= 3) {
-        this.seedCooldownUntil.set(activeSeed, now + 60000);
-        this.seedDivergenceCounts.delete(activeSeed);
-        console.warn(`[Operator] Quarantining divergent seed for 60s: ${activeSeed}`);
-        try { this.mainSeedWs?.close(); } catch {}
+        const hasAlternateSeeds = this.buildSeedUrlList().some((url) => url !== activeSeed);
+        if (hasAlternateSeeds) {
+          this.seedCooldownUntil.set(activeSeed, now + 60000);
+          this.seedDivergenceCounts.delete(activeSeed);
+          console.warn(`[Operator] Quarantining divergent seed for 60s: ${activeSeed}`);
+          try { this.mainSeedWs?.close(); } catch {}
+        } else {
+          console.warn(`[Operator] Divergent seed detected but no alternates available; staying connected to ${activeSeed}`);
+          this.seedDivergenceCounts.set(activeSeed, 2);
+        }
       }
     }
 
