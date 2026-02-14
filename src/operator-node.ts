@@ -108,7 +108,11 @@ export class OperatorNode extends EventEmitter {
   private allSeedUrls: string[] = [];
   /** Last successful seed URL */
   private lastSuccessfulSeedUrl?: string;
+  private activeSeedUrl?: string;
   private lastRegistryTriggeredSyncAt: number = 0;
+  private lastSyncRequestAt: number = 0;
+  private seedDivergenceCounts: Map<string, number> = new Map();
+  private seedCooldownUntil: Map<string, number> = new Map();
 
   private pendingRegistrySignatureRequests: Map<string, {
     signatures: QuorumSignature[];
@@ -7202,7 +7206,16 @@ export class OperatorNode extends EventEmitter {
       case 'registry_update':
         try {
           const remoteSeq = Number(message?.data?.sequenceNumber || 0);
-          if (remoteSeq && remoteSeq > this.state.lastSyncedSequence && ws && ws.readyState === WebSocket.OPEN) {
+          const now = Date.now();
+          if (
+            remoteSeq &&
+            remoteSeq > this.state.lastSyncedSequence &&
+            ws &&
+            ws.readyState === WebSocket.OPEN &&
+            !this.syncInProgress &&
+            (now - this.lastRegistryTriggeredSyncAt) > 2000
+          ) {
+            this.lastRegistryTriggeredSyncAt = now;
             ws.send(JSON.stringify({
               type: 'sync_request',
               operatorId: this.getOperatorId(),
@@ -7551,10 +7564,14 @@ export class OperatorNode extends EventEmitter {
     if (this.allSeedUrls.length === 0) {
       return this.config.mainSeedUrl; // Fallback to config
     }
+
+    const now = Date.now();
+    const availableSeeds = this.allSeedUrls.filter((url) => Number(this.seedCooldownUntil.get(url) || 0) <= now);
+    const candidates = availableSeeds.length > 0 ? availableSeeds : this.allSeedUrls;
     
     // Rotate to next seed
-    this.currentSeedIndex = this.currentSeedIndex % this.allSeedUrls.length;
-    const seedUrl = this.allSeedUrls[this.currentSeedIndex];
+    this.currentSeedIndex = this.currentSeedIndex % candidates.length;
+    const seedUrl = candidates[this.currentSeedIndex];
     this.currentSeedIndex++;
     
     return seedUrl;
@@ -7584,9 +7601,9 @@ export class OperatorNode extends EventEmitter {
 
         console.log(`[Operator] ✅ Connected to Autho Network via ${seedUrl}`);
         this.isConnectedToMain = true;
+        this.activeSeedUrl = seedUrl;
         this.lastMainNodeHeartbeat = Date.now();
         this.lastSuccessfulSeedUrl = seedUrl;
-        this.currentSeedIndex = 0; // Reset rotation on success
 
         if (this.reconnectTimer) {
           clearTimeout(this.reconnectTimer);
@@ -7641,6 +7658,9 @@ export class OperatorNode extends EventEmitter {
         console.log('[Operator] Disconnected from seed');
         this.mainSeedWs = undefined;
         this.isConnectedToMain = false;
+        if (this.activeSeedUrl === seedUrl) {
+          this.activeSeedUrl = undefined;
+        }
         this.scheduleReconnect();
       });
 
@@ -7766,10 +7786,16 @@ export class OperatorNode extends EventEmitter {
     return msg.includes('Unexpected sequenceNumber') || msg.includes('Invalid event hash');
   }
 
-  private requestMainSeedSync(fromSequence: number, reason: string): void {
+  private requestMainSeedSync(fromSequence: number, reason: string, force: boolean = false): void {
     if (!this.mainSeedWs || this.mainSeedWs.readyState !== WebSocket.OPEN) {
       return;
     }
+
+    const now = Date.now();
+    if (!force && (now - this.lastSyncRequestAt) < 1500) {
+      return;
+    }
+    this.lastSyncRequestAt = now;
 
     this.mainSeedWs.send(JSON.stringify({
       type: 'sync_request',
@@ -7791,8 +7817,20 @@ export class OperatorNode extends EventEmitter {
     const storeState = this.canonicalEventStore.getState();
     const localSequence = Number(storeState?.sequenceNumber || 0);
     const now = Date.now();
+    const activeSeed = this.activeSeedUrl;
 
     console.warn(`[Operator] ${context} divergence detected: ${message}`);
+
+    if (activeSeed) {
+      const seedFailures = Number(this.seedDivergenceCounts.get(activeSeed) || 0) + 1;
+      this.seedDivergenceCounts.set(activeSeed, seedFailures);
+      if (seedFailures >= 3) {
+        this.seedCooldownUntil.set(activeSeed, now + 60000);
+        this.seedDivergenceCounts.delete(activeSeed);
+        console.warn(`[Operator] Quarantining divergent seed for 60s: ${activeSeed}`);
+        try { this.mainSeedWs?.close(); } catch {}
+      }
+    }
 
     // First try: request targeted backfill from our local sequence
     this.requestMainSeedSync(localSequence, 'auto_repair_targeted');
@@ -7802,7 +7840,7 @@ export class OperatorNode extends EventEmitter {
       this.lastMismatchSyncAt = now;
       console.log('[Operator] 🔄 Auto-repair escalation: resetting local event store and requesting full resync...');
       await this.resetEventStore();
-      this.requestMainSeedSync(0, 'auto_repair_full');
+      this.requestMainSeedSync(0, 'auto_repair_full', true);
       this.consecutiveSyncFailures = 0;
     }
   }
