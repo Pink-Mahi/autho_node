@@ -4010,7 +4010,7 @@ class GatewayNode {
           memberId: account.accountId,
         };
 
-        const event = this.createLocalEphemeralEvent('GROUP_MEMBER_LEFT', payload);
+        const event = this.createLocalEphemeralEvent('GROUP_LEFT', payload);
         if (!event) {
           return res.status(500).json({ success: false, error: 'Failed to leave group' });
         }
@@ -8085,7 +8085,7 @@ class GatewayNode {
         if (group && !group.members.includes(payload.memberId)) {
           group.members.push(payload.memberId);
         }
-      } else if (event.eventType === 'GROUP_LEFT' || event.eventType === 'GROUP_MEMBER_REMOVED') {
+      } else if (event.eventType === 'GROUP_LEFT' || event.eventType === 'GROUP_MEMBER_LEFT' || event.eventType === 'GROUP_MEMBER_REMOVED') {
         const payload = event.payload || {};
         const group = groupMap.get(payload.groupId);
         if (group) {
@@ -8130,7 +8130,7 @@ class GatewayNode {
         if (!group.members.includes(event.payload.memberId)) {
           group.members.push(event.payload.memberId);
         }
-      } else if ((event.eventType === 'GROUP_LEFT' || event.eventType === 'GROUP_MEMBER_REMOVED') && 
+      } else if ((event.eventType === 'GROUP_LEFT' || event.eventType === 'GROUP_MEMBER_LEFT' || event.eventType === 'GROUP_MEMBER_REMOVED') && 
                  event.payload?.groupId === groupId && group) {
         group.members = group.members.filter(m => m !== event.payload.memberId);
       }
