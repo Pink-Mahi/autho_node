@@ -618,6 +618,52 @@
                         <label>Manufacturer ID *</label>
                         <input type="text" id="manufacturerId" required placeholder="e.g., Tesla">
                     </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Asset Class</label>
+                            <select id="assetClass" onchange="toggleDashboardDigitalPolicy()">
+                                <option value="physical_title" selected>Physical Title</option>
+                                <option value="ticket_access">Ticket Access</option>
+                                <option value="encrypted_document">Encrypted Document</option>
+                                <option value="course_access">Course Access</option>
+                                <option value="secret_code_access">Secret Code Access</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="dashboardDigitalPolicy" style="display:none; border:1px solid rgba(212, 175, 55, 0.35); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Visibility</label>
+                                <select id="accessVisibility">
+                                    <option value="private">Private</option>
+                                    <option value="invite_only">Invite Only</option>
+                                    <option value="public" selected>Public</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Max Transfers (optional)</label>
+                                <input type="number" id="accessMaxTransfers" min="0" step="1" placeholder="e.g., 1">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Expires At (optional)</label>
+                                <input type="datetime-local" id="accessExpiresAt">
+                            </div>
+                            <div class="form-group">
+                                <label>Content Commitment Hash (optional sha256 hex)</label>
+                                <input type="text" id="contentCommitmentHash" maxlength="64" placeholder="64-char hex">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label><input type="checkbox" id="accessTransferable" style="width:auto; margin-right:8px;"> Transferable</label>
+                            </div>
+                            <div class="form-group">
+                                <label><input type="checkbox" id="accessRedeemableOnce" style="width:auto; margin-right:8px;"> Redeemable Once</label>
+                            </div>
+                        </div>
+                    </div>
                     <button type="submit" class="btn">📝 Register Item</button>
                 </form>
             </div>
@@ -2061,12 +2107,68 @@
             setRoleAppsSuccess('Invite code copied.');
         }
 
+        function toggleDashboardDigitalPolicy() {
+            const assetClass = String(document.getElementById('assetClass')?.value || 'physical_title').trim();
+            const isDigital = assetClass === 'ticket_access' || assetClass === 'encrypted_document' || assetClass === 'course_access' || assetClass === 'secret_code_access';
+            const section = document.getElementById('dashboardDigitalPolicy');
+            if (section) {
+                section.style.display = isDigital ? 'block' : 'none';
+            }
+        }
+
         async function registerItem(event) {
             event.preventDefault();
             const serialNumber = document.getElementById('serialNumber').value;
             const itemType = document.getElementById('itemType').value;
             const itemDescription = document.getElementById('itemDescription').value;
             const manufacturerId = document.getElementById('manufacturerId').value;
+            const assetClass = String(document.getElementById('assetClass')?.value || 'physical_title').trim();
+            const contentCommitmentHashRaw = String(document.getElementById('contentCommitmentHash')?.value || '').trim().toLowerCase();
+            const registerErrorEl = document.getElementById('registerError');
+            const registerSuccessEl = document.getElementById('registerSuccess');
+
+            if (contentCommitmentHashRaw && !/^[0-9a-f]{64}$/.test(contentCommitmentHashRaw)) {
+                registerSuccessEl.classList.remove('active');
+                registerErrorEl.textContent = '❌ Error: Content commitment hash must be a 64-character sha256 hex string.';
+                registerErrorEl.classList.add('active');
+                return;
+            }
+
+            const isDigital = assetClass === 'ticket_access' || assetClass === 'encrypted_document' || assetClass === 'course_access' || assetClass === 'secret_code_access';
+            let accessPolicy = undefined;
+            if (isDigital) {
+                const visibility = String(document.getElementById('accessVisibility')?.value || 'public').trim();
+                const maxTransfersRaw = String(document.getElementById('accessMaxTransfers')?.value || '').trim();
+                const expiresAtRaw = String(document.getElementById('accessExpiresAt')?.value || '').trim();
+
+                accessPolicy = {
+                    visibility: visibility === 'private' || visibility === 'invite_only' ? visibility : 'public',
+                    transferable: Boolean(document.getElementById('accessTransferable')?.checked),
+                    isRedeemableOnce: Boolean(document.getElementById('accessRedeemableOnce')?.checked),
+                };
+
+                if (maxTransfersRaw) {
+                    const maxTransfers = Number(maxTransfersRaw);
+                    if (!Number.isInteger(maxTransfers) || maxTransfers < 0) {
+                        registerSuccessEl.classList.remove('active');
+                        registerErrorEl.textContent = '❌ Error: Max transfers must be a non-negative integer.';
+                        registerErrorEl.classList.add('active');
+                        return;
+                    }
+                    accessPolicy.maxTransfers = maxTransfers;
+                }
+
+                if (expiresAtRaw) {
+                    const expiresMs = Date.parse(expiresAtRaw);
+                    if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
+                        registerSuccessEl.classList.remove('active');
+                        registerErrorEl.textContent = '❌ Error: Expiration must be a valid future date/time.';
+                        registerErrorEl.classList.add('active');
+                        return;
+                    }
+                    accessPolicy.expiresAt = Math.trunc(expiresMs);
+                }
+            }
 
             try {
                 const response = await fetch('/api/registry/item', {
@@ -2074,6 +2176,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         manufacturerId,
+                        assetClass,
+                        accessPolicy,
+                        contentCommitmentHash: contentCommitmentHashRaw || undefined,
                         serialNumber,
                         metadata: {
                             itemType,
@@ -2099,6 +2204,7 @@
                     setTimeout(() => {
                         document.getElementById('registerSuccess').classList.remove('active');
                     }, 5000);
+                    toggleDashboardDigitalPolicy();
                 } else {
                     throw new Error(data.error);
                 }
@@ -2712,6 +2818,7 @@
 
             // Load wallet data
             loadWalletData();
+            toggleDashboardDigitalPolicy();
 
             // Keep wallet balances fresh so Unconfirmed updates while waiting for confirmations.
             setInterval(() => {
