@@ -3683,6 +3683,14 @@
             } else {
               content = result;
             }
+            if (typeof content === 'string' && content.startsWith('{')) {
+              try {
+                const parsed = JSON.parse(content);
+                if (parsed && typeof parsed === 'object' && typeof parsed.content === 'string') {
+                  content = parsed.content;
+                }
+              } catch {}
+            }
           } catch (e) {
             content = '[Unable to decrypt]';
           }
