@@ -4804,6 +4804,7 @@ export class OperatorNode extends EventEmitter {
         }
 
         const { groupId } = req.params;
+        const includeDebug = String(req.query.debug || '').trim() === '1';
         
         if (!this.ephemeralStore!.isGroupMember(groupId, account.accountId)) {
           res.status(403).json({ success: false, error: 'Not a member of this group' });
@@ -4827,6 +4828,13 @@ export class OperatorNode extends EventEmitter {
             expiresAt: m.expiresAt,
             replyToMessageId: payload.replyToMessageId,
             mediaType: payload.mediaType,
+            ...(includeDebug ? {
+              debugCrypto: {
+                hasMlsEncryptedContent: !!(payload as any).mlsEncryptedContent,
+                hasEncryptedContentByMember: !!payload.encryptedContentByMember?.[account.accountId],
+                hasLegacyEncryptedContents: !!(payload as any).encryptedContents?.[account.accountId],
+              },
+            } : {}),
           };
         });
 
