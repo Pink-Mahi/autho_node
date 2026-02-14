@@ -998,6 +998,21 @@
       transform: translateY(-2px);
     }
 
+    .group-delete-btn {
+      background: rgba(255, 68, 68, 0.18);
+      border: 1px solid rgba(255, 68, 68, 0.5);
+      color: #ffb3b3;
+      border-radius: 6px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .group-delete-btn:hover {
+      background: rgba(255, 68, 68, 0.35);
+      color: #fff;
+    }
+
     .group-icon {
       width: 40px;
       height: 40px;
@@ -1698,7 +1713,7 @@
       <div class="member-select-list" id="currentMembersList"></div>
       <div class="section-divider">Add members</div>
       <div class="member-select-list" id="addMembersList"></div>
-      <button class="modal-btn" style="background: #ff4444; margin-top: 1rem;" onclick="leaveCurrentGroup()">🚪 Leave Group</button>
+      <button class="modal-btn" style="background: #ff4444; margin-top: 1rem;" onclick="leaveCurrentGroup()">🗑️ Delete Conversation</button>
     </div>
   </div>
 
@@ -3522,7 +3537,10 @@
                   <div class="group-members-count">${group.members.length} members</div>
                 </div>
               </div>
-              <div class="conversation-time">${timeAgo}</div>
+              <div style="display: flex; align-items: center; gap: 0.45rem;">
+                <button class="group-delete-btn" onclick="event.stopPropagation(); deleteGroupConversation('${group.groupId}')" title="Delete this conversation from your inbox">🗑</button>
+                <div class="conversation-time">${timeAgo}</div>
+              </div>
             </div>
             <div class="conversation-preview">${group.messageCount} messages</div>
           </div>
@@ -4037,30 +4055,40 @@
       }
     }
 
-    async function leaveCurrentGroup() {
-      if (!currentGroupId) return;
-      
-      if (!confirm('Are you sure you want to leave this group?')) return;
-      
+    async function deleteGroupConversation(groupId) {
+      if (!groupId) return;
+
+      const target = groups.find(g => g.groupId === groupId);
+      const groupName = String(target?.name || currentGroupInfo?.name || 'this group');
+      const confirmed = confirm(`Delete this conversation from your inbox?\n\nYou will leave "${groupName}" and stop receiving new messages.`);
+      if (!confirmed) return;
+
       try {
-        const response = await fetch(`/api/messages/groups/${currentGroupId}/leave`, {
+        const response = await fetch(`/api/messages/groups/${groupId}/leave`, {
           method: 'POST',
           headers: WalletAuth.getAuthHeaders()
         });
         
         const data = await response.json();
         if (data.success) {
-          closeModals();
-          showInbox();
+          if (currentGroupId === groupId) {
+            closeModals();
+            showInbox();
+          }
           await loadGroups();
-          alert('You have left the group');
+          alert('Conversation deleted from your inbox');
         } else {
-          alert('Failed to leave group: ' + (data.error || 'Unknown error'));
+          alert('Failed to delete conversation: ' + (data.error || 'Unknown error'));
         }
       } catch (error) {
-        console.error('Leave group error:', error);
-        alert('Failed to leave group');
+        console.error('Delete group conversation error:', error);
+        alert('Failed to delete conversation');
       }
+    }
+
+    async function leaveCurrentGroup() {
+      if (!currentGroupId) return;
+      await deleteGroupConversation(currentGroupId);
     }
 
     async function openConversation(conversationId, recipientId) {
