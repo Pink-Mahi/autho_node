@@ -4588,6 +4588,15 @@
       return Math.floor(seconds / 86400) + 'd';
     }
 
+    function formatTime(timestamp) {
+      if (!timestamp) return '';
+      try {
+        return new Date(Number(timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return '';
+      }
+    }
+
     function formatTimeUntil(timestamp) {
       const seconds = Math.floor((timestamp - Date.now()) / 1000);
       if (seconds < 0) return 'expired';
