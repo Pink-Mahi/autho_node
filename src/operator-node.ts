@@ -7577,6 +7577,12 @@ export class OperatorNode extends EventEmitter {
     return seedUrl;
   }
 
+  private getSeedCooldownRemainingMs(seedUrl: string): number {
+    const until = Number(this.seedCooldownUntil.get(seedUrl) || 0);
+    if (!until) return 0;
+    return Math.max(0, until - Date.now());
+  }
+
   private async connectToMainSeed(): Promise<void> {
     const existingWs = this.mainSeedWs;
     if (existingWs && (existingWs.readyState === WebSocket.OPEN || existingWs.readyState === WebSocket.CONNECTING)) {
@@ -7584,6 +7590,13 @@ export class OperatorNode extends EventEmitter {
     }
 
     const seedUrl = this.getNextSeedUrl();
+    const cooldownRemainingMs = this.getSeedCooldownRemainingMs(seedUrl);
+    if (cooldownRemainingMs > 0) {
+      const delayMs = Math.max(5000, cooldownRemainingMs);
+      console.log(`[Operator] Seed ${seedUrl} is quarantined for ${Math.ceil(delayMs / 1000)}s; delaying reconnect`);
+      this.scheduleReconnect(delayMs);
+      return;
+    }
     console.log(`[Operator] Connecting to seed: ${seedUrl}`);
     if (this.allSeedUrls.length > 1) {
       console.log(`[Operator] (${this.allSeedUrls.length} seeds available for failover)`);
@@ -7679,13 +7692,14 @@ export class OperatorNode extends EventEmitter {
     }
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(delayOverrideMs?: number): void {
     if (this.reconnectTimer) return;
     if (this.mainSeedWs && (this.mainSeedWs.readyState === WebSocket.OPEN || this.mainSeedWs.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
-    const delay = this.allSeedUrls.length > 1 ? 5000 : 10000; // Faster retry with multiple seeds
+    const baseDelay = this.allSeedUrls.length > 1 ? 5000 : 10000; // Faster retry with multiple seeds
+    const delay = Math.max(baseDelay, Number(delayOverrideMs || 0));
     console.log(`[Operator] Will try next seed in ${delay/1000} seconds...`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
