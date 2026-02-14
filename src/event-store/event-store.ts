@@ -402,16 +402,36 @@ export class EventStore {
     fromSequence: number,
     toSequence: number
   ): Promise<Event[]> {
-    const events: Event[] = [];
+    const loadRange = async (): Promise<{ events: Event[]; firstMissingSeq: number | null }> => {
+      const events: Event[] = [];
+      let firstMissingSeq: number | null = null;
 
-    for (let seq = fromSequence; seq <= toSequence; seq++) {
-      const eventHash = this.sequenceIndex.entries[seq];
-      if (!eventHash) continue;
+      for (let seq = fromSequence; seq <= toSequence; seq++) {
+        const eventHash = this.sequenceIndex.entries[seq];
+        if (!eventHash) {
+          if (firstMissingSeq === null) firstMissingSeq = seq;
+          continue;
+        }
 
-      const event = await this.getEvent(eventHash);
-      if (event) {
+        const event = await this.getEvent(eventHash);
+        if (!event || Number(event.sequenceNumber || 0) !== seq) {
+          if (firstMissingSeq === null) firstMissingSeq = seq;
+          continue;
+        }
+
         events.push(event);
       }
+
+      return { events, firstMissingSeq };
+    };
+
+    let { events, firstMissingSeq } = await loadRange();
+
+    // Auto-heal stale/corrupt sequence index if requested range has holes.
+    if (firstMissingSeq !== null) {
+      console.warn(`[EventStore] Sequence index gap at ${firstMissingSeq}; rebuilding index for sync continuity...`);
+      this.sequenceIndex = await this.rebuildIndex();
+      ({ events, firstMissingSeq } = await loadRange());
     }
 
     return events;
