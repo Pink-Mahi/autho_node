@@ -8065,12 +8065,18 @@ class GatewayNode {
       
       if (event.eventType === 'GROUP_CREATED') {
         const payload = event.payload || {};
+        const members = Array.isArray(payload.members)
+          ? payload.members
+          : (Array.isArray(payload.memberIds)
+            ? payload.memberIds
+            : (Array.isArray(payload.initialMembers) ? payload.initialMembers : [payload.creatorId || payload.createdBy].filter(Boolean)));
+        const creatorId = payload.creatorId || payload.createdBy || members[0] || '';
         groupMap.set(payload.groupId, {
           groupId: payload.groupId,
           name: payload.name,
-          creatorId: payload.creatorId,
-          members: payload.initialMembers || [payload.creatorId],
-          admins: [payload.creatorId],
+          creatorId,
+          members,
+          admins: [creatorId],
           createdAt: event.timestamp,
         });
       } else if (event.eventType === 'GROUP_MEMBER_ADDED') {
@@ -8106,12 +8112,18 @@ class GatewayNode {
       
       if (event.eventType === 'GROUP_CREATED' && event.payload?.groupId === groupId) {
         const payload = event.payload;
+        const members = Array.isArray(payload.members)
+          ? payload.members
+          : (Array.isArray(payload.memberIds)
+            ? payload.memberIds
+            : (Array.isArray(payload.initialMembers) ? payload.initialMembers : [payload.creatorId || payload.createdBy].filter(Boolean)));
+        const creatorId = payload.creatorId || payload.createdBy || members[0] || '';
         group = {
           groupId: payload.groupId,
           name: payload.name,
-          creatorId: payload.creatorId,
-          members: payload.initialMembers || [payload.creatorId],
-          admins: [payload.creatorId],
+          creatorId,
+          members,
+          admins: [creatorId],
           createdAt: event.timestamp,
         };
       } else if (event.eventType === 'GROUP_MEMBER_ADDED' && event.payload?.groupId === groupId && group) {
