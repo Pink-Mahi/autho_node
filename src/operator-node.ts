@@ -4813,6 +4813,41 @@ export class OperatorNode extends EventEmitter {
 
         const messages = this.ephemeralStore!.getGroupMessages(groupId);
         
+        const resolveRecipientCiphertext = (payload: any, recipient: any): string | undefined => {
+          const byMember = payload?.encryptedContentByMember && typeof payload.encryptedContentByMember === 'object'
+            ? payload.encryptedContentByMember
+            : {};
+          const legacy = payload?.encryptedContents && typeof payload.encryptedContents === 'object'
+            ? payload.encryptedContents
+            : {};
+
+          const idCandidates = Array.from(new Set([
+            String(recipient?.accountId || '').trim(),
+            String(recipient?.walletAddress || '').trim(),
+            String(recipient?.walletPublicKey || '').trim(),
+            String(recipient?.publicKey || '').trim(),
+          ].filter(Boolean)));
+
+          for (const id of idCandidates) {
+            const hit = byMember[id] || legacy[id];
+            if (typeof hit === 'string' && hit.length > 0) return hit;
+          }
+
+          const idCandidatesLower = new Set(idCandidates.map((id) => id.toLowerCase()));
+          for (const [key, value] of Object.entries(byMember)) {
+            if (idCandidatesLower.has(String(key || '').trim().toLowerCase()) && typeof value === 'string' && value.length > 0) {
+              return value;
+            }
+          }
+          for (const [key, value] of Object.entries(legacy)) {
+            if (idCandidatesLower.has(String(key || '').trim().toLowerCase()) && typeof value === 'string' && value.length > 0) {
+              return value;
+            }
+          }
+
+          return undefined;
+        };
+
         // Return messages with the encrypted content for current user
         const userMessages = messages.map(m => {
           const payload = m.payload as GroupMessagePayload;
@@ -4820,9 +4855,7 @@ export class OperatorNode extends EventEmitter {
             messageId: payload.messageId,
             groupId: payload.groupId,
             senderId: payload.senderId,
-            encryptedContent:
-              payload.encryptedContentByMember?.[account.accountId] ||
-              (payload as any).encryptedContents?.[account.accountId],
+            encryptedContent: resolveRecipientCiphertext(payload, account),
             mlsEncryptedContent: (payload as any).mlsEncryptedContent,
             timestamp: m.timestamp,
             expiresAt: m.expiresAt,
@@ -4831,8 +4864,8 @@ export class OperatorNode extends EventEmitter {
             ...(includeDebug ? {
               debugCrypto: {
                 hasMlsEncryptedContent: !!(payload as any).mlsEncryptedContent,
-                hasEncryptedContentByMember: !!payload.encryptedContentByMember?.[account.accountId],
-                hasLegacyEncryptedContents: !!(payload as any).encryptedContents?.[account.accountId],
+                hasEncryptedContentByMember: !!(payload.encryptedContentByMember && resolveRecipientCiphertext({ encryptedContentByMember: payload.encryptedContentByMember }, account)),
+                hasLegacyEncryptedContents: !!((payload as any).encryptedContents && resolveRecipientCiphertext({ encryptedContents: (payload as any).encryptedContents }, account)),
               },
             } : {}),
           };
