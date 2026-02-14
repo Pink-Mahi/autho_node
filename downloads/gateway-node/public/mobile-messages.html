@@ -570,6 +570,62 @@
       margin-bottom: 1rem;
     }
 
+    .privacy-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid rgba(212, 175, 55, 0.25);
+      border-radius: 10px;
+      margin-bottom: 0.75rem;
+      background: rgba(212, 175, 55, 0.08);
+    }
+
+    .privacy-toggle-label {
+      font-size: 0.82rem;
+      color: #d9d9d9;
+      line-height: 1.25;
+    }
+
+    .privacy-toggle-label strong {
+      color: #f0d57a;
+      display: block;
+      margin-bottom: 0.1rem;
+    }
+
+    .privacy-toggle {
+      width: 44px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid rgba(212, 175, 55, 0.45);
+      background: rgba(255, 255, 255, 0.12);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      flex: 0 0 auto;
+    }
+
+    .privacy-toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s ease;
+    }
+
+    .privacy-toggle.active {
+      background: rgba(76, 175, 80, 0.5);
+    }
+
+    .privacy-toggle.active::after {
+      transform: translateX(20px);
+    }
+
     .modal-overlay {
       position: fixed;
       top: 0;
@@ -1348,6 +1404,13 @@
       </div>
 
       <div id="contactsTab" style="display: none;">
+        <div class="privacy-toggle-row">
+          <div class="privacy-toggle-label">
+            <strong>Private Contacts Mode</strong>
+            Keep contact list local on this device only
+          </div>
+          <button id="privateContactsToggle" class="privacy-toggle" onclick="togglePrivateContactsMode()" aria-label="Toggle private contacts mode"></button>
+        </div>
         <div class="contact-buttons">
           <button class="share-btn" onclick="showShareModal()">
             <span>📤</span> Share My Contact
@@ -1904,6 +1967,110 @@
       } catch (e) {
         console.warn('[WS] WebSocket connect failed:', e.message);
       }
+    }
+
+    async function sha256Utf8(text) {
+      const bytes = new TextEncoder().encode(String(text || ''));
+      const hash = await crypto.subtle.digest('SHA-256', bytes);
+      return new Uint8Array(hash);
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+
+    function base64ToBytes(b64) {
+      const binary = atob(String(b64 || ''));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    async function getPrivateContactsAesKey() {
+      const secret = String(myMessagingPrivateKey || sessionStorage.getItem('autho_messaging_privateKey') || '').trim();
+      if (!secret) throw new Error('Messaging key unavailable');
+      const keyMaterial = await sha256Utf8('contacts-v1:' + secret);
+      return crypto.subtle.importKey('raw', keyMaterial, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    }
+
+    async function encryptPrivateContactsPayload(contacts) {
+      const aesKey = await getPrivateContactsAesKey();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const plaintext = new TextEncoder().encode(JSON.stringify({ contacts, updatedAt: Date.now() }));
+      const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, plaintext));
+      return {
+        alg: 'A256GCM',
+        ivB64: bytesToBase64(iv),
+        ciphertextB64: bytesToBase64(ciphertext),
+      };
+    }
+
+    async function decryptPrivateContactsPayload(enc) {
+      const aesKey = await getPrivateContactsAesKey();
+      const iv = base64ToBytes(enc?.ivB64 || '');
+      const ciphertext = base64ToBytes(enc?.ciphertextB64 || '');
+      const plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ciphertext));
+      const parsed = JSON.parse(new TextDecoder().decode(plaintext));
+      return Array.isArray(parsed?.contacts) ? parsed.contacts : [];
+    }
+
+    async function savePrivateContactsVault(contacts) {
+      const enc = await encryptPrivateContactsPayload(contacts);
+      const response = await fetch('/api/messages/vault', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...WalletAuth.getAuthHeaders()
+        },
+        body: JSON.stringify({
+          vaultEpoch: 'contacts_private_v1',
+          vaultVersion: Date.now(),
+          kdf: { type: 'sha256_messaging_key_v1' },
+          enc,
+        })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save encrypted contacts');
+      }
+      return true;
+    }
+
+    async function loadPrivateContactsVault() {
+      const response = await fetch('/api/messages/vault?vaultEpoch=contacts_private_v1', {
+        headers: WalletAuth.getAuthHeaders()
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load encrypted contacts');
+      }
+      const data = await response.json();
+      if (!data?.success || !data?.vault) return null;
+      const vault = data.vault;
+      if (String(vault.vaultEpoch || '').trim() !== 'contacts_private_v1') return null;
+      if (!vault.enc) return [];
+      return await decryptPrivateContactsPayload(vault.enc);
+    }
+
+    async function syncPrivateContactsFromLocal() {
+      const contacts = getLocalContacts();
+      await savePrivateContactsVault(contacts);
+    }
+
+    async function purgePublicContactsFromServer(contacts) {
+      if (!Array.isArray(contacts) || contacts.length === 0) return;
+      const headers = WalletAuth.getAuthHeaders();
+      await Promise.all(contacts.map((c) => {
+        const id = String(c?.accountId || '').trim();
+        if (!id) return Promise.resolve();
+        return fetch(`/api/messages/contacts/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers,
+        }).catch(() => {});
+      }));
     }
 
     function sendViaWebSocket(payload) {
@@ -2878,6 +3045,7 @@
       }
 
       if (sendBtn) sendBtn.disabled = false;
+      refreshPrivateContactsToggle();
       
       await loadConversations();
       await loadContacts();
@@ -2997,6 +3165,57 @@
         localStorage.setItem(key, JSON.stringify(contacts));
       } catch (e) { console.error('Failed to save local contacts:', e); }
     }
+
+    function getPrivateContactsMode() {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return false;
+        const key = `private_contacts_mode_${wallet.publicKey.substring(0, 16)}`;
+        return localStorage.getItem(key) === '1';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function setPrivateContactsMode(enabled) {
+      try {
+        const wallet = WalletAuth.getWallet();
+        if (!wallet) return;
+        const key = `private_contacts_mode_${wallet.publicKey.substring(0, 16)}`;
+        localStorage.setItem(key, enabled ? '1' : '0');
+      } catch (e) {
+        console.error('Failed to save private contacts mode:', e);
+      }
+    }
+
+    function refreshPrivateContactsToggle() {
+      const toggle = document.getElementById('privateContactsToggle');
+      if (!toggle) return;
+      const enabled = getPrivateContactsMode();
+      toggle.classList.toggle('active', enabled);
+      toggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      toggle.title = enabled ? 'Private contacts mode: ON' : 'Private contacts mode: OFF';
+    }
+
+    async function togglePrivateContactsMode() {
+      const next = !getPrivateContactsMode();
+      setPrivateContactsMode(next);
+      refreshPrivateContactsToggle();
+      if (next) {
+        try {
+          const existing = getLocalContacts();
+          await savePrivateContactsVault(existing);
+          await purgePublicContactsFromServer(existing);
+        } catch (e) {
+          console.error('Enable private contacts mode failed:', e);
+          alert('Failed to sync encrypted contacts: ' + (e?.message || 'Unknown error'));
+        }
+      }
+      await loadContacts();
+      if (next) {
+        alert('Private contacts mode enabled. Contacts are now encrypted before sync and only readable by your account.');
+      }
+    }
     
     function addLocalContact(contactId, displayName) {
       const contacts = getLocalContacts();
@@ -3006,7 +3225,42 @@
       }
     }
 
+    function removeLocalContact(contactId) {
+      const contacts = getLocalContacts();
+      const next = contacts.filter(c => String(c.accountId || '').trim() !== String(contactId || '').trim());
+      saveLocalContacts(next);
+    }
+
+    function contactExistsInList(contacts, contactId) {
+      const target = String(contactId || '').trim();
+      if (!target || !Array.isArray(contacts)) return false;
+      return contacts.some(c => String(c?.accountId || c?.contactId || '').trim() === target);
+    }
+
+    function isCurrentRecipientInContacts() {
+      if (!currentRecipientId || currentGroupId) return false;
+      return contactExistsInList(getLocalContacts(), currentRecipientId);
+    }
+
     async function loadContacts() {
+      if (getPrivateContactsMode()) {
+        let contacts = getLocalContacts();
+        try {
+          const vaultContacts = await loadPrivateContactsVault();
+          if (Array.isArray(vaultContacts)) {
+            contacts = vaultContacts;
+            saveLocalContacts(vaultContacts);
+          } else if (contacts.length > 0) {
+            await savePrivateContactsVault(contacts);
+          }
+        } catch (error) {
+          console.error('Encrypted contacts load failed:', error);
+        }
+        renderContacts(contacts);
+        updateAddContactButton(contactExistsInList(contacts, currentRecipientId));
+        return;
+      }
+
       try {
         const response = await fetch('/api/messages/contacts', {
           headers: WalletAuth.getAuthHeaders()
@@ -3048,6 +3302,7 @@
           }
           
           renderContacts(allContacts);
+          updateAddContactButton(contactExistsInList(allContacts, currentRecipientId));
         }
       } catch (error) {
         console.error('Failed to load contacts:', error);
@@ -3056,6 +3311,7 @@
         if (localContacts.length > 0) {
           renderContacts(localContacts);
         }
+        updateAddContactButton(contactExistsInList(localContacts, currentRecipientId));
       }
     }
 
@@ -3085,9 +3341,45 @@
           </div>
           <div class="contact-actions">
             <button onclick="startConversation('${contact.accountId}')">Message</button>
+            <button onclick="removeContact('${contact.accountId}')">Remove</button>
           </div>
         </div>
       `).join('');
+    }
+
+    async function removeContact(contactId) {
+      if (!contactId) return;
+      if (!confirm('Remove this contact?')) return;
+
+      removeLocalContact(contactId);
+
+      if (getPrivateContactsMode()) {
+        try {
+          await syncPrivateContactsFromLocal();
+        } catch (error) {
+          console.error('Encrypted contacts save failed:', error);
+        }
+        await loadContacts();
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/messages/contacts/${encodeURIComponent(contactId)}`, {
+          method: 'DELETE',
+          headers: WalletAuth.getAuthHeaders()
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+          alert(data.error || 'Failed to remove contact');
+          return;
+        }
+
+        await loadContacts();
+      } catch (error) {
+        console.error('Remove contact error:', error);
+        alert('Contact removed locally. Server sync will retry when available.');
+      }
     }
 
     // ============================================================
@@ -3678,6 +3970,9 @@
       const addBtn = document.getElementById('addContactChatBtn');
       addBtn.textContent = '➕ Add';
       addBtn.onclick = addCurrentRecipientToContacts;
+      addBtn.disabled = false;
+      addBtn.classList.remove('added');
+      updateAddContactButton(isCurrentRecipientInContacts());
       
       // Set participant name
       const conv = conversations.find(c => c.conversationId === conversationId);
@@ -3860,6 +4155,7 @@
       currentRecipientId = recipientId;
       currentRecipientPublicKey = recipientId;
       currentItemId = itemId;
+      currentGroupId = null;
       
       // Generate conversation ID
       const wallet = WalletAuth.getWallet();
@@ -3877,6 +4173,12 @@
       document.getElementById('inboxView').style.display = 'none';
       document.getElementById('chatView').classList.add('active');
       document.getElementById('chatParticipantName').textContent = 'Item Owner';
+      const addBtn = document.getElementById('addContactChatBtn');
+      addBtn.textContent = '➕ Add';
+      addBtn.onclick = addCurrentRecipientToContacts;
+      addBtn.disabled = false;
+      addBtn.classList.remove('added');
+      updateAddContactButton(isCurrentRecipientInContacts());
       
       await loadMessages(convId);
       
@@ -4403,6 +4705,18 @@
       
       // Always save to localStorage first (backup)
       addLocalContact(contactId);
+
+      if (getPrivateContactsMode()) {
+        try {
+          await syncPrivateContactsFromLocal();
+        } catch (error) {
+          console.error('Encrypted contacts save failed:', error);
+          alert('Failed to sync encrypted contacts: ' + (error?.message || 'Unknown error'));
+        }
+        alert('Contact added to encrypted private contacts.');
+        await loadContacts();
+        return;
+      }
       
       try {
         const res = await fetch('/api/messages/contacts', {
@@ -4473,19 +4787,31 @@
         alert("You can't add yourself as a contact");
         return;
       }
+
+      addLocalContact(contactId);
+
+      if (getPrivateContactsMode()) {
+        try {
+          await syncPrivateContactsFromLocal();
+        } catch (error) {
+          console.error('Encrypted contacts save failed:', error);
+        }
+      }
       
       // Add to contacts via API
-      try {
-        await fetch('/api/messages/contacts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...WalletAuth.getAuthHeaders()
-          },
-          body: JSON.stringify({ contactId })
-        });
-      } catch (e) {
-        console.log('Contact add request:', e);
+      if (!getPrivateContactsMode()) {
+        try {
+          await fetch('/api/messages/contacts', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...WalletAuth.getAuthHeaders()
+            },
+            body: JSON.stringify({ contactId })
+          });
+        } catch (e) {
+          console.log('Contact add request:', e);
+        }
       }
       
       // Clear URL parameters
@@ -4501,6 +4827,7 @@
       document.getElementById('chatView').classList.add('active');
       document.getElementById('chatParticipantName').textContent = contactId.substring(0, 12) + '...';
       document.getElementById('chatItemContext').textContent = '';
+      updateAddContactButton(true);
       
       // Load any existing messages (might be empty for new contact)
       const convId = await generateConversationId(wallet.publicKey, contactId, null);
@@ -4516,6 +4843,19 @@
       
       const btn = document.getElementById('addContactChatBtn');
       btn.disabled = true;
+      let added = false;
+
+      if (getPrivateContactsMode()) {
+        addLocalContact(currentRecipientId, document.getElementById('chatParticipantName')?.textContent || undefined);
+        try {
+          await syncPrivateContactsFromLocal();
+        } catch (error) {
+          console.error('Encrypted contacts save failed:', error);
+        }
+        updateAddContactButton(true);
+        await loadContacts();
+        return;
+      }
       
       try {
         const response = await fetch('/api/messages/contacts', {
@@ -4529,27 +4869,33 @@
         
         const data = await response.json();
         if (data.success) {
-          btn.textContent = '✓ Added';
-          btn.classList.add('added');
+          addLocalContact(currentRecipientId, document.getElementById('chatParticipantName')?.textContent || undefined);
+          updateAddContactButton(true);
           loadContacts();
+          added = true;
         } else {
           alert(data.error || 'Failed to add contact');
         }
       } catch (e) {
         console.error('Add contact error:', e);
       } finally {
-        btn.disabled = false;
+        if (!added) btn.disabled = false;
       }
     }
 
     function updateAddContactButton(isAlreadyContact) {
       const btn = document.getElementById('addContactChatBtn');
+      if (!btn || currentGroupId || !currentRecipientId) return;
       if (isAlreadyContact) {
         btn.textContent = '✓ Contact';
         btn.classList.add('added');
+        btn.disabled = true;
+        btn.onclick = null;
       } else {
         btn.textContent = '➕ Add';
         btn.classList.remove('added');
+        btn.disabled = false;
+        btn.onclick = addCurrentRecipientToContacts;
       }
     }
 

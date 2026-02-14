@@ -4218,7 +4218,24 @@ export class OperatorNode extends EventEmitter {
           return;
         }
 
-        const event = this.ephemeralStore!.getLatestMessagingVault(account.accountId);
+        const requestedEpoch = String(req.query?.vaultEpoch || '').trim();
+        let event = this.ephemeralStore!.getLatestMessagingVault(account.accountId);
+
+        if (requestedEpoch) {
+          const allEvents = this.ephemeralStore!.getAllEvents();
+          const candidates = allEvents.filter((e: any) =>
+            e?.eventType === EphemeralEventType.MESSAGING_VAULT_PUBLISHED &&
+            String(e?.payload?.accountId || '').trim() === String(account.accountId || '').trim() &&
+            String(e?.payload?.vaultEpoch || '').trim() === requestedEpoch
+          );
+          if (candidates.length > 0) {
+            candidates.sort((a: any, b: any) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0));
+            event = candidates[0];
+          } else {
+            event = null as any;
+          }
+        }
+
         if (!event) {
           res.status(404).json({ success: false, error: 'Vault not found' });
           return;
@@ -4522,6 +4539,48 @@ export class OperatorNode extends EventEmitter {
         await this.ephemeralStore!.appendEvent(EphemeralEventType.CONTACT_ADDED, payload, permanentExpiry);
 
         res.json({ success: true, message: 'Contact added' });
+      } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    });
+
+    // Remove a contact
+    this.app.delete('/api/messages/contacts/:contactId', async (req: Request, res: Response) => {
+      try {
+        const account = await this.getAccountFromSession(req);
+        if (!account) {
+          res.status(401).json({ success: false, error: 'Authentication required' });
+          return;
+        }
+
+        const rawContactId = String(req.params?.contactId || '').trim();
+        if (!rawContactId) {
+          res.status(400).json({ success: false, error: 'contactId required' });
+          return;
+        }
+
+        let normalizedContactId = rawContactId;
+        const direct = this.state.accounts.get(rawContactId) as any;
+        if (direct) {
+          normalizedContactId = String(direct?.accountId || rawContactId);
+        } else {
+          for (const a of this.state.accounts.values()) {
+            const wa = String((a as any)?.walletAddress || (a as any)?.identityAddress || '').trim();
+            if (wa && wa === rawContactId) {
+              normalizedContactId = String((a as any)?.accountId || rawContactId);
+              break;
+            }
+          }
+        }
+
+        const payload: ContactPayload = {
+          userId: account.accountId,
+          contactId: normalizedContactId,
+        };
+
+        await this.ephemeralStore!.appendEvent(EphemeralEventType.CONTACT_REMOVED, payload);
+
+        res.json({ success: true, message: 'Contact removed' });
       } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
       }
