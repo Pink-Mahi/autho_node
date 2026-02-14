@@ -3254,6 +3254,24 @@
       return '';
     }
 
+    function getAccountDisplayName(accountId) {
+      const target = String(accountId || '').trim();
+      if (!target) return '';
+
+      const conversationName = getConversationDisplayName(target);
+      if (conversationName) return conversationName;
+
+      const contacts = getLocalContacts();
+      for (const c of contacts) {
+        const contactId = String(c?.accountId || c?.contactId || '').trim();
+        if (contactId !== target) continue;
+        const name = String(c?.displayName || c?.nickname || '').trim();
+        if (name) return name;
+      }
+
+      return target.substring(0, 8) + '...';
+    }
+
     function normalizeContactShape(contact) {
       const accountId = String(contact?.accountId || contact?.contactId || '').trim();
       if (!accountId) return null;
@@ -3696,7 +3714,7 @@
           }
         }
         
-        const senderName = isSent ? 'You' : (msg.senderId.substring(0, 8) + '...');
+        const senderName = isSent ? 'You' : getAccountDisplayName(msg.senderId);
         
         rendered.push(`
           <div class="message-bubble ${isSent ? 'sent' : 'received'}">
