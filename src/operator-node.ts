@@ -4819,10 +4819,14 @@ export class OperatorNode extends EventEmitter {
             messageId: payload.messageId,
             groupId: payload.groupId,
             senderId: payload.senderId,
-            encryptedContent: payload.encryptedContentByMember[account.accountId],
+            encryptedContent:
+              payload.encryptedContentByMember?.[account.accountId] ||
+              (payload as any).encryptedContents?.[account.accountId],
+            mlsEncryptedContent: (payload as any).mlsEncryptedContent,
             timestamp: m.timestamp,
             expiresAt: m.expiresAt,
             replyToMessageId: payload.replyToMessageId,
+            mediaType: payload.mediaType,
           };
         });
 
@@ -4842,17 +4846,24 @@ export class OperatorNode extends EventEmitter {
         }
 
         const { groupId } = req.params;
-        const { 
-          encryptedContentByMember, 
+        const {
+          encryptedContentByMember,
+          encryptedContents,
           replyToMessageId,
           // Disappearing message fields
           mediaType,
           selfDestructAfter,
           expiresAfterView,
+          mlsEncryptedContent,
         } = req.body;
 
-        if (!encryptedContentByMember || typeof encryptedContentByMember !== 'object') {
-          res.status(400).json({ success: false, error: 'encryptedContentByMember object required' });
+        const normalizedEncryptedByMember =
+          encryptedContentByMember && typeof encryptedContentByMember === 'object'
+            ? encryptedContentByMember
+            : (encryptedContents && typeof encryptedContents === 'object' ? encryptedContents : null);
+
+        if (!normalizedEncryptedByMember || typeof normalizedEncryptedByMember !== 'object') {
+          res.status(400).json({ success: false, error: 'encryptedContentByMember/encryptedContents object required' });
           return;
         }
 
@@ -4867,12 +4878,13 @@ export class OperatorNode extends EventEmitter {
           messageId,
           groupId,
           senderId: account.accountId,
-          encryptedContentByMember,
+          encryptedContentByMember: normalizedEncryptedByMember,
           replyToMessageId,
           // Disappearing message fields
           mediaType: mediaType || 'text',
           selfDestructAfter: selfDestructAfter || undefined,
           expiresAfterView: expiresAfterView || false,
+          ...(mlsEncryptedContent ? { mlsEncryptedContent } : {}),
         };
 
         const event = await this.ephemeralStore!.appendEvent(
