@@ -2174,6 +2174,9 @@
                     itemId: String(it.itemId),
                     name: String(it?.metadata?.itemType || it?.metadata?.name || it.itemId),
                     description: String(it?.metadata?.description || ''),
+                    assetClass: String(it?.assetClass || 'physical_title'),
+                    accessVisibility: String(it?.accessPolicy?.visibility || ''),
+                    contentCommitmentHash: String(it?.contentCommitmentHash || ''),
                     serialNumber: '',
                     category: '',
                     price: '',
@@ -2295,12 +2298,16 @@
                 const saleConfs = pendingSale ? Number(pendingSale.confirmations || 0) : 0;
                 const salePending = Boolean(pendingSale);
                 const canSell = item.isOwned && !(item.feeTxid && item.feeConfirmed === false) && !salePending;
+                const assetClass = String(item.assetClass || 'physical_title').trim();
+                const accessVisibility = String(item.accessVisibility || '').trim();
+                const contentHash = String(item.contentCommitmentHash || '').trim();
                 
                 return `
                 <div class="item-card">
                     <div class="item-info">
                         <h3>${item.name} ${ownershipBadge}</h3>
                         <p>${item.description || 'No description'}</p>
+                        <p style="font-size: 0.82rem; color: #999; margin-top: 6px;">${assetClass}${accessVisibility ? ` • ${accessVisibility}` : ''}${contentHash ? ` • hash: ${contentHash.substring(0, 16)}...` : ''}</p>
                         <span class="item-id">ID: ${item.itemId}</span>
                     </div>
                     <div style="display: flex; gap: 10px;">

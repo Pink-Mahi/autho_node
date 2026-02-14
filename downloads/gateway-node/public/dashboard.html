@@ -2321,14 +2321,27 @@
                     </thead>
                     <tbody>
                         ${allItems.slice(-10).reverse().map(item => `
+                            ${(() => {
+                                const assetClass = String(item.assetClass || 'physical_title').trim();
+                                const visibility = String(item?.accessPolicy?.visibility || '').trim();
+                                const commitment = String(item.contentCommitmentHash || '').trim();
+                                const serial = String(item?.serialNumberDisplay || item?.metadata?.serialNumberDisplay || item?.metadata?.serialNumber || '').trim();
+                                const typeLabel = (item.metadata && item.metadata.itemType) ? item.metadata.itemType : 'Unknown';
+                                const typeWithClass = `${typeLabel}<br><span style="font-size:0.75rem; color:#999;">${assetClass}${visibility ? ` • ${visibility}` : ''}</span>`;
+                                const serialWithCommitment = serial
+                                    ? `${serial}${commitment ? `<br><span style="font-size:0.75rem; color:#999;">hash: ${commitment.substring(0, 16)}...</span>` : ''}`
+                                    : (commitment ? `<span style="font-size:0.75rem; color:#999;">hash: ${commitment.substring(0, 16)}...</span>` : '-');
+                                return `
                             <tr>
                                 <td style="font-family: monospace; font-size: 0.85rem;">${item.itemId.substring(0, 20)}...</td>
-                                <td>${(item.metadata && item.metadata.itemType) ? item.metadata.itemType : 'Unknown'}</td>
-                                <td style="font-family: monospace; font-size: 0.85rem;">-</td>
+                                <td>${typeWithClass}</td>
+                                <td style="font-family: monospace; font-size: 0.85rem;">${serialWithCommitment}</td>
                                 <td><span class="status-badge status-online">${item.status || 'registered'}</span></td>
                                 <td style="font-family: monospace; font-size: 0.85rem;">${(item.currentOwner || 'Unknown').substring(0, 15)}...</td>
                                 <td>${new Date(item.registeredAt || Date.now()).toLocaleString()}</td>
                             </tr>
+                                `;
+                            })()}
                         `).join('')}
                     </tbody>
                 </table>

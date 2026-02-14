@@ -564,6 +564,21 @@
           <span class="info-value" id="registeredDate">-</span>
         </div>
 
+        <div class="info-row" id="assetClassRow" style="display:none;">
+          <span class="info-label">Asset Class</span>
+          <span class="info-value" id="assetClassValue">-</span>
+        </div>
+
+        <div class="info-row" id="accessVisibilityRow" style="display:none;">
+          <span class="info-label">Visibility</span>
+          <span class="info-value" id="accessVisibilityValue">-</span>
+        </div>
+
+        <div class="info-row" id="contentHashRow" style="display:none;">
+          <span class="info-label">Content Hash</span>
+          <span class="info-value" id="contentHashValue">-</span>
+        </div>
+
         <div class="info-row" id="serialRow" style="display:none;">
           <span class="info-label">Serial Number</span>
           <span class="info-value" id="serialNumber">-</span>
@@ -1461,6 +1476,30 @@
       
       document.getElementById('registeredDate').textContent = 
         item.registeredAt ? new Date(item.registeredAt).toLocaleDateString() : '-';
+
+      const assetClass = String(item?.assetClass || '').trim();
+      if (assetClass) {
+        document.getElementById('assetClassValue').textContent = assetClass;
+        document.getElementById('assetClassRow').style.display = 'flex';
+      } else {
+        document.getElementById('assetClassRow').style.display = 'none';
+      }
+
+      const accessVisibility = String(item?.accessPolicy?.visibility || '').trim();
+      if (accessVisibility) {
+        document.getElementById('accessVisibilityValue').textContent = accessVisibility;
+        document.getElementById('accessVisibilityRow').style.display = 'flex';
+      } else {
+        document.getElementById('accessVisibilityRow').style.display = 'none';
+      }
+
+      const contentCommitmentHash = String(item?.contentCommitmentHash || '').trim();
+      if (contentCommitmentHash) {
+        document.getElementById('contentHashValue').textContent = `${contentCommitmentHash.substring(0, 16)}...`;
+        document.getElementById('contentHashRow').style.display = 'flex';
+      } else {
+        document.getElementById('contentHashRow').style.display = 'none';
+      }
 
       const serialDisplay = String(
         item?.serialNumberDisplay ||

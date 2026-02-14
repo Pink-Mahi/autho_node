@@ -982,6 +982,10 @@
         const vStatus = String(item?.verificationStatus || '').trim().toLowerCase();
         const isVerified = vStatus === 'verified';
         const isUnverified = vStatus === 'unverified';
+        const assetClass = String(item?.assetClass || 'physical_title').trim();
+        const accessVisibility = String(item?.accessPolicy?.visibility || '').trim();
+        const contentCommitmentHash = String(item?.contentCommitmentHash || '').trim();
+        const serialDisplay = String(item?.serialNumberDisplay || item?.metadata?.serialNumberDisplay || item?.metadata?.serialNumber || item?.serialNumber || item?.itemId || '').trim();
         const draft = store[String(item?.itemId || '')];
         const hasDraft = !!draft && !!draft.requestId;
         const draftStatus = hasDraft ? String(draft.status || '') : '';
@@ -1007,7 +1011,8 @@
           <div class="item-header">
             <div>
               <div class="item-title">${(item.metadata && (item.metadata.name || item.metadata.itemType)) || item.itemType || 'Unknown Item'}</div>
-              <div class="item-serial">SN: ${((item.metadata && item.metadata.serialNumber) || item.serialNumber || item.itemId.substring(0, 20))}</div>
+              <div class="item-serial">SN: ${serialDisplay || item.itemId.substring(0, 20)}</div>
+              <div class="item-serial" style="font-size:11px; opacity:.8; margin-top:3px;">${assetClass}${accessVisibility ? ` • ${accessVisibility}` : ''}</div>
             </div>
             <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
               <div class="verification-badge ${isVerified ? '' : 'unverified'}">${isVerified ? 'VERIFIED' : (isUnverified ? 'UNVERIFIED' : (vStatus || 'UNKNOWN').toUpperCase())}</div>
@@ -1055,6 +1060,12 @@
               <div class="item-detail-row">
                 <span class="item-detail-label">Description</span>
                 <span class="item-detail-value">${(item.metadata && item.metadata.description) || item.description}</span>
+              </div>
+            ` : ''}
+            ${contentCommitmentHash ? `
+              <div class="item-detail-row">
+                <span class="item-detail-label">Content Hash</span>
+                <span class="item-detail-value" style="font-family: monospace; font-size: 11px;">${contentCommitmentHash.substring(0, 16)}...</span>
               </div>
             ` : ''}
           </div>
