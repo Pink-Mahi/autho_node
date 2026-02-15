@@ -1039,6 +1039,7 @@ export interface EventStoreState {
   eventCount: number;
   lastCheckpointHash?: string;
   lastCheckpointAt?: number;
+  knownGaps?: Array<{from: number, to: number}>;
 }
 
 export interface CheckpointData {

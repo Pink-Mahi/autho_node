@@ -113,6 +113,8 @@ export class OperatorNode extends EventEmitter {
   private lastSyncRequestAt: number = 0;
   private seedDivergenceCounts: Map<string, number> = new Map();
   private seedCooldownUntil: Map<string, number> = new Map();
+  private gapFillTimer?: NodeJS.Timeout;
+  private lastGapFillRequestAt: number = 0;
 
   private pendingRegistrySignatureRequests: Map<string, {
     signatures: QuorumSignature[];
@@ -7189,35 +7191,25 @@ export class OperatorNode extends EventEmitter {
             ? await this.canonicalEventStore.getEventsBySequence(fromSeq, toSeq)
             : [];
 
-          let syncGapAt = 0;
-          if (fromSeq <= toSeq) {
+          // Bitcoin-style: detect gaps in our data but still serve what we have
+          const syncGaps: Array<{from: number, to: number}> = [];
+          if (fromSeq <= toSeq && events.length > 0) {
             let expectedSeq = fromSeq;
             for (const ev of events) {
               const seq = Number(ev?.sequenceNumber || 0);
-              if (seq !== expectedSeq) {
-                syncGapAt = expectedSeq;
-                break;
+              if (seq > expectedSeq) {
+                syncGaps.push({ from: expectedSeq, to: seq - 1 });
               }
-              expectedSeq++;
+              expectedSeq = seq + 1;
             }
-            if (!syncGapAt && expectedSeq <= toSeq) {
-              syncGapAt = expectedSeq;
+            if (expectedSeq <= toSeq) {
+              syncGaps.push({ from: expectedSeq, to: toSeq });
             }
           }
 
-          if (syncGapAt > 0) {
-            console.error(`[Operator] Refusing to serve non-contiguous sync range (${fromSeq}-${toSeq}); gap at ${syncGapAt}`);
-            ws.send(JSON.stringify({
-              type: 'sync_error',
-              operatorId: this.getOperatorId(),
-              networkId: this.computeNetworkId(),
-              reason: 'sequence_gap',
-              gapAt: syncGapAt,
-              fromSequence: fromSeq,
-              headSequence: toSeq,
-              timestamp: Date.now(),
-            }));
-            break;
+          if (syncGaps.length > 0) {
+            const totalMissing = syncGaps.reduce((s, g) => s + (g.to - g.from + 1), 0);
+            console.warn(`[Operator] Serving sync with ${syncGaps.length} gap(s), ${totalMissing} missing events in range ${fromSeq}-${toSeq}`);
           }
 
           ws.send(JSON.stringify({
@@ -7225,6 +7217,8 @@ export class OperatorNode extends EventEmitter {
             operatorId: this.getOperatorId(),
             networkId: this.computeNetworkId(),
             events,
+            gaps: syncGaps.length > 0 ? syncGaps : undefined,
+            headSequence: toSeq,
             timestamp: Date.now(),
           }));
         } catch {}
@@ -7486,6 +7480,57 @@ export class OperatorNode extends EventEmitter {
           }
         } catch {}
         break;
+
+      // Bitcoin-style gap-fill protocol (peer-to-peer)
+      case 'gap_fill_request':
+        try {
+          if (!ws || ws.readyState !== WebSocket.OPEN) break;
+          const peerGfFrom = Math.floor(Number(message?.fromSequence || 0));
+          const peerGfTo = Math.floor(Number(message?.toSequence || 0));
+          if (peerGfFrom > 0 && peerGfTo >= peerGfFrom && (peerGfTo - peerGfFrom) <= 1000) {
+            const peerGfEvents = await this.canonicalEventStore.getEventsBySequence(peerGfFrom, peerGfTo);
+            console.log(`[Operator] Serving peer gap-fill to ${peerId}: requested ${peerGfFrom}-${peerGfTo}, have ${peerGfEvents.length} events`);
+            ws.send(JSON.stringify({
+              type: 'gap_fill_response',
+              operatorId: this.getOperatorId(),
+              networkId: this.computeNetworkId(),
+              events: peerGfEvents,
+              fromSequence: peerGfFrom,
+              toSequence: peerGfTo,
+              timestamp: Date.now(),
+            }));
+          }
+        } catch {}
+        break;
+
+      case 'gap_fill_response':
+        try {
+          const peerGfrEvents = message?.events;
+          if (Array.isArray(peerGfrEvents) && peerGfrEvents.length > 0) {
+            let peerFilled = 0;
+            for (const ev of peerGfrEvents) {
+              if (ev && ev.eventHash && ev.sequenceNumber) {
+                await this.canonicalEventStore.appendExistingEvent(ev, { gapTolerant: true });
+                peerFilled++;
+              }
+            }
+            if (peerFilled > 0) {
+              console.log(`[Operator] ✅ Peer gap-fill received: ${peerFilled} events from ${peerId}`);
+              await this.rebuildLocalStateFromCanonical();
+              await this.persistState();
+              this.broadcastRegistryUpdate();
+            }
+            const peerRemainingGaps = this.canonicalEventStore.getKnownGaps();
+            if (peerRemainingGaps.length === 0) {
+              console.log('[Operator] ✅ All gaps filled via peer — event store is now contiguous');
+              this.consecutiveSyncFailures = 0;
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Operator] Peer gap-fill response error:', e?.message);
+        }
+        break;
+
       default:
         break;
     }
@@ -7827,12 +7872,62 @@ export class OperatorNode extends EventEmitter {
       case 'sync_error':
         try {
           const reason = String(message?.reason || 'unknown_sync_error');
-          const gapAt = Number(message?.gapAt || 0);
-          if (reason === 'sequence_gap' && gapAt > 0) {
-            await this.handleSyncDivergence('Seed sync response', new Error(`Seed sync gap at ${gapAt}`));
+          console.warn(`[Operator] Received sync_error from seed: ${reason}`);
+          this.scheduleGapFill();
+        } catch {}
+        break;
+
+      // Bitcoin-style gap-fill protocol
+      case 'gap_fill_request':
+        try {
+          const seedWs = this.mainSeedWs;
+          if (!seedWs || seedWs.readyState !== WebSocket.OPEN) break;
+          const gfFrom = Math.floor(Number(message?.fromSequence || 0));
+          const gfTo = Math.floor(Number(message?.toSequence || 0));
+          if (gfFrom > 0 && gfTo >= gfFrom && (gfTo - gfFrom) <= 1000) {
+            const gfEvents = await this.canonicalEventStore.getEventsBySequence(gfFrom, gfTo);
+            console.log(`[Operator] Serving gap-fill: requested ${gfFrom}-${gfTo}, have ${gfEvents.length} events`);
+            seedWs.send(JSON.stringify({
+              type: 'gap_fill_response',
+              operatorId: this.getOperatorId(),
+              networkId: this.computeNetworkId(),
+              events: gfEvents,
+              fromSequence: gfFrom,
+              toSequence: gfTo,
+              timestamp: Date.now(),
+            }));
           }
         } catch {}
         break;
+
+      case 'gap_fill_response':
+        try {
+          const gfrEvents = message?.events;
+          if (Array.isArray(gfrEvents) && gfrEvents.length > 0) {
+            let filled = 0;
+            for (const ev of gfrEvents) {
+              if (ev && ev.eventHash && ev.sequenceNumber) {
+                await this.canonicalEventStore.appendExistingEvent(ev, { gapTolerant: true });
+                filled++;
+              }
+            }
+            if (filled > 0) {
+              console.log(`[Operator] ✅ Gap-fill received: ${filled} events from ${message?.operatorId || 'seed'}`);
+              await this.rebuildLocalStateFromCanonical();
+              await this.persistState();
+              this.broadcastRegistryUpdate();
+            }
+            const remainingGaps = this.canonicalEventStore.getKnownGaps();
+            if (remainingGaps.length === 0) {
+              console.log('[Operator] ✅ All gaps filled — event store is now contiguous');
+              this.consecutiveSyncFailures = 0;
+            }
+          }
+        } catch (e: any) {
+          console.warn('[Operator] Gap-fill response error:', e?.message);
+        }
+        break;
+
       default:
         console.log(`[Operator] Unknown message type: ${message.type}`);
     }
@@ -7874,37 +7969,79 @@ export class OperatorNode extends EventEmitter {
     const storeState = this.canonicalEventStore.getState();
     const localSequence = Number(storeState?.sequenceNumber || 0);
     const now = Date.now();
-    const activeSeed = this.activeSeedUrl;
 
     console.warn(`[Operator] ${context} divergence detected: ${message}`);
 
-    if (activeSeed) {
-      const seedFailures = Number(this.seedDivergenceCounts.get(activeSeed) || 0) + 1;
-      this.seedDivergenceCounts.set(activeSeed, seedFailures);
-      if (seedFailures >= 3) {
-        const hasAlternateSeeds = this.buildSeedUrlList().some((url) => url !== activeSeed);
-        if (hasAlternateSeeds) {
-          this.seedCooldownUntil.set(activeSeed, now + 60000);
-          this.seedDivergenceCounts.delete(activeSeed);
-          console.warn(`[Operator] Quarantining divergent seed for 60s: ${activeSeed}`);
-          try { this.mainSeedWs?.close(); } catch {}
-        } else {
-          console.warn(`[Operator] Divergent seed detected but no alternates available; staying connected to ${activeSeed}`);
-          this.seedDivergenceCounts.set(activeSeed, 2);
-        }
+    // Bitcoin-style recovery: request targeted backfill, NEVER destroy valid data
+    this.requestMainSeedSync(localSequence, 'auto_repair_targeted');
+
+    // Schedule gap-fill to handle any remaining gaps
+    this.scheduleGapFill();
+  }
+
+  /**
+   * Bitcoin-style gap-fill protocol.
+   * Periodically checks for known gaps and requests the missing ranges
+   * from the seed. Like Bitcoin's getdata for missing blocks.
+   */
+  private scheduleGapFill(): void {
+    if (this.gapFillTimer) return;
+
+    this.gapFillTimer = setTimeout(async () => {
+      this.gapFillTimer = undefined;
+      await this.performGapFill();
+    }, 15000);
+  }
+
+  private async performGapFill(): Promise<void> {
+    const gaps = this.canonicalEventStore.getKnownGaps();
+    if (gaps.length === 0) {
+      console.log('[Operator] ✅ No gaps remaining — event store is contiguous');
+      this.consecutiveSyncFailures = 0;
+      return;
+    }
+
+    const now = Date.now();
+    if ((now - this.lastGapFillRequestAt) < 10000) return;
+    this.lastGapFillRequestAt = now;
+
+    const totalMissing = this.canonicalEventStore.getTotalMissingEvents();
+    console.log(`[Operator] 🔄 Gap-fill: ${gaps.length} range(s), ${totalMissing} missing events`);
+
+    for (const gap of gaps) {
+      if (!this.mainSeedWs || this.mainSeedWs.readyState !== WebSocket.OPEN) break;
+      console.log(`[Operator] Requesting gap-fill for sequences ${gap.from}-${gap.to}`);
+      this.mainSeedWs.send(JSON.stringify({
+        type: 'gap_fill_request',
+        operatorId: this.config.operatorId,
+        networkId: this.computeNetworkId(),
+        fromSequence: gap.from,
+        toSequence: gap.to,
+        timestamp: Date.now(),
+      }));
+    }
+
+    for (const [peerId, peer] of this.operatorPeerConnections.entries()) {
+      if (peer.ws.readyState !== WebSocket.OPEN) continue;
+      for (const gap of gaps) {
+        try {
+          peer.ws.send(JSON.stringify({
+            type: 'gap_fill_request',
+            operatorId: this.config.operatorId,
+            networkId: this.computeNetworkId(),
+            fromSequence: gap.from,
+            toSequence: gap.to,
+            timestamp: Date.now(),
+          }));
+        } catch {}
       }
     }
 
-    // First try: request targeted backfill from our local sequence
-    this.requestMainSeedSync(localSequence, 'auto_repair_targeted');
-
-    // Escalate to full local reset if divergence persists
-    if (this.consecutiveSyncFailures >= 2 && (now - this.lastMismatchSyncAt) > 15000) {
-      this.lastMismatchSyncAt = now;
-      console.log('[Operator] 🔄 Auto-repair escalation: resetting local event store and requesting full resync...');
-      await this.resetEventStore();
-      this.requestMainSeedSync(0, 'auto_repair_full', true);
-      this.consecutiveSyncFailures = 0;
+    if (gaps.length > 0) {
+      this.gapFillTimer = setTimeout(async () => {
+        this.gapFillTimer = undefined;
+        await this.performGapFill();
+      }, 30000);
     }
   }
 
@@ -7932,17 +8069,20 @@ export class OperatorNode extends EventEmitter {
       const storeState = this.canonicalEventStore.getState();
       let expectedNextSeq = Number(storeState.sequenceNumber || 0) + 1;
       let appendedCount = 0;
+      let gapsDetected = 0;
 
       if (Array.isArray(events) && events.length > 0) {
         const ordered = [...events].sort((a: any, b: any) => Number(a.sequenceNumber || 0) - Number(b.sequenceNumber || 0));
         for (const ev of ordered) {
           const seq = Number(ev?.sequenceNumber || 0);
           if (!seq || seq < expectedNextSeq) continue;
+
           if (seq > expectedNextSeq) {
-            throw new Error(`Unexpected sequenceNumber (expected ${expectedNextSeq}, got ${seq})`);
+            console.warn(`[Operator] Gap in sync batch: expected ${expectedNextSeq}, got ${seq} (missing ${seq - expectedNextSeq} events)`);
+            gapsDetected++;
           }
 
-          await this.canonicalEventStore.appendExistingEvent(ev);
+          await this.canonicalEventStore.appendExistingEvent(ev, { gapTolerant: true });
           expectedNextSeq = seq + 1;
           appendedCount++;
         }
@@ -7950,10 +8090,17 @@ export class OperatorNode extends EventEmitter {
 
       await this.rebuildLocalStateFromCanonical();
 
-      console.log(`[Operator] Sync complete. Accounts: ${this.state.accounts.size}, Items: ${this.state.items.size}`);
+      const gaps = this.canonicalEventStore.getKnownGaps();
+      if (gaps.length > 0) {
+        const totalMissing = this.canonicalEventStore.getTotalMissingEvents();
+        console.warn(`[Operator] ⚠️ ${gaps.length} gap range(s), ${totalMissing} total missing events — scheduling gap-fill`);
+        this.scheduleGapFill();
+      }
+
+      console.log(`[Operator] Sync complete. Appended: ${appendedCount}, Gaps: ${gapsDetected}. Accounts: ${this.state.accounts.size}, Items: ${this.state.items.size}`);
 
       await this.persistState();
-      if (appendedCount > 0 || this.consecutiveSyncFailures === 0) {
+      if (appendedCount > 0) {
         this.consecutiveSyncFailures = 0;
       }
 
@@ -7962,7 +8109,9 @@ export class OperatorNode extends EventEmitter {
       }
     } catch (error: any) {
       console.error('[Operator] Sync error:', error.message);
-      await this.handleSyncDivergence('Sync', error);
+      if (!String(error?.message || '').includes('sequenceNumber')) {
+        await this.handleSyncDivergence('Sync', error);
+      }
     } finally {
       this.syncInProgress = false;
     }
@@ -8002,15 +8151,23 @@ export class OperatorNode extends EventEmitter {
   private async handleNewEvent(event: any): Promise<void> {
     try {
       if (event && event.eventHash && event.sequenceNumber) {
-        await this.canonicalEventStore.appendExistingEvent(event);
+        // Use gap-tolerant mode so a single out-of-order event doesn't trigger destructive recovery
+        await this.canonicalEventStore.appendExistingEvent(event, { gapTolerant: true });
       }
       await this.rebuildLocalStateFromCanonical();
       await this.persistState();
       this.consecutiveSyncFailures = 0;
       this.broadcastRegistryUpdate();
+
+      // Check if this event created or filled gaps
+      const gaps = this.canonicalEventStore.getKnownGaps();
+      if (gaps.length > 0) {
+        this.scheduleGapFill();
+      }
     } catch (e: any) {
       console.error('[Operator] Failed to apply new event:', e?.message || String(e));
-      await this.handleSyncDivergence('New event', e);
+      // Schedule gap-fill instead of destructive recovery
+      this.scheduleGapFill();
     }
   }
 

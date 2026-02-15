@@ -95,6 +95,10 @@ export class EventStore {
   private segmentMaxEvents: number;  // Events per segment (default 1000)
   private useSegments: boolean = true; // New events always go to segments
 
+  // Bitcoin-style gap tracking — tracks missing sequence ranges
+  // Like Bitcoin's block download window: accept what you can, fill gaps later
+  private knownGaps: Array<{from: number, to: number}> = [];
+
   constructor(dataDir: string) {
     this.dataDir = dataDir;
     this.eventsDir = path.join(dataDir, 'events');
@@ -129,6 +133,9 @@ export class EventStore {
 
     // Load or initialize state
     this.state = this.loadState();
+
+    // Restore persisted gaps from state
+    this.knownGaps = Array.isArray(this.state.knownGaps) ? [...this.state.knownGaps] : [];
     
     // Load or rebuild sequence index
     this.sequenceIndex = this.loadOrRebuildIndex();
@@ -240,17 +247,40 @@ export class EventStore {
     return event;
   }
 
-  async appendExistingEvent(event: Event): Promise<void> {
+  /**
+   * Bitcoin-style gap-tolerant event append for sync.
+   * 
+   * Like Bitcoin's block download: accepts events even with sequence gaps.
+   * Gaps are tracked and can be filled later from any peer.
+   * This prevents the fatal loop where a single missing range causes
+   * infinite reset-resync cycles that destroy valid data.
+   *
+   * @param event - The event to append
+   * @param options.gapTolerant - If true, accept events that skip ahead (default: false for backward compat)
+   */
+  async appendExistingEvent(event: Event, options?: { gapTolerant?: boolean }): Promise<void> {
+    // Duplicate check: segment index, individual file, AND sequence index
+    if (this.segmentIndex.entries[event.eventHash]) return;
     const eventFile = path.join(this.eventsDir, `${event.eventHash}.json`);
-    if (fs.existsSync(eventFile)) {
-      return;
-    }
+    if (fs.existsSync(eventFile)) return;
+    if (this.sequenceIndex.entries[event.sequenceNumber]) return;
 
-    // Skip hash validation during sync - trust main node's events
-    // Only validate sequence continuity
     const expectedSeq = this.state.sequenceNumber + 1;
-    if (event.sequenceNumber !== expectedSeq) {
-      throw new Error(`Unexpected sequenceNumber (expected ${expectedSeq}, got ${event.sequenceNumber})`);
+
+    if (event.sequenceNumber < expectedSeq) {
+      // Event is behind our tip — only accept if it fills a known gap
+      if (!this.isInKnownGap(event.sequenceNumber)) {
+        return; // Already covered, skip
+      }
+      // Falls through to store it as gap-fill
+    } else if (event.sequenceNumber > expectedSeq) {
+      if (options?.gapTolerant) {
+        // Bitcoin-style: accept the event, record the gap for later fill
+        this.addGap(expectedSeq, event.sequenceNumber - 1);
+        console.warn(`[EventStore] Gap-tolerant: accepted seq ${event.sequenceNumber}, recorded gap ${expectedSeq}-${event.sequenceNumber - 1}`);
+      } else {
+        throw new Error(`Unexpected sequenceNumber (expected ${expectedSeq}, got ${event.sequenceNumber})`);
+      }
     }
 
     // Write to WAL first
@@ -277,9 +307,18 @@ export class EventStore {
       this.saveIndex();
     }
 
-    this.state.headHash = event.eventHash;
-    this.state.sequenceNumber = event.sequenceNumber;
+    // Update tip to highest sequence seen (like Bitcoin's best block height)
+    if (event.sequenceNumber >= expectedSeq) {
+      this.state.headHash = event.eventHash;
+      this.state.sequenceNumber = event.sequenceNumber;
+    }
     this.state.eventCount++;
+
+    // Remove this sequence from known gaps if it was a gap-fill
+    this.removeFromGaps(event.sequenceNumber);
+
+    // Persist gaps alongside state
+    this.state.knownGaps = this.knownGaps.length > 0 ? [...this.knownGaps] : undefined;
     this.saveState();
     
     // Clear WAL
@@ -493,6 +532,60 @@ export class EventStore {
    */
   getState(): EventStoreState {
     return { ...this.state };
+  }
+
+  // ============================================================
+  // BITCOIN-STYLE GAP TRACKING
+  // Like Bitcoin's block download window — tracks missing ranges
+  // so they can be filled from any available peer later.
+  // ============================================================
+
+  getKnownGaps(): Array<{from: number, to: number}> {
+    return [...this.knownGaps];
+  }
+
+  hasGaps(): boolean {
+    return this.knownGaps.length > 0;
+  }
+
+  getTotalMissingEvents(): number {
+    return this.knownGaps.reduce((sum, g) => sum + (g.to - g.from + 1), 0);
+  }
+
+  private isInKnownGap(seq: number): boolean {
+    return this.knownGaps.some(g => seq >= g.from && seq <= g.to);
+  }
+
+  private addGap(from: number, to: number): void {
+    if (from > to) return;
+    this.knownGaps.push({ from, to });
+    this.mergeGaps();
+  }
+
+  private removeFromGaps(seq: number): void {
+    this.knownGaps = this.knownGaps.flatMap(gap => {
+      if (seq < gap.from || seq > gap.to) return [gap];
+      if (seq === gap.from && seq === gap.to) return [];
+      if (seq === gap.from) return [{ from: gap.from + 1, to: gap.to }];
+      if (seq === gap.to) return [{ from: gap.from, to: gap.to - 1 }];
+      return [{ from: gap.from, to: seq - 1 }, { from: seq + 1, to: gap.to }];
+    });
+  }
+
+  private mergeGaps(): void {
+    if (this.knownGaps.length <= 1) return;
+    this.knownGaps.sort((a, b) => a.from - b.from);
+    const merged: Array<{from: number, to: number}> = [this.knownGaps[0]];
+    for (let i = 1; i < this.knownGaps.length; i++) {
+      const last = merged[merged.length - 1];
+      const curr = this.knownGaps[i];
+      if (curr.from <= last.to + 1) {
+        last.to = Math.max(last.to, curr.to);
+      } else {
+        merged.push({ ...curr });
+      }
+    }
+    this.knownGaps = merged;
   }
 
   /**
